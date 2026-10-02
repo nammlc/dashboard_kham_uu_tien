@@ -10,6 +10,7 @@ services/reconcile.py
 Chỉ chứa logic thuần (không gọi Google Sheet) để dễ test. Việc ghi Sheet nằm ở sheets.py.
 """
 import difflib, json, os, re, tempfile, time
+from functools import lru_cache
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -77,6 +78,39 @@ def name_match_ok(a, b, min_ratio=NAME_RATIO_MIN):
     return ratio >= min_ratio, ratio
 
 
+# ── Bản NHANH của so khớp tên (kết quả y hệt name_match_ok) ───────────────────
+# name_match_ok chỉ đạt khi TỪ ĐẦU và TỪ CUỐI của 2 tên trùng nhau. Nên thay vì so mỗi bệnh nhân
+# với TOÀN BỘ nhật ký khám (hàng chục nghìn dòng × hàng trăm bệnh nhân → quá 60s, gunicorn giết worker),
+# ta gom nhật ký vào các "ngăn" theo (từ đầu, từ cuối) và chỉ so trong ngăn của đúng bệnh nhân đó.
+_norm = lru_cache(maxsize=200_000)(norm_name)
+
+
+@lru_cache(maxsize=None)
+def _parse_dmy_cached(s):
+    try:
+        return datetime.strptime(str(s).strip(), "%d/%m/%Y").date()
+    except Exception:
+        return None
+
+
+def _name_key(na):
+    """Khoá ngăn: (từ đầu, từ cuối) của tên ĐÃ chuẩn hoá; tên rỗng → None."""
+    t = na.split()
+    return (t[0], t[-1]) if t else None
+
+
+@lru_cache(maxsize=500_000)
+def _ratio_ok(na, nb, min_ratio=NAME_RATIO_MIN):
+    """2 tên đã chuẩn hoá, CÙNG khoá (từ đầu/cuối) → (đạt, tỉ lệ)."""
+    if na == nb:
+        return True, 1.0
+    sm = difflib.SequenceMatcher(None, na, nb)
+    if sm.real_quick_ratio() < min_ratio or sm.quick_ratio() < min_ratio:   # cận trên → loại sớm, không đổi kết quả
+        return False, 0.0
+    r = sm.ratio()
+    return r >= min_ratio, r
+
+
 def parse_dmy(s):
     try:
         return datetime.strptime(str(s).strip(), "%d/%m/%Y").date()
@@ -99,20 +133,29 @@ def find_duplicate_tk_form(khoa_patients, form_patients, window_days=DUPLICATE_W
     chỉ Tên (cần kiểm tra tay). Chỉ ghép cặp có ngày hẹn lệch ≤ window_days."""
     used_form_idx, results = set(), []
 
+    form_buckets = {}                                   # (từ đầu, từ cuối) → [(j, pf, tên_chuẩn_hoá)]
+    for j, pf in enumerate(form_patients):
+        nf = _norm(pf.get("name", ""))
+        key = _name_key(nf)
+        if key:
+            form_buckets.setdefault(key, []).append((j, pf, nf))
+
     for pk in khoa_patients:
         k_name = pk.get("name", "")
         k_phone = norm_phone_key(pk.get("phone"))
         k_birth = _to_int(pk.get("birth_year"))
         k_date = pk.get("exam_date")
+        na = _norm(k_name)
+        key = _name_key(na)
 
         candidates = []
-        for j, pf in enumerate(form_patients):
+        for j, pf, nf in (form_buckets.get(key, ()) if key else ()):
             if j in used_form_idx:
                 continue
             f_date = pf.get("exam_date")
             if k_date and f_date and abs((f_date - k_date).days) > window_days:
                 continue
-            ok, ratio = name_match_ok(k_name, pf.get("name", ""))
+            ok, ratio = _ratio_ok(na, nf)
             if ok:
                 candidates.append((ratio, j, pf))
         if not candidates:
@@ -149,11 +192,18 @@ def reconcile_attendance(sheet_patients, visit_records,
     """Với BN có ngày hẹn D, cửa sổ = [D − before, min(D + after, HÔM NAY)] (chặn ở hôm nay
     để không vồ nhầm một đợt khám CŨ của cùng bệnh nhân).
     status: attended_sure (tầng 1/2) · attended_unsure (tầng 3, cần xem tay) · not_attended
-    (kèm near_miss nếu tìm thấy tên giống NGOÀI cửa sổ ngày)."""
+    (kèm near_miss nếu tìm thấy tên giống NGOÀI cửa sổ ngày).
+
+    Hiệu năng: chuẩn hoá tên + parse ngày 1 lần cho cả file, rồi gom nhật ký khám vào ngăn theo
+    (từ đầu, từ cuối) của tên — mỗi bệnh nhân chỉ so với vài chục dòng thay vì cả chục nghìn."""
     today_d = today or date.today()
 
-    # Parse ngày 1 lần cho cả file (tránh parse lại cho từng bệnh nhân)
-    visits = [(parse_dmy(v.get("NGÀY ĐK")), v) for v in visit_records]
+    buckets = {}                                       # (từ đầu, từ cuối) → [(ngày, bản_ghi, tên_chuẩn_hoá)]
+    for v in visit_records:
+        nb = _norm(v.get("HỌ TÊN"))
+        key = _name_key(nb)
+        if key:
+            buckets.setdefault(key, []).append((_parse_dmy_cached(v.get("NGÀY ĐK")), v, nb))
 
     results = []
     for p in sheet_patients:
@@ -162,12 +212,9 @@ def reconcile_attendance(sheet_patients, visit_records,
         p_birth = _to_int(p.get("birth_year"))
         exam_date = p.get("exam_date")
 
-        if exam_date:
-            w_start = exam_date - timedelta(days=window_before)
-            w_end = min(exam_date + timedelta(days=window_after), today_d)
-            candidates = [v for vd, v in visits if vd is not None and w_start <= vd <= w_end]
-        else:
-            candidates = []     # không rõ ngày hẹn → không đủ an toàn để khớp
+        na = _norm(p_name)
+        key = _name_key(na)
+        bucket = buckets.get(key, ()) if key else ()
 
         entry = {
             "sheet_row": p.get("sheet_row"), "stt": p.get("stt", ""), "name": p_name,
@@ -178,10 +225,14 @@ def reconcile_attendance(sheet_patients, visit_records,
         }
 
         name_sims = []
-        for v in candidates:
-            ok, ratio = name_match_ok(p_name, v.get("HỌ TÊN"))
-            if ok:
-                name_sims.append((ratio, v))
+        if exam_date:                                  # không rõ ngày hẹn → không đủ an toàn để khớp
+            w_start = exam_date - timedelta(days=window_before)
+            w_end = min(exam_date + timedelta(days=window_after), today_d)
+            for vd, v, nb in bucket:
+                if vd is not None and w_start <= vd <= w_end:
+                    ok, ratio = _ratio_ok(na, nb)
+                    if ok:
+                        name_sims.append((ratio, v))
 
         best1 = None                                              # Tầng 1: Tên + SĐT
         if p_phone_key:
@@ -211,8 +262,8 @@ def reconcile_attendance(sheet_patients, visit_records,
         else:
             entry.update(score=0.0, status="not_attended")
             near = None                                           # "nghi bị sót": tên giống nhưng ngoài cửa sổ
-            for vd, v in visits:
-                ok, ratio = name_match_ok(p_name, v.get("HỌ TÊN"))
+            for vd, v, nb in bucket:
+                ok, ratio = _ratio_ok(na, nb)
                 if ok and (near is None or ratio > near[0]):
                     near = (ratio, v, vd)
             if near:
