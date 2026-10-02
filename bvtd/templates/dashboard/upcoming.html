@@ -4,6 +4,7 @@
 
 {% macro patient_table(rows, empty_msg) %}
 {% if rows %}
+<div class="paged" data-per="20">
 <div class="overflow-x-auto">
   <table class="w-full text-sm" style="min-width:680px">
     <thead>
@@ -37,6 +38,8 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+<div class="pager flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-t border-slate-100"></div>
 </div>
 {% else %}
 <p class="px-5 py-8 text-center text-sm text-slate-400">{{ empty_msg }}</p>
@@ -79,6 +82,58 @@
 
 {% block scripts %}
 <script>
+  // ── Phân trang phía trình duyệt: 20 bệnh nhân / trang cho từng bảng ──
+  function initPaged(box) {
+    const per   = parseInt(box.dataset.per, 10) || 20;
+    const rows  = Array.from(box.querySelectorAll('tbody tr'));
+    const pager = box.querySelector('.pager');
+    const pages = Math.max(1, Math.ceil(rows.length / per));
+    let cur = 1;
+
+    function pageList() {                       // 1 … 4 5 [6] 7 8 … 20
+      const out = [], add = n => { if (n >= 1 && n <= pages && !out.includes(n)) out.push(n); };
+      add(1); for (let n = cur - 2; n <= cur + 2; n++) add(n); add(pages);
+      const res = [];
+      out.sort((a, b) => a - b).forEach((n, i) => {
+        if (i && n - out[i - 1] > 1) res.push(null);
+        res.push(n);
+      });
+      return res;
+    }
+    function btn(label, page, opts = {}) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label;
+      b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
+        (opts.active ? 'bg-[#0f2642] text-white border-[#0f2642]'
+                     : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
+      if (opts.disabled) b.disabled = true;
+      if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));
+      return b;
+    }
+    function render() {
+      const from = (cur - 1) * per, to = Math.min(cur * per, rows.length);
+      rows.forEach((r, i) => r.classList.toggle('hidden', i < from || i >= to));
+      pager.replaceChildren();
+      if (pages <= 1) { pager.classList.add('hidden'); return; }
+      pager.classList.remove('hidden');
+      const info = document.createElement('span');
+      info.className = 'text-xs text-slate-400';
+      info.textContent = `Hiển thị ${from + 1}–${to} / ${rows.length} bệnh nhân`;
+      const nav = document.createElement('div'); nav.className = 'flex gap-1';
+      nav.append(btn('‹', cur - 1, { disabled: cur === 1 }));
+      pageList().forEach(n => {
+        if (n === null) { const d = document.createElement('span'); d.textContent = '…'; d.className = 'px-1 text-slate-400 self-center'; nav.append(d); }
+        else nav.append(btn(String(n), n, { active: n === cur }));
+      });
+      nav.append(btn('›', cur + 1, { disabled: cur === pages }));
+      pager.append(info, nav);
+    }
+    function go(n) { cur = Math.min(Math.max(1, n), pages); render(); box.scrollIntoView({ block: 'nearest' }); }
+    render();
+  }
+  document.querySelectorAll('.paged').forEach(initPaged);
+
+  // ── Tab Khoa khám bệnh / Nội trú khác cho từng ngày ──
   document.querySelectorAll('.day-card').forEach(card => {
     const btns = card.querySelectorAll('.tab-btn');
     const show = name => {
