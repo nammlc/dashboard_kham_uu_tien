@@ -1,72 +1,79 @@
 {% extends "base.html" %}
 {% block title %}Import Lịch Hẹn{% endblock %}
-{% block page_title %}📥 Import Lịch Hẹn từ Minh Lộ{% endblock %}
+{% block page_title %}📥 Import Danh Sách Hẹn Khám Từ Minh Lộ{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl space-y-5">
+<div class="max-w-3xl space-y-4">
+
+  <!-- Hướng dẫn -->
+  <div class="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-800">
+    <p class="font-bold mb-1">📋 Hướng dẫn:</p>
+    <ol class="space-y-0.5 list-none">
+      <li>1. Vào Minh Lộ → Báo cáo → <b>Danh sách bệnh nhân hẹn khám lại</b></li>
+      <li>2. Chọn ngày cần xuất → Export ra <b>Excel (.xlsx)</b></li>
+      <li>3. Upload file vào đây → Chọn ngày lập → Kiểm tra preview → Nhấn <b>Import vào Google Sheet</b></li>
+      <li>4. Dữ liệu sẽ được <b>thêm vào sheet chính</b> với đầy đủ các trường đã mapping</li>
+    </ol>
+  </div>
+
+  <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-xs text-emerald-800 leading-relaxed">
+    <b>✅ Quy tắc mapping:</b>
+    Họ tên → HỌ VÀ TÊN · Địa chỉ → ĐỊA CHỈ · Ngày hẹn → NGÀY KHÁM · Điện thoại → SỐ ĐIÊN THOẠI ·
+    Khoa hẹn → KHOA KHÁM CHỮA BỆNH · Nguồn BN → "BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM" ·
+    Trạng thái → "BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM" · Thời gian đăng ký → Thời điểm import ·
+    Cam kết &amp; Đồng ý → "CÓ"
+  </div>
+
+  <div class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+    <b>⚠️ Đúng file cần upload:</b> file Excel <b>04-4</b> (Danh sách bệnh nhân hẹn khám lại)
+    — không nhầm với file 01-1 dùng ở phần "Đối chiếu tái khám".
+  </div>
+
+  {% if has_pending %}
+  <div class="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-600 flex items-center justify-between gap-3">
+    <span>📂 Bạn đang có 1 file đã đọc nhưng chưa import.</span>
+    <a href="{{ url_for('import_preview_page') }}" class="px-3 py-1.5 bg-[#0f2642] text-white rounded-lg text-xs font-semibold hover:bg-[#1e3f6a]">Tiếp tục →</a>
+  </div>
+  {% endif %}
 
   <!-- Upload form -->
   <div class="bg-white rounded-xl border border-slate-200 p-6">
-    <h2 class="font-semibold text-slate-800 mb-4">Upload file Excel từ Minh Lộ HIS</h2>
-    <form method="POST" enctype="multipart/form-data">
-      <label
+    <h2 class="font-semibold text-slate-800 mb-4">Upload file Excel từ Minh Lộ (.xlsx)</h2>
+    <form method="POST" enctype="multipart/form-data" id="upload-form">
+      <label for="file-input"
         class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300
                rounded-xl p-10 cursor-pointer text-center hover:border-blue-400 hover:bg-blue-50 transition-colors"
         id="drop-zone">
         <span class="text-4xl mb-3">📂</span>
         <span class="font-semibold text-slate-700">Kéo thả hoặc click để chọn file .xlsx</span>
-        <span class="text-sm text-slate-400 mt-1">Báo cáo "Danh sách bệnh nhân hẹn khám" từ Minh Lộ</span>
-        <input type="file" name="excel_file" accept=".xlsx" class="hidden" id="file-input"
-               onchange="document.getElementById('file-name').textContent = this.files[0]?.name || ''">
+        <span class="text-sm text-slate-400 mt-1">Báo cáo "Danh sách bệnh nhân hẹn khám lại" (04-4) từ Minh Lộ</span>
+        <input type="file" name="excel_file" accept=".xlsx" class="hidden" id="file-input" required>
       </label>
       <p id="file-name" class="text-sm text-blue-600 font-medium mt-2 text-center"></p>
-      <button type="submit"
+      <button type="submit" id="upload-btn"
               class="mt-4 w-full bg-[#0f2642] text-white font-semibold py-3 rounded-xl
-                     hover:bg-[#1e3f6a] transition-colors text-sm">
+                     hover:bg-[#1e3f6a] transition-colors text-sm disabled:opacity-60">
         Đọc và xem trước →
       </button>
     </form>
   </div>
-
-  <!-- Hướng dẫn 3 bước -->
-  <div class="bg-white rounded-xl border border-slate-200 p-6">
-    <h2 class="font-semibold text-slate-800 mb-4">Hướng dẫn</h2>
-    <div class="grid grid-cols-3 gap-4">
-      {% for n, title, desc in [
-        ('1','Xuất Excel từ Minh Lộ','Vào báo cáo → DS bệnh nhân hẹn khám → chọn ngày → xuất Excel'),
-        ('2','Upload lên đây','Chọn file vừa xuất, hệ thống tự nhận dạng cột'),
-        ('3','Xác nhận & ghi','Kiểm tra preview rồi bấm Import để ghi vào Google Sheet'),
-      ] %}
-      <div class="border-l-4 border-blue-500 pl-4 py-1">
-        <p class="text-xs font-bold text-blue-500 uppercase mb-1">Bước {{ n }}</p>
-        <p class="font-semibold text-slate-800 text-sm">{{ title }}</p>
-        <p class="text-xs text-slate-500 mt-1">{{ desc }}</p>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <!-- Quy tắc mapping -->
-  <div class="bg-slate-50 rounded-xl border border-slate-200 p-5">
-    <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Quy tắc mapping cột</p>
-    <div class="space-y-1.5 text-xs">
-      {% for excel, sheet in [
-        ('Họ tên bệnh nhân','1. HỌ VÀ TÊN BỆNH NHÂN'),
-        ('Địa chỉ','ĐỊA CHỈ'),
-        ('Ngày hẹn','NGÀY KHÁM'),
-        ('Điện thoại','5. SỐ ĐIÊN THOẠI'),
-        ('Khoa hẹn','KHOA KHÁM CHỮA BỆNH'),
-        ('(tự động)','NGUỒN BỆNH NHÂN → "Bệnh nhân điều trị nội khoa tái khám"'),
-        ('(thời gian import)','Dấu thời gian'),
-      ] %}
-      <div class="flex items-center gap-2">
-        <span class="font-mono bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600 min-w-0">{{ excel }}</span>
-        <span class="text-slate-400">→</span>
-        <span class="font-medium text-slate-700">{{ sheet }}</span>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const inp = document.getElementById('file-input'), zone = document.getElementById('drop-zone');
+  inp.addEventListener('change', () => {
+    document.getElementById('file-name').textContent = inp.files[0] ? '📄 ' + inp.files[0].name : '';
+  });
+  ['dragover','dragenter'].forEach(e => zone.addEventListener(e, ev => { ev.preventDefault(); zone.classList.add('border-blue-400','bg-blue-50'); }));
+  ['dragleave','drop'].forEach(e => zone.addEventListener(e, () => zone.classList.remove('border-blue-400','bg-blue-50')));
+  zone.addEventListener('drop', ev => {
+    ev.preventDefault();
+    if (ev.dataTransfer.files.length) { inp.files = ev.dataTransfer.files; inp.dispatchEvent(new Event('change')); }
+  });
+  document.getElementById('upload-form').addEventListener('submit', () => {
+    const b = document.getElementById('upload-btn'); b.disabled = true; b.textContent = 'Đang đọc file Excel…';
+  });
+</script>
 {% endblock %}

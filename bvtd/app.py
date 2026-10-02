@@ -6,7 +6,7 @@ Chạy local:   flask run  (hoặc python app.py)
 Deploy Render: gunicorn app:app
 """
 
-import os, json
+import os, json, uuid, threading
 from datetime import datetime
 
 from flask import (Flask, render_template, redirect, url_for,
@@ -285,51 +285,171 @@ def upcoming():
     return render_template("dashboard/upcoming.html", data=data)
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# IMPORT LỊCH HẸN TÁI KHÁM (file Minh Lộ 04-4)
+#   /import          → upload file
+#   /import/preview  → chọn Ngày lập · cảnh báo trùng · xem trước · import
+#   /import/confirm  → ghi vào Google Sheet
+#   /import/csv      → tải CSV các BN mới
+# Dữ liệu đã đọc được giữ trên server (cache) theo token trong session — KHÔNG nhét
+# vào cookie (cookie tối đa ~4KB, không chứa nổi danh sách BN).
+# ════════════════════════════════════════════════════════════════════════════════
+_IMPORT_TTL  = 3600                # giữ file đã upload 1 giờ
+_import_lock = threading.Lock()    # chặn 2 người/2 cú click cùng ghi 1 lúc
+
+
+def _import_data():
+    token = session.get("import_token")
+    return (cache.get(f"import:{token}") if token else None)
+
+
+def _import_context(selected_arg: list[str] | None, has_sel: bool, fresh: bool = False):
+    """Tính toàn bộ số liệu cho trang preview / confirm / csv. Trả None nếu phiên hết hạn."""
+    from services.importer import group_by_lap, filter_by_lap, UNKNOWN_LAP
+    from services.sheets import check_sheet_duplicates, vn_today
+
+    data = _import_data()
+    if not data:
+        return None
+    records = data["records"]
+    order, counts = group_by_lap(records)
+
+    today_str = vn_today().strftime("%d/%m/%Y")
+    if has_sel:
+        selected = {d for d in (selected_arg or []) if d in counts}
+    else:                                           # lần đầu vào: mặc định chọn ngày lập HÔM NAY
+        selected = {today_str} if today_str in counts else set()
+
+    filtered = filter_by_lap(records, selected)
+
+    if fresh:                                       # lúc ghi: luôn đọc lại Sheet mới nhất
+        cache.delete("main_df")
+    new_records, dup_records = check_sheet_duplicates(_get_df(), filtered)
+
+    return {
+        "filename": data["filename"], "records": records, "total": len(records),
+        "order": order, "counts": counts, "selected": selected,
+        "today_str": today_str, "UNKNOWN_LAP": UNKNOWN_LAP,
+        "filtered": filtered, "new": new_records, "dup": dup_records,
+    }
+
+
 @app.route("/import", methods=["GET", "POST"])
 @login_required
 def import_excel():
     if request.method == "POST":
         f = request.files.get("excel_file")
-        if not f or not f.filename.endswith(".xlsx"):
+        if not f or not f.filename.lower().endswith(".xlsx"):
             flash("Vui lòng chọn file .xlsx hợp lệ.", "error")
             return redirect(url_for("import_excel"))
 
         from services.excel_parser import parse_minh_lo_excel
-        from services.sheets import append_patients
-
-        records, err = parse_minh_lo_excel(f.read())
+        from services.sheets import vn_today
+        records, err = parse_minh_lo_excel(f.read(), current_year=vn_today().year)
         if err:
-            flash(f"Lỗi đọc file: {err}", "error")
+            flash(f"❌ {err}", "error")
+            return redirect(url_for("import_excel"))
+        if not records:
+            flash("⚠️ Không tìm thấy dữ liệu bệnh nhân trong file. Kiểm tra lại định dạng file.", "warning")
             return redirect(url_for("import_excel"))
 
-        # Lưu preview vào session để xác nhận trước khi ghi
-        session["import_preview"] = records[:200]   # giới hạn 200 dòng preview
-        session["import_total"]   = len(records)
+        old = session.get("import_token")
+        if old:
+            cache.delete(f"import:{old}")
+        token = uuid.uuid4().hex
+        cache.set(f"import:{token}", {"records": records, "filename": f.filename}, timeout=_IMPORT_TTL)
+        session["import_token"] = token
+        cache.delete("main_df")        # bắt đầu phiên import bằng dữ liệu Sheet mới nhất
         return redirect(url_for("import_preview_page"))
 
-    return render_template("dashboard/import.html")
+    return render_template("dashboard/import.html", has_pending=_import_data() is not None)
 
 
 @app.route("/import/preview")
 @login_required
 def import_preview_page():
-    records = session.get("import_preview", [])
-    total   = session.get("import_total", 0)
-    return render_template("dashboard/import_preview.html", records=records, total=total)
+    ctx = _import_context(request.args.getlist("lap"), "sel" in request.args)
+    if ctx is None:
+        flash("Phiên import đã hết hạn hoặc chưa upload file — vui lòng chọn lại file.", "info")
+        return redirect(url_for("import_excel"))
+
+    show_all = request.args.get("all") == "1"
+    lim = 500 if show_all else 10
+    sel = sorted(ctx["selected"])
+
+    def url_with(laps, **extra):
+        return url_for("import_preview_page", sel=1, lap=laps, **extra)
+
+    return render_template(
+        "dashboard/import_preview.html", c=ctx, show_all=show_all,
+        preview_rows=ctx["new"][:lim],
+        n_dates=len({r["NGÀY HẸN"] for r in ctx["new"] if r.get("NGÀY HẸN")}),
+        url_all=url_with(ctx["order"]),
+        url_today=url_with([ctx["today_str"]] if ctx["today_str"] in ctx["counts"] else []),
+        url_none=url_with([]),
+        url_full=url_with(sel, all=1), url_short=url_with(sel),
+        csv_url=url_for("import_csv", lap=sel),
+    )
+
+
+@app.route("/import/csv")
+@login_required
+def import_csv():
+    import csv, io
+    from flask import Response
+    from services.sheets import vn_now
+    ctx = _import_context(request.args.getlist("lap"), True)
+    if ctx is None:
+        flash("Phiên import đã hết hạn — vui lòng upload lại file.", "info")
+        return redirect(url_for("import_excel"))
+    buf = io.StringIO()
+    if ctx["new"]:
+        cols = [k for k in ctx["new"][0].keys() if not k.startswith("_")]
+        w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader(); w.writerows(ctx["new"])
+    fname = f"henkham_minhlo_{vn_now().strftime('%Y%m%d_%H%M')}.csv"
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 @app.route("/import/confirm", methods=["POST"])
 @login_required
 def import_confirm():
     from services.sheets import append_patients
-    records = session.pop("import_preview", [])
-    n, err  = append_patients(records)
-    cache.delete("main_df")   # xoá cache để lần sau load lại dữ liệu mới
+    laps = request.form.getlist("lap")
+    back = url_for("import_preview_page", sel=1, lap=laps)
 
+    with _import_lock:
+        # Đọc lại Sheet mới nhất rồi kiểm tra trùng LẦN NỮA ngay trước khi ghi:
+        # chặn bấm 2 lần / refresh / người khác vừa nhập cùng lịch.
+        ctx = _import_context(laps, True, fresh=True)
+        if ctx is None:
+            flash("Phiên import đã hết hạn — vui lòng upload lại file.", "info")
+            return redirect(url_for("import_excel"))
+        new, dup = ctx["new"], ctx["dup"]
+
+        if not ctx["selected"]:
+            flash("⚠️ Chưa chọn ngày lập nào — hãy tích chọn ít nhất 1 ngày.", "warning")
+            return redirect(back)
+        if not new:
+            flash(f"⚠️ Không có bệnh nhân mới để import — {len(dup)} bệnh nhân đã được nhập trước đó, "
+                  "hệ thống không ghi lại.", "warning")
+            return redirect(back)
+
+        n, err = append_patients(new)
+
+    cache.delete("main_df")
     if err:
-        flash(f"Lỗi khi ghi vào Sheet: {err}", "error")
-    else:
-        flash(f"✅ Đã import thành công {n} bệnh nhân vào Google Sheet.", "success")
+        flash(f"❌ {err}", "error")
+        flash("💡 Nếu lỗi Permission: vào Google Sheet → Share → đổi Service Account từ Viewer thành Editor.", "info")
+        return redirect(back)
+
+    token = session.pop("import_token", None)       # xong → bỏ file, tránh import lại
+    if token:
+        cache.delete(f"import:{token}")
+    flash(f"✅ Đã thêm thành công {n} dòng mới vào Google Sheet "
+          f"(theo {len(ctx['selected'])} ngày lập đã chọn"
+          + (f" · đã tự động bỏ qua {len(dup)} bệnh nhân trùng" if dup else "") + ").", "success")
     return redirect(url_for("import_excel"))
 
 

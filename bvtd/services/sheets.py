@@ -405,39 +405,143 @@ def update_status(row_number: int, new_status: str) -> bool:
         return False
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# IMPORT LỊCH HẸN TÁI KHÁM (file Minh Lộ 04-4) — port y hệt từ Streamlit
+# ══════════════════════════════════════════════════════════════════════════════
+
+def norm_name(s) -> str:
+    """'Lê Hoàng Phúc' → 'LE HOANG PHUC' (bỏ dấu, gộp khoảng trắng, viết hoa)."""
+    s2 = str(s or "").replace("Đ", "D").replace("đ", "d")
+    s2 = unicodedata.normalize("NFKD", s2)
+    s2 = "".join(c for c in s2 if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", s2.strip()).upper()
+
+
+def norm_phone_key(s) -> str:
+    """Chỉ giữ chữ số; 9 số → thêm 0 đầu; không hợp lệ → ''."""
+    digits = re.sub(r"\D", "", str(s or ""))
+    if len(digits) == 9:
+        digits = "0" + digits
+    return digits if len(digits) >= 9 and set(digits) != {"0"} else ""
+
+
+def vn_now() -> datetime:
+    return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+
+
+_COL_ADDRESS_FORM = "2. ĐỊA CHỈ (THÔN/XÃ)"
+_COL_AGE          = "TUỔI"
+
+
+def build_sheet_field_map(record: dict, import_time_str: str) -> dict:
+    """Bản ghi Minh Lộ → {tên cột trên Sheet: giá trị}. Ghép theo TÊN cột nên
+    không phụ thuộc thứ tự cột trên Sheet thực tế."""
+    khoa_hen = str(record.get("KHOA HẸN", "N/A") or "N/A").upper()   # KHOA/NGUỒN/TRẠNG THÁI luôn IN HOA
+    return {
+        "Dấu thời gian":              import_time_str,
+        COL_SOURCE:                   "BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM",
+        COL_STATUS:                   "BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM",
+        COL_EXAM_DATE:                record.get("NGÀY HẸN", "N/A") or "N/A",
+        COL_NAME:                     record.get("HỌ TÊN", "N/A"),
+        COL_BIRTH_YEAR:               record.get("NĂM SINH (ước tính)") or "N/A",
+        _COL_AGE:                     record.get("TUỔI") or "N/A",
+        COL_PHONE:                    record.get("SỐ ĐIỆN THOẠI", "N/A"),
+        _COL_ADDRESS_FORM:            record.get("ĐỊA CHỈ", "N/A"),
+        COL_KHOA:                     khoa_hen,
+        COL_GENDER:                   record.get("GIỚI TÍNH") or "N/A",
+        "1. TRIỆU CHỨNG CHÍNH":       "N/A",
+        "4. SỐ CĂN CƯỚC CÔNG DÂN - CHỨNG MINH THƯ": "N/A",
+        COL_SPECIALTY:                "Other: Bệnh nhân điều trị nội khoa tái khám",
+        COL_DOCTOR:                   "N/A",
+        COL_EXAM_TIME:                "N/A",
+        "1. CAM KẾT CÁC THÔNG TIN LÀ THÔNG TIN ĐÚNG, CHỊU TRÁCH NHIỆM TRƯỚC PHÁP LUẬT TRƯỚC NHỮNG THÔNG TIN ĐÃ CUNG CẤP TRÊN": "CÓ",
+        "ĐỒNG Ý CÁC ĐIỀU KHOẢN ĐẶT LỊCH KHÁM ONLINE TẠI BVĐK TÂM ĐỨC CẦU QUAN": "CÓ",
+    }
+
+
+def check_sheet_duplicates(df: pd.DataFrame, candidates: list[dict]):
+    """
+    So khớp BN sắp import với dữ liệu ĐÃ CÓ trên Sheet (df đầy đủ, không lọc trạng thái).
+    Khoá trùng: Tên chuẩn hoá + SĐT chuẩn hoá + NGÀY KHÁM; nếu thiếu SĐT → Tên + NGÀY KHÁM.
+    Trả về (new_records, dup_records); dup có thêm khoá "_existing_stt".
+    """
+    existing_full: dict = {}       # (tên, sđt, ngày) → stt
+    existing_namedate: dict = {}   # (tên, ngày) → stt
+
+    if df is not None and len(df) > 0 and "_date" in df.columns and COL_NAME in df.columns:
+        n = len(df)
+        names  = df[COL_NAME].tolist()
+        dates  = df["_date"].tolist()
+        phones = df[COL_PHONE].tolist() if COL_PHONE in df.columns else [""] * n
+        stts   = df[COL_STT].tolist()   if COL_STT   in df.columns else [""] * n
+        for name, d, phone, stt in zip(names, dates, phones, stts):
+            name_k = norm_name(name)
+            date_k = d.strftime("%d/%m/%Y") if pd.notna(d) else ""
+            if not name_k or not date_k:
+                continue
+            phone_k = norm_phone_key(phone)
+            if phone_k:
+                existing_full.setdefault((name_k, phone_k, date_k), stt)
+            existing_namedate.setdefault((name_k, date_k), stt)
+
+    new_records, dup_records = [], []
+    for r in candidates:
+        name_k  = norm_name(r.get("HỌ TÊN", ""))
+        date_k  = (r.get("NGÀY HẸN", "") or "").strip()
+        phone_k = norm_phone_key(r.get("SỐ ĐIỆN THOẠI", ""))
+
+        matched = None
+        if phone_k and (name_k, phone_k, date_k) in existing_full:
+            matched = existing_full[(name_k, phone_k, date_k)]
+        elif (name_k, date_k) in existing_namedate:
+            matched = existing_namedate[(name_k, date_k)]
+
+        if matched is not None:
+            r2 = dict(r)
+            r2["_existing_stt"] = matched
+            dup_records.append(r2)
+        else:
+            new_records.append(r)
+    return new_records, dup_records
+
+
 def append_patients(records: list[dict]) -> tuple[int, str | None]:
     """
-    Ghi danh sách bệnh nhân (từ Excel Minh Lộ) vào Google Sheet.
-    Trả về (số dòng đã ghi, thông báo lỗi hoặc None).
+    Ghi BN (từ file 04-4) vào Sheet chính, ghép đúng cột theo TÊN tiêu đề dòng 1.
+    NGÀY KHÁM ghi dạng số serial + USER_ENTERED để Sheet tự hiểu là Date;
+    TRẠNG THÁI khớp list dropdown. Trả về (số dòng đã ghi, lỗi hoặc None).
     """
     if not records:
-        return 0, "Không có dữ liệu để import."
+        return 0, "Không có dữ liệu để ghi."
     try:
-        sheet_id   = current_app.config["SHEET_ID"]
-        sheet_name = current_app.config["SHEET_NAME"]
-        client = _get_client()
-        ws     = client.open_by_key(sheet_id).worksheet(sheet_name)
-        headers = ws.row_values(1)
+        ws = _get_client().open_by_key(current_app.config["SHEET_ID"]) \
+                          .worksheet(current_app.config["SHEET_NAME"])
+        headers = [h.strip() for h in ws.row_values(1)]
+        if not headers:
+            return 0, "Sheet đang trống, không có dòng tiêu đề."
 
-        now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        rows_to_append = []
-        for rec in records:
-            row = [""] * len(headers)
-            def _set(col_name, val):
-                if col_name in headers:
-                    row[headers.index(col_name)] = val or ""
+        import_time_str = vn_now().strftime("%d/%m/%Y %H:%M:%S")
+        date_idx = headers.index(COL_EXAM_DATE) if COL_EXAM_DATE in headers else None
 
-            _set(COL_TIMESTAMP,  now_str)
-            _set(COL_NAME,       rec.get("HỌ TÊN", ""))
-            _set(COL_ADDRESS,    rec.get("ĐỊA CHỈ", ""))
-            _set(COL_EXAM_DATE,  rec.get("NGÀY HẸN", ""))
-            _set(COL_PHONE,      rec.get("SỐ ĐIỆN THOẠI", "N/A"))
-            _set(COL_KHOA,       rec.get("KHOA HẸN", ""))
-            _set(COL_SOURCE,     "Bệnh nhân điều trị nội khoa tái khám")
-            _set(COL_SPECIALTY,  "Other: Bệnh nhân điều trị nội khoa tái khám")
-            rows_to_append.append(row)
+        def to_serial(s):
+            try:
+                return (datetime.strptime(str(s).strip(), "%d/%m/%Y") - datetime(1899, 12, 30)).days
+            except Exception:
+                return s
 
-        ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
-        return len(rows_to_append), None
+        rows = []
+        for r in records:
+            fm = build_sheet_field_map(r, import_time_str)
+            # Sheet nào chỉ có cột "ĐỊA CHỈ" (không có "2. ĐỊA CHỈ (THÔN/XÃ)") thì ghi vào đó
+            if _COL_ADDRESS_FORM not in headers and COL_ADDRESS in headers:
+                fm[COL_ADDRESS] = fm[_COL_ADDRESS_FORM]
+            row = [fm.get(h, "") for h in headers]
+            if date_idx is not None:
+                row[date_idx] = to_serial(row[date_idx])
+            rows.append(row)
+
+        ws.append_rows(rows, value_input_option="USER_ENTERED",
+                       insert_data_option="INSERT_ROWS", table_range="A1")
+        return len(rows), None
     except Exception as e:
-        return 0, str(e)
+        return 0, f"Lỗi ghi Sheet: {type(e).__name__}: {e}"
