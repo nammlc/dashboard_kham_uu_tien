@@ -1,77 +1,386 @@
 {% extends "base.html" %}
 {% block title %}Báo Cáo{% endblock %}
-{% block page_title %}📈 Báo Cáo{% endblock %}
+{% block page_title %}📈 Báo Cáo Thống Kê{% endblock %}
+
+{# Con số có thể bấm → danh sách bệnh nhân tương ứng #}
+{% macro num(n, kind, key='all', cls='') -%}
+  {%- if n -%}
+    <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to) }}"
+       class="hover:underline underline-offset-2 {{ cls }}" title="Xem danh sách {{ n }} bệnh nhân">{{ n }}</a>
+  {%- else -%}<span class="text-slate-300">0</span>{%- endif -%}
+{%- endmacro %}
 
 {% block content %}
-<div class="bg-white rounded-xl border border-slate-200">
-  <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
-    <h2 class="font-semibold text-slate-800 text-sm">Bảng chi tiết theo kỳ</h2>
+{% set k = data.kpi %}
 
-    <!-- Segment control chuyển kỳ (HTMX) -->
-    <div class="flex bg-slate-100 border border-slate-200 rounded-lg p-0.5 gap-0.5">
-      {% for key, label in [('day','Ngày'),('week','Tuần'),('month','Tháng'),('quarter','Quý'),('year','Năm')] %}
-      <button
-        hx-get="{{ url_for('report_data') }}?period={{ key }}"
-        hx-target="#rpt-tbody"
-        hx-swap="innerHTML"
-        hx-indicator="#rpt-spinner"
-        onclick="this.closest('.flex').querySelectorAll('button').forEach(b=>b.classList.remove('bg-white','shadow','font-bold','text-navy'));
-                 this.classList.add('bg-white','shadow','font-bold','text-navy')"
-        class="px-3 py-1.5 rounded-md text-xs font-medium transition-all
-               {% if period == key %}bg-white shadow font-bold text-[#0f2642]
-               {% else %}text-slate-500 hover:text-slate-700{% endif %}">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+<!-- ═════════ THANH ĐIỀU KHIỂN ═════════ -->
+<div class="bg-white rounded-xl border border-slate-200 px-4 py-3 mb-5 flex flex-wrap items-center gap-3">
+  <div class="inline-flex bg-slate-100 rounded-lg p-1" role="tablist" aria-label="Xem theo kỳ">
+    {% for pk, pname in periods.items() %}
+    <a href="{{ url_for('report', period=pk, date_from=date_from, date_to=date_to) }}"
+       class="px-3.5 py-1.5 text-sm rounded-md transition-colors
+              {% if pk == period %}bg-[#0f2642] text-white font-semibold shadow-sm{% else %}text-slate-600 hover:bg-white{% endif %}">{{ pname }}</a>
+    {% endfor %}
   </div>
 
-  <!-- Loading indicator -->
-  <div id="rpt-spinner" class="htmx-indicator flex justify-center py-3">
-    <span class="text-xs text-slate-400 animate-pulse">Đang tải...</span>
-  </div>
+  <form method="GET" class="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:ml-auto">
+    <input type="hidden" name="period" value="{{ period }}">
+    <label for="date_from">Từ</label>
+    <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
+           class="border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-400">
+    <label for="date_to">đến</label>
+    <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
+           class="border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-400">
+    <button type="submit" class="bg-[#0f2642] text-white font-semibold px-3.5 py-1.5 rounded-lg hover:bg-[#1e3f6a]">Áp dụng</button>
+    {% if date_from or date_to %}
+    <a href="{{ url_for('report', period=period) }}" class="text-slate-500 hover:text-red-500">✕ Xoá lọc</a>
+    {% endif %}
+    <a href="{{ url_for('report_csv', period=period, date_from=date_from, date_to=date_to) }}"
+       class="ml-1 border border-slate-300 text-slate-700 font-medium px-3 py-1.5 rounded-lg hover:bg-slate-50">⬇️ CSV</a>
+  </form>
+</div>
 
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm" style="min-width:680px">
-      <thead>
-        <tr class="text-xs font-bold text-white">
-          <th class="bg-[#0f2642] px-4 py-2.5 text-left rounded-tl-none" style="white-space:nowrap">Kỳ</th>
-          <th class="bg-[#0f2642] px-3 py-2.5 text-center" style="white-space:nowrap">Tổng ĐK</th>
-          <th class="bg-[#1e5c3a] px-3 py-2.5 text-center" style="white-space:nowrap">Đến·TK</th>
-          <th class="bg-[#1e5c3a] px-3 py-2.5 text-center" style="white-space:nowrap">Đến·VL</th>
-          <th class="bg-[#7f1d1d] px-3 py-2.5 text-center" style="white-space:nowrap">Vắng·TK</th>
-          <th class="bg-[#7f1d1d] px-3 py-2.5 text-center" style="white-space:nowrap">Vắng·VL</th>
-          <th class="bg-[#14532d] px-3 py-2.5 text-center" style="white-space:nowrap">T.Đến</th>
-          <th class="bg-[#7f1d1d] px-3 py-2.5 text-center" style="white-space:nowrap">T.Vắng</th>
-          <th class="bg-[#0f2642] px-3 py-2.5 text-center" style="white-space:nowrap">%Đến</th>
-          <th class="bg-[#0f2642] px-3 py-2.5 text-center" style="white-space:nowrap">%Vắng</th>
-        </tr>
-      </thead>
-      <tbody id="rpt-tbody" class="divide-y divide-slate-100">
-        {% include "dashboard/_report_rows.html" %}
-      </tbody>
-    </table>
-  </div>
+{% if data.empty %}
+<div class="bg-white rounded-xl border border-slate-200 py-16 text-center">
+  <div class="text-5xl mb-3">📭</div>
+  <p class="font-semibold text-slate-700">Chưa có dữ liệu để báo cáo</p>
+  <p class="text-sm text-slate-400 mt-1 max-w-md mx-auto">
+    Báo cáo chỉ tính bệnh nhân đã có cột TRẠNG THÁI và ngày khám đúng định dạng dd/mm/yyyy
+    {% if date_from or date_to %}trong khoảng ngày bạn chọn{% endif %}.
+  </p>
+</div>
+{% else %}
 
-  <!-- Chọn kỳ drill-down -->
-  <div class="px-5 py-4 border-t border-slate-100 bg-slate-50 rounded-b-xl">
-    <p class="text-xs font-semibold text-slate-500 mb-2">Xem chi tiết bệnh nhân theo kỳ</p>
-    <div class="flex flex-wrap gap-2">
-      <select id="drill-ky" class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white">
-        {% for r in rows %}
-        <option value="{{ r.ky }}">{{ r.ky }}</option>
-        {% endfor %}
-      </select>
-      <select id="drill-type" class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white">
-        <option value="all">Tất cả bệnh nhân</option>
-        <option value="att">Đã đến khám</option>
-        <option value="vng">Vắng / Chưa khám</option>
-      </select>
-      <a id="drill-link" href="{{ url_for('patients') }}"
-         class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a] transition-colors">
-        🔍 Xem danh sách
-      </a>
+<!-- ═════════ 4 CHỈ SỐ CHÍNH ═════════ -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+  <div class="bg-white rounded-xl border border-slate-200 p-4 border-t-4 border-t-blue-500">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">📋 Tổng đăng ký</p>
+    <p class="text-4xl font-bold mono text-blue-700 mt-2">{{ num(k.total, 'all', cls='') }}</p>
+    <p class="text-xs text-slate-500 mt-1">{{ k.n_periods }} {{ data.period_name|lower }} · cao nhất <b>{{ k.peak_total }}</b></p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 border-t-4 border-t-emerald-500">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">✅ Đã khám</p>
+    <p class="text-4xl font-bold mono text-emerald-600 mt-2">{{ num(k.att, 'att') }}</p>
+    <p class="text-xs text-slate-500 mt-1"><b class="text-emerald-600 text-sm">{{ k.pct_att }}%</b> tổng đăng ký</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 border-t-4 border-t-rose-500">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">❌ Không đến</p>
+    <p class="text-4xl font-bold mono text-rose-600 mt-2">{{ num(k.abs, 'abs') }}</p>
+    <p class="text-xs text-slate-500 mt-1"><b class="text-rose-600 text-sm">{{ k.pct_abs }}%</b> tổng đăng ký</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-4 border-t-4 border-t-teal-500">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">🎯 Tỷ lệ đến khám</p>
+    <p class="text-4xl font-bold mono text-teal-600 mt-2">{{ k.pct_att }}<span class="text-2xl">%</span></p>
+    <div class="h-2 bg-rose-100 rounded-full mt-2.5 overflow-hidden">
+      <div class="h-full bg-emerald-500 rounded-full" style="width: {{ k.pct_att }}%"></div>
     </div>
   </div>
 </div>
+
+<!-- ═════════ TÁI KHÁM  vs  KHÁM ƯU TIÊN ═════════ -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+  {% set groups = [
+    ('🏥', 'Bệnh nhân tái khám',          'Từ khoa · điều trị nội khoa · xuất viện', 'violet',
+      k.tk_total, k.tk_share, k.tk_att, k.tk_abs, k.tk_pct, 'tk'),
+    ('⭐', 'Đăng ký khám ưu tiên',        'Đăng ký online · vãng lai · nguồn khác',   'amber',
+      k.ut_total, k.ut_share, k.ut_att, k.ut_abs, k.ut_pct, 'ut'),
+  ] %}
+  {% for ico, title, sub, col, tot, share, att, ab, pct, kd in groups %}
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <div class="flex items-start justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-xl bg-{{ col }}-50 flex items-center justify-center text-xl flex-shrink-0">{{ ico }}</div>
+        <div class="min-w-0">
+          <h3 class="font-semibold text-slate-800 text-sm">{{ title }}</h3>
+          <p class="text-xs text-slate-400 truncate">{{ sub }}</p>
+        </div>
+      </div>
+      <div class="text-right flex-shrink-0">
+        <p class="text-3xl font-bold mono text-{{ col }}-600 leading-none">{{ num(tot, kd) }}</p>
+        <p class="text-xs text-slate-400 mt-1">{{ share }}% tổng đăng ký</p>
+      </div>
+    </div>
+
+    <div class="flex h-3 rounded-full overflow-hidden bg-slate-100 mt-4" title="Đã khám / Không đến">
+      {% if tot %}
+      <div class="bg-emerald-500" style="width: {{ pct }}%"></div>
+      <div class="bg-rose-400"    style="width: {{ 100 - pct }}%"></div>
+      {% endif %}
+    </div>
+
+    <div class="grid grid-cols-3 gap-2 mt-4 text-center">
+      <div class="rounded-lg bg-emerald-50 py-2.5">
+        <p class="text-xl font-bold mono text-emerald-600">{{ num(att, kd ~ '_att') }}</p>
+        <p class="text-[11px] text-emerald-700/70 font-medium">Đã khám</p>
+      </div>
+      <div class="rounded-lg bg-rose-50 py-2.5">
+        <p class="text-xl font-bold mono text-rose-600">{{ num(ab, kd ~ '_abs') }}</p>
+        <p class="text-[11px] text-rose-700/70 font-medium">Không đến</p>
+      </div>
+      <div class="rounded-lg bg-slate-50 py-2.5">
+        <p class="text-xl font-bold mono text-slate-700">{{ pct }}%</p>
+        <p class="text-[11px] text-slate-500 font-medium">Tỷ lệ đến</p>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ═════════ BIỂU ĐỒ TRÒN ═════════ -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <h3 class="font-semibold text-slate-800 text-sm mb-3">Đã khám so với Không đến</h3>
+    <div class="flex items-center gap-5">
+      <div class="relative w-40 h-40 flex-shrink-0"><canvas id="chDonutAtt"></canvas></div>
+      <ul class="flex-1 space-y-3 text-sm">
+        <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-500"></span>Đã khám
+          <b class="ml-auto mono text-emerald-600">{{ k.att }}</b><span class="text-xs text-slate-400 w-12 text-right">{{ k.pct_att }}%</span></li>
+        <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-rose-500"></span>Không đến
+          <b class="ml-auto mono text-rose-600">{{ k.abs }}</b><span class="text-xs text-slate-400 w-12 text-right">{{ k.pct_abs }}%</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <h3 class="font-semibold text-slate-800 text-sm mb-3">Cơ cấu đăng ký theo nguồn</h3>
+    <div class="flex items-center gap-5">
+      <div class="relative w-40 h-40 flex-shrink-0"><canvas id="chDonutSrc"></canvas></div>
+      <ul class="flex-1 space-y-3 text-sm">
+        <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-violet-500"></span>Tái khám
+          <b class="ml-auto mono text-violet-600">{{ k.tk_total }}</b><span class="text-xs text-slate-400 w-12 text-right">{{ k.tk_share }}%</span></li>
+        <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-amber-500"></span>Khám ưu tiên
+          <b class="ml-auto mono text-amber-600">{{ k.ut_total }}</b><span class="text-xs text-slate-400 w-12 text-right">{{ k.ut_share }}%</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ BIỂU ĐỒ THEO KỲ ═════════ -->
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-5">
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-semibold text-slate-800 text-sm">Đã khám / Không đến theo {{ data.period_name|lower }}</h3>
+      {% if data.chart.truncated %}<span class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">24 {{ data.period_name|lower }} gần nhất</span>{% endif %}
+    </div>
+    <div class="relative h-72"><canvas id="chTrend"></canvas></div>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-semibold text-slate-800 text-sm">Tái khám &amp; Khám ưu tiên theo {{ data.period_name|lower }}</h3>
+      {% if data.chart.truncated %}<span class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">24 {{ data.period_name|lower }} gần nhất</span>{% endif %}
+    </div>
+    <div class="relative h-72"><canvas id="chSource"></canvas></div>
+  </div>
+</div>
+
+<!-- ═════════ BẢNG CHI TIẾT ═════════ -->
+<div class="bg-white rounded-xl border border-slate-200 mb-5">
+  <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-slate-100">
+    <h3 class="font-semibold text-slate-800 text-sm">Bảng chi tiết theo {{ data.period_name|lower }}</h3>
+    <span class="text-xs text-slate-400">💡 Bấm vào con số để xem danh sách bệnh nhân</span>
+  </div>
+
+  <div class="paged" data-per="10">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-center" style="min-width:860px">
+        <thead>
+          <tr class="text-[11px] font-bold uppercase tracking-wide text-white">
+            <th rowspan="2" class="px-4 py-2 text-left bg-[#0f2642]">{{ data.period_name }}</th>
+            <th rowspan="2" class="px-3 py-2 bg-[#0f2642]">Tổng ĐK</th>
+            <th colspan="2" class="px-3 py-2 bg-violet-700 border-l border-white/20">🏥 Tái khám</th>
+            <th colspan="2" class="px-3 py-2 bg-amber-600 border-l border-white/20">⭐ Khám ưu tiên</th>
+            <th colspan="2" class="px-3 py-2 bg-slate-600 border-l border-white/20">Tổng</th>
+            <th colspan="2" class="px-3 py-2 bg-[#0f2642] border-l border-white/20">Tỷ lệ</th>
+          </tr>
+          <tr class="text-[11px] font-semibold text-slate-500 bg-slate-50 border-b border-slate-200">
+            <th class="px-3 py-2 border-l border-slate-200">Đến</th><th class="px-3 py-2">Không đến</th>
+            <th class="px-3 py-2 border-l border-slate-200">Đến</th><th class="px-3 py-2">Không đến</th>
+            <th class="px-3 py-2 border-l border-slate-200">Đã khám</th><th class="px-3 py-2">Không đến</th>
+            <th class="px-3 py-2 border-l border-slate-200">% đến</th><th class="px-3 py-2">% không đến</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 mono">
+          {% for r in data.rows|reverse %}
+          <tr class="hover:bg-slate-50">
+            <td class="px-4 py-2.5 text-left font-sans font-semibold text-slate-800 whitespace-nowrap">{{ r.ky }}</td>
+            <td class="px-3 py-2.5 font-semibold text-slate-700">{{ num(r.total, 'all', r.key) }}</td>
+            <td class="px-3 py-2.5 border-l border-slate-100 text-emerald-600 font-semibold">{{ num(r.tk_att, 'tk_att', r.key) }}</td>
+            <td class="px-3 py-2.5 text-rose-600">{{ num(r.tk_abs, 'tk_abs', r.key) }}</td>
+            <td class="px-3 py-2.5 border-l border-slate-100 text-emerald-600 font-semibold">{{ num(r.ut_att, 'ut_att', r.key) }}</td>
+            <td class="px-3 py-2.5 text-rose-600">{{ num(r.ut_abs, 'ut_abs', r.key) }}</td>
+            <td class="px-3 py-2.5 border-l border-slate-100 text-emerald-700 font-bold">{{ num(r.att, 'att', r.key) }}</td>
+            <td class="px-3 py-2.5 text-rose-700 font-bold">{{ num(r.abs, 'abs', r.key) }}</td>
+            <td class="px-3 py-2.5 border-l border-slate-100">
+              <div class="flex items-center gap-2 justify-center">
+                <div class="w-14 h-1.5 bg-rose-100 rounded-full overflow-hidden hidden sm:block">
+                  <div class="h-full bg-emerald-500" style="width: {{ r.pct_att }}%"></div></div>
+                <span class="{% if r.pct_att >= 50 %}text-emerald-600{% else %}text-rose-600{% endif %} font-semibold w-12 text-right">{{ r.pct_att }}%</span>
+              </div>
+            </td>
+            <td class="px-3 py-2.5 {% if r.pct_abs >= 50 %}text-rose-600{% else %}text-slate-400{% endif %}">{{ r.pct_abs }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="mono bg-slate-50 border-t-2 border-slate-300 font-bold text-slate-800">
+          <tr>
+            <td class="px-4 py-3 text-left font-sans">Tổng cộng</td>
+            <td class="px-3 py-3">{{ k.total }}</td>
+            <td class="px-3 py-3 border-l border-slate-200 text-emerald-600">{{ k.tk_att }}</td>
+            <td class="px-3 py-3 text-rose-600">{{ k.tk_abs }}</td>
+            <td class="px-3 py-3 border-l border-slate-200 text-emerald-600">{{ k.ut_att }}</td>
+            <td class="px-3 py-3 text-rose-600">{{ k.ut_abs }}</td>
+            <td class="px-3 py-3 border-l border-slate-200 text-emerald-700">{{ k.att }}</td>
+            <td class="px-3 py-3 text-rose-700">{{ k.abs }}</td>
+            <td class="px-3 py-3 border-l border-slate-200 text-emerald-600">{{ k.pct_att }}%</td>
+            <td class="px-3 py-3 text-rose-600">{{ k.pct_abs }}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="pager flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-t border-slate-100"></div>
+  </div>
+</div>
+
+<p class="text-xs text-slate-400 leading-relaxed px-1">
+  <b>Cách tính:</b> chỉ tính bệnh nhân đã có cột TRẠNG THÁI và có ngày khám hợp lệ.
+  <b>Tái khám</b> = nguồn từ khoa / tái khám / nội trú / xuất viện;
+  <b>Khám ưu tiên</b> = các bệnh nhân còn lại (đăng ký online, vãng lai, nguồn khác).
+  <b>Không đến</b> = đã có trạng thái nhưng chưa khám hoặc bỏ khám.
+</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not data.empty %}
+<script>
+(function () {
+  // ── Phân trang bảng chi tiết (phía trình duyệt) ──
+  function initPaged(box) {
+    const per = parseInt(box.dataset.per, 10) || 10;
+    const rows = Array.from(box.querySelectorAll('tbody tr'));
+    const pager = box.querySelector('.pager');
+    const pages = Math.max(1, Math.ceil(rows.length / per));
+    let cur = 1;
+    function pageList() {
+      const keep = new Set([1, pages]);
+      for (let n = cur - 2; n <= cur + 2; n++) if (n >= 1 && n <= pages) keep.add(n);
+      const arr = [...keep].sort((a, b) => a - b), res = [];
+      arr.forEach((n, i) => { if (i && n - arr[i - 1] > 1) res.push(null); res.push(n); });
+      return res;
+    }
+    function btn(label, page, o = {}) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label;
+      b.className = 'px-3 py-1.5 text-xs border rounded-lg ' + (o.active
+        ? 'bg-[#0f2642] text-white border-[#0f2642]'
+        : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
+      if (o.disabled) b.disabled = true;
+      if (!o.active && !o.disabled) b.addEventListener('click', () => go(page));
+      return b;
+    }
+    function render() {
+      const from = (cur - 1) * per, to = Math.min(cur * per, rows.length);
+      rows.forEach((r, i) => r.classList.toggle('hidden', i < from || i >= to));
+      pager.replaceChildren();
+      if (pages <= 1) { pager.classList.add('hidden'); return; }
+      pager.classList.remove('hidden');
+      const info = document.createElement('span');
+      info.className = 'text-xs text-slate-400';
+      info.textContent = `Hiển thị ${from + 1}–${to} / ${rows.length} {{ data.period_name|lower }}`;
+      const nav = document.createElement('div'); nav.className = 'flex gap-1';
+      nav.append(btn('‹', cur - 1, { disabled: cur === 1 }));
+      pageList().forEach(n => {
+        if (n === null) { const d = document.createElement('span'); d.textContent = '…'; d.className = 'px-1 text-slate-400 self-center'; nav.append(d); }
+        else nav.append(btn(String(n), n, { active: n === cur }));
+      });
+      nav.append(btn('›', cur + 1, { disabled: cur === pages }));
+      pager.append(info, nav);
+    }
+    function go(n) { cur = Math.min(Math.max(1, n), pages); render(); }
+    render();
+  }
+  document.querySelectorAll('.paged').forEach(initPaged);
+
+  // ── Biểu đồ ──
+  if (typeof Chart === 'undefined') {
+    document.querySelectorAll('canvas').forEach(c => {
+      const m = document.createElement('p');
+      m.className = 'text-xs text-slate-400 text-center py-8';
+      m.textContent = 'Không tải được thư viện biểu đồ (kiểm tra kết nối mạng).';
+      c.replaceWith(m);
+    });
+    return;
+  }
+  const C = { green: '#10b981', red: '#f43f5e', violet: '#8b5cf6', amber: '#f59e0b', blue: '#3b82f6', grid: '#f1f5f9' };
+  const K = {{ data.kpi | tojson }};
+  const D = {{ data.chart | tojson }};
+  Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = '#64748b';
+
+  // chữ ở giữa biểu đồ tròn
+  const centerText = {
+    id: 'centerText',
+    afterDraw(chart, _a, opts) {
+      const { ctx, chartArea: { left, right, top, bottom } } = chart;
+      const x = (left + right) / 2, y = (top + bottom) / 2;
+      ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#0f172a'; ctx.font = '700 22px "JetBrains Mono", monospace';
+      ctx.fillText(opts.main, x, y - 6);
+      ctx.fillStyle = '#94a3b8'; ctx.font = '500 10px Inter, sans-serif';
+      ctx.fillText(opts.sub, x, y + 14);
+      ctx.restore();
+    }
+  };
+  function donut(id, values, colors, main, sub) {
+    new Chart(document.getElementById(id), {
+      type: 'doughnut',
+      data: { labels: ['', ''], datasets: [{ data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 3 }] },
+      options: { cutout: '72%', plugins: { legend: { display: false }, centerText: { main, sub },
+                 tooltip: { enabled: false } }, animation: { duration: 600 } },
+      plugins: [centerText]
+    });
+  }
+  donut('chDonutAtt', [K.att, K.abs], [C.green, C.red], K.pct_att + '%', 'đã khám');
+  donut('chDonutSrc', [K.tk_total, K.ut_total], [C.violet, C.amber], String(K.total), 'bệnh nhân');
+
+  const common = {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 14 } } },
+  };
+  const xAxis = { grid: { display: false }, ticks: { maxRotation: 50, minRotation: 0, autoSkip: true, maxTicksLimit: 12 } };
+
+  // Đã khám / Không đến (cột chồng) + đường % đến
+  new Chart(document.getElementById('chTrend'), {
+    data: {
+      labels: D.labels,
+      datasets: [
+        { type: 'line', label: '% đến khám', data: D.pct_att, yAxisID: 'y1', borderColor: C.blue, backgroundColor: C.blue,
+          tension: .3, borderWidth: 2, pointRadius: 3, order: 0 },
+        { type: 'bar', label: 'Đã khám', data: D.att, backgroundColor: C.green, stack: 's', borderRadius: 3, order: 1 },
+        { type: 'bar', label: 'Không đến', data: D.abs, backgroundColor: C.red, stack: 's', borderRadius: 3, order: 1 },
+      ]
+    },
+    options: { ...common, scales: {
+      x: { ...xAxis, stacked: true },
+      y: { stacked: true, beginAtZero: true, grid: { color: C.grid }, ticks: { precision: 0 }, title: { display: true, text: 'Bệnh nhân' } },
+      y1: { position: 'right', min: 0, max: 100, grid: { display: false }, ticks: { callback: v => v + '%' } }
+    } }
+  });
+
+  // Tái khám vs Khám ưu tiên
+  new Chart(document.getElementById('chSource'), {
+    type: 'bar',
+    data: { labels: D.labels, datasets: [
+      { label: 'Tái khám', data: D.tk, backgroundColor: C.violet, borderRadius: 3 },
+      { label: 'Khám ưu tiên', data: D.ut, backgroundColor: C.amber, borderRadius: 3 },
+    ] },
+    options: { ...common, scales: {
+      x: xAxis,
+      y: { beginAtZero: true, grid: { color: C.grid }, ticks: { precision: 0 }, title: { display: true, text: 'Bệnh nhân' } }
+    } }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

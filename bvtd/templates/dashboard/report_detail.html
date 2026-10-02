@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Chi tiết báo cáo{% endblock %}
+{% block page_title %}🔍 Danh sách bệnh nhân theo báo cáo{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl border border-slate-200">
+  <div class="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-slate-100">
+    <a href="{{ url_for('report', period=period, date_from=date_from, date_to=date_to) }}"
+       class="text-sm text-blue-600 hover:underline">← Về báo cáo</a>
+    <div class="flex items-center gap-2 text-sm">
+      <span class="bg-slate-100 text-slate-700 font-semibold px-2.5 py-1 rounded-full">{{ kind_label }}</span>
+      <span class="text-slate-500">{{ period_name }}: <b class="text-slate-700">{{ ky }}</b></span>
+    </div>
+    <span class="ml-auto text-xs text-slate-400">{{ total }} bệnh nhân</span>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm" style="min-width:820px">
+      <thead>
+        <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+          <th class="px-4 py-3 text-left">STT</th>
+          <th class="px-4 py-3 text-left">Họ tên</th>
+          <th class="px-3 py-3 text-left">SĐT</th>
+          <th class="px-3 py-3 text-left">Ngày khám</th>
+          <th class="px-3 py-3 text-left">Khoa</th>
+          <th class="px-3 py-3 text-left">Nguồn</th>
+          <th class="px-3 py-3 text-left">Trạng thái</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in records %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-4 py-3 mono text-xs text-slate-400">{{ r.stt }}</td>
+          <td class="px-4 py-3 font-medium text-slate-800">{{ r.name }}</td>
+          <td class="px-3 py-3 mono text-xs text-slate-600">{{ r.phone }}</td>
+          <td class="px-3 py-3 mono text-xs text-slate-600 whitespace-nowrap">{{ r.date }}</td>
+          <td class="px-3 py-3 text-xs text-slate-600">{{ r.khoa }}</td>
+          <td class="px-3 py-3 text-xs text-slate-500 max-w-xs truncate" title="{{ r.source }}">{{ r.source }}</td>
+          <td class="px-3 py-3">
+            {% if r.att %}<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-xs font-semibold">✓ Đã khám</span>
+            {% else %}<span class="bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full text-xs font-semibold">✕ Không đến</span>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="px-5 py-10 text-center text-slate-400">Không có bệnh nhân nào khớp mục này.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% set total_pages = (total // per_page) + (1 if total % per_page else 0) %}
+  {% if total_pages > 1 %}
+  <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+    <span class="text-xs text-slate-400">Hiển thị {{ (page-1)*per_page+1 }}–{{ [page*per_page, total]|min }} / {{ total }}</span>
+    <div class="flex gap-1">
+      {% if page > 1 %}
+      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, page=page-1) }}"
+         class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">‹</a>{% endif %}
+      {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
+      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, page=p) }}"
+         class="px-3 py-1.5 text-xs border rounded-lg {% if p == page %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ p }}</a>
+      {% endfor %}
+      {% if page < total_pages %}
+      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, page=page+1) }}"
+         class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">›</a>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -161,40 +161,148 @@ def get_dashboard_stats(df: pd.DataFrame) -> dict:
     return stats
 
 
-def get_report_stats(df: pd.DataFrame, period: str = "month") -> list[dict]:
-    """Tính bảng báo cáo chi tiết. period: 'day'|'week'|'month'|'quarter'|'year'"""
-    if df.empty or "_date" not in df.columns:
-        return []
+PERIODS = {"day": "Ngày", "week": "Tuần", "month": "Tháng", "quarter": "Quý", "year": "Năm"}
+_STATUS_BLANK = {"", "nan", "N/A", "\u200b"}
+_TK_RE = "khoa|tái|nội trú|xuất viện|tai"      # giống Streamlit: nguồn tái khám / từ khoa
 
-    period_map = {"day": "D", "week": "W-MON", "month": "M", "quarter": "Q", "year": "Y"}
-    freq = period_map.get(period, "M")
+REPORT_KINDS = {                               # bấm số trong bảng → lọc danh sách BN
+    "all":    "Tất cả đăng ký",
+    "att":    "Tổng đã khám",
+    "abs":    "Tổng không đến / chưa khám",
+    "tk":     "Tái khám (tất cả)",
+    "ut":     "Khám ưu tiên (tất cả)",
+    "tk_att": "Tái khám · Đã khám",
+    "tk_abs": "Tái khám · Không đến",
+    "ut_att": "Khám ưu tiên · Đã khám",
+    "ut_abs": "Khám ưu tiên · Không đến",
+}
 
-    df2 = df.copy()
-    df2["_period"] = df2["_date"].dt.to_period(freq)
 
-    is_attended = df2.get(COL_STATUS, pd.Series(dtype=str)) == STATUS_ATTENDED
-    source_col  = df2.get(COL_SOURCE, pd.Series(dtype=str)).fillna("")
+def _pct(a, b) -> float:
+    return round(a / b * 100, 1) if b else 0.0
 
-    is_tk = source_col.str.contains("tái khám|nội khoa", case=False, na=False)
-    is_vl = ~is_tk
+
+def _period_start(dates: pd.Series, period: str) -> pd.Series:
+    """Ngày đầu kỳ của từng dòng — dùng làm khoá nhóm & sắp xếp theo thời gian."""
+    d = dates.dt.normalize()
+    if period == "week":
+        return d - pd.to_timedelta(d.dt.weekday, unit="D")
+    if period == "month":
+        return d.dt.to_period("M").dt.start_time
+    if period == "quarter":
+        return d.dt.to_period("Q").dt.start_time
+    if period == "year":
+        return d.dt.to_period("Y").dt.start_time
+    return d
+
+
+def _period_label(start: pd.Timestamp, period: str) -> str:
+    if period == "week":
+        end = start + pd.Timedelta(days=6)
+        iso = start.isocalendar()
+        return f"T{iso[1]}/{iso[0]} ({start:%d/%m}–{end:%d/%m})"
+    if period == "month":
+        return f"Tháng {start:%m/%Y}"
+    if period == "quarter":
+        return f"Q{(start.month - 1) // 3 + 1}/{start.year}"
+    if period == "year":
+        return f"Năm {start.year}"
+    return f"{start:%d/%m/%Y}"
+
+
+def report_frame(df: pd.DataFrame, period: str = "month", date_from=None, date_to=None):
+    """
+    DataFrame đã gắn cờ cho báo cáo (giống _period_tag_df của Streamlit):
+      _att = đã khám, _tk = tái khám/từ khoa, _ut = khám ưu tiên (đăng ký online/vãng lai/khác),
+      _start = ngày đầu kỳ.
+    Chỉ tính bệnh nhân ĐÃ CÓ TRẠNG THÁI và có ngày khám hợp lệ.
+    """
+    if df.empty or "_date" not in df.columns or COL_STATUS not in df.columns:
+        return None
+    d = df[df["_date"].notna()].copy()
+    d = d[~d[COL_STATUS].astype(str).str.strip().isin(_STATUS_BLANK)]
+    d = filter_by_date_range(d, date_from, date_to)
+    if d.empty:
+        return None
+    d["_att"] = d[COL_STATUS].astype(str).str.strip().str.upper() == STATUS_ATTENDED.upper()
+    if COL_SOURCE in d.columns:
+        d["_tk"] = d[COL_SOURCE].astype(str).str.contains(_TK_RE, case=False, na=False)
+    else:
+        d["_tk"] = False
+    d["_ut"] = ~d["_tk"]
+    d["_start"] = _period_start(d["_date"], period)
+    return d
+
+
+def build_report(df: pd.DataFrame, period: str = "month", date_from=None, date_to=None) -> dict:
+    """Số liệu cho trang Báo cáo: KPI tổng, bảng theo kỳ, dữ liệu biểu đồ."""
+    period = period if period in PERIODS else "month"
+    out = {"period": period, "period_name": PERIODS[period], "empty": True,
+           "kpi": None, "rows": [], "chart": None}
+    d = report_frame(df, period, date_from, date_to)
+    if d is None:
+        return out
+
+    def block(g) -> dict:
+        tot = len(g)
+        att = int(g["_att"].sum())
+        tk, ut = g[g["_tk"]], g[g["_ut"]]
+        tk_att, ut_att = int(tk["_att"].sum()), int(ut["_att"].sum())
+        return {
+            "total": tot, "att": att, "abs": tot - att,
+            "pct_att": _pct(att, tot), "pct_abs": _pct(tot - att, tot),
+            "tk_total": len(tk), "tk_att": tk_att, "tk_abs": len(tk) - tk_att,
+            "tk_pct": _pct(tk_att, len(tk)),
+            "ut_total": len(ut), "ut_att": ut_att, "ut_abs": len(ut) - ut_att,
+            "ut_pct": _pct(ut_att, len(ut)),
+        }
 
     rows = []
-    for period_val, g in df2.groupby("_period"):
-        att = g[is_attended.reindex(g.index, fill_value=False)]
-        vng = g[~is_attended.reindex(g.index, fill_value=False)]
-        rows.append({
-            "ky":        str(period_val),
-            "tong":      len(g),
-            "den_tk":    int((att.index.isin(g[is_tk.reindex(g.index,fill_value=False)].index)).sum()),
-            "den_vl":    int((att.index.isin(g[is_vl.reindex(g.index,fill_value=False)].index)).sum()),
-            "vang_tk":   int((vng.index.isin(g[is_tk.reindex(g.index,fill_value=False)].index)).sum()),
-            "vang_vl":   int((vng.index.isin(g[is_vl.reindex(g.index,fill_value=False)].index)).sum()),
-            "tong_den":  len(att),
-            "tong_vang": len(vng),
-            "pct_den":   round(len(att)/len(g)*100, 1) if len(g) else 0.0,
-            "pct_vang":  round(len(vng)/len(g)*100, 1) if len(g) else 0.0,
-        })
-    return rows
+    for start, g in d.groupby("_start", sort=True):
+        r = block(g)
+        r.update({"ky": _period_label(start, period), "key": start.strftime("%Y-%m-%d")})
+        rows.append(r)
+
+    kpi = block(d)
+    peak = max(rows, key=lambda r: r["total"])
+    kpi["peak_total"], kpi["peak_label"] = peak["total"], peak["ky"]
+    kpi["n_periods"] = len(rows)
+    kpi["tk_share"] = _pct(kpi["tk_total"], kpi["total"])
+    kpi["ut_share"] = _pct(kpi["ut_total"], kpi["total"])
+
+    shown = rows[-24:]                               # biểu đồ: tối đa 24 kỳ gần nhất cho dễ đọc
+    out.update({
+        "empty": False, "kpi": kpi, "rows": rows,
+        "chart": {
+            "truncated": len(rows) > len(shown),
+            "labels":  [r["ky"] for r in shown],
+            "att":     [r["att"] for r in shown],
+            "abs":     [r["abs"] for r in shown],
+            "pct_att": [r["pct_att"] for r in shown],
+            "tk":      [r["tk_total"] for r in shown],
+            "ut":      [r["ut_total"] for r in shown],
+        },
+    })
+    return out
+
+
+def report_drilldown(df: pd.DataFrame, period: str, key: str, kind: str,
+                     date_from=None, date_to=None) -> pd.DataFrame:
+    """Danh sách bệnh nhân khớp 1 ô trong bảng báo cáo (kỳ + loại)."""
+    d = report_frame(df, period, date_from, date_to)
+    if d is None:
+        return pd.DataFrame()
+    if key != "all":
+        d = d[d["_start"].dt.strftime("%Y-%m-%d") == key]
+    mask = {
+        "all":    pd.Series(True, index=d.index),
+        "att":    d["_att"],             "abs":    ~d["_att"],
+        "tk":     d["_tk"],              "ut":     d["_ut"],
+        "tk_att": d["_tk"] & d["_att"],  "tk_abs": d["_tk"] & ~d["_att"],
+        "ut_att": d["_ut"] & d["_att"],  "ut_abs": d["_ut"] & ~d["_att"],
+    }.get(kind)
+    return d if mask is None else d[mask]
+
 
 
 # ── Lọc theo khoảng ngày & lịch khám sắp tới ─────────────────────────────────

@@ -141,25 +141,94 @@ def dashboard():
     return render_template("dashboard/index.html", stats=stats)
 
 
+def _report_args():
+    """Đọc kỳ + khoảng ngày từ URL (dùng chung cho 3 route báo cáo)."""
+    from services.sheets import PERIODS
+    period = request.args.get("period", "month")
+    if period not in PERIODS:
+        period = "month"
+    d_from = _parse_date(request.args.get("date_from", ""))
+    d_to   = _parse_date(request.args.get("date_to", ""))
+    if d_from and d_to and d_from > d_to:
+        d_from, d_to = d_to, d_from
+    return period, d_from, d_to
+
+
 @app.route("/bao-cao")
 @login_required
 def report():
-    from services.sheets import get_report_stats
-    df     = _get_df()
-    period = request.args.get("period", "month")
-    rows   = get_report_stats(df, period)
-    return render_template("dashboard/report.html", rows=rows, period=period)
+    from services.sheets import build_report, PERIODS
+    period, d_from, d_to = _report_args()
+    data = build_report(_get_df(), period, d_from, d_to)
+    return render_template("dashboard/report.html", data=data, periods=PERIODS,
+                           period=period,
+                           date_from=d_from.isoformat() if d_from else "",
+                           date_to=d_to.isoformat() if d_to else "")
 
 
-@app.route("/bao-cao/data")
+@app.route("/bao-cao/chi-tiet")
 @login_required
-def report_data():
-    """HTMX endpoint — trả về tbody HTML khi đổi kỳ."""
-    from services.sheets import get_report_stats
-    df     = _get_df()
-    period = request.args.get("period", "month")
-    rows   = get_report_stats(df, period)
-    return render_template("dashboard/_report_rows.html", rows=rows)
+def report_detail():
+    """Danh sách bệnh nhân của 1 ô trong bảng báo cáo (bấm vào con số)."""
+    from services.sheets import (report_drilldown, REPORT_KINDS, PERIODS, COL_STT, COL_NAME,
+                                 COL_PHONE, COL_SOURCE, COL_STATUS, COL_KHOA, COL_EXAM_DATE)
+    period, d_from, d_to = _report_args()
+    key  = request.args.get("key", "all")
+    kind = request.args.get("kind", "all")
+    if kind not in REPORT_KINDS:
+        kind = "all"
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 20
+
+    d = report_drilldown(_get_df(), period, key, kind, d_from, d_to)
+    total = len(d)
+    page_df = d.iloc[(page - 1) * per_page: page * per_page] if total else d
+    records = [{
+        "stt":    str(r.get(COL_STT, "") or "—"),
+        "name":   str(r.get(COL_NAME, "") or "—"),
+        "phone":  str(r.get(COL_PHONE, "") or "—"),
+        "date":   r["_date"].strftime("%d/%m/%Y"),
+        "khoa":   str(r.get(COL_KHOA, "") or "—"),
+        "source": str(r.get(COL_SOURCE, "") or "—"),
+        "att":    bool(r["_att"]),
+    } for _, r in page_df.iterrows()]
+
+    ky = "Toàn bộ"
+    if key != "all" and total:
+        from services.sheets import _period_label
+        ky = _period_label(d["_start"].iloc[0], period)
+
+    return render_template("dashboard/report_detail.html",
+                           records=records, total=total, page=page, per_page=per_page,
+                           kind=kind, kind_label=REPORT_KINDS[kind], key=key, ky=ky,
+                           period=period, period_name=PERIODS[period],
+                           date_from=d_from.isoformat() if d_from else "",
+                           date_to=d_to.isoformat() if d_to else "")
+
+
+@app.route("/bao-cao/csv")
+@login_required
+def report_csv():
+    from flask import Response
+    import csv, io
+    from services.sheets import build_report
+    period, d_from, d_to = _report_args()
+    data = build_report(_get_df(), period, d_from, d_to)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([data["period_name"], "Tổng đăng ký", "Tái khám", "Tái khám - Đã khám", "Tái khám - Không đến",
+                "Khám ưu tiên", "Ưu tiên - Đã khám", "Ưu tiên - Không đến",
+                "Tổng đã khám", "Tổng không đến", "% đến", "% không đến"])
+    for r in data["rows"]:
+        w.writerow([r["ky"], r["total"], r["tk_total"], r["tk_att"], r["tk_abs"],
+                    r["ut_total"], r["ut_att"], r["ut_abs"], r["att"], r["abs"],
+                    r["pct_att"], r["pct_abs"]])
+    fname = f"baocao_{period}_{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 def _parse_date(value):
