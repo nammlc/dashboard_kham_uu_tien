@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Tổng Quan{% endblock %}
+{% block page_title %}📊 Tổng Quan{% endblock %}
+
+{% block content %}
+<!-- KPI Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  {% set kpis = [
+    ('Đăng ký hôm nay', stats.today_total,    'bg-blue-50 text-blue-700',  '📋', 'text-blue-700'),
+    ('Đã khám',         stats.today_attended,  'bg-emerald-50 text-emerald-700','✅','text-emerald-600'),
+    ('Vắng / Chưa',     stats.today_absent,    'bg-red-50 text-red-700',    '❌', 'text-red-600'),
+    ('3 ngày tới',      stats.next3_total,     'bg-violet-50 text-violet-700','🗓️','text-violet-600'),
+  ] %}
+  {% for label, val, badge_cls, icon, val_cls in kpis %}
+  <div class="bg-white rounded-xl border border-slate-200 p-4 relative overflow-hidden">
+    <div class="absolute top-4 right-4 w-9 h-9 rounded-lg {{ badge_cls }} flex items-center justify-center text-lg">{{ icon }}</div>
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{{ label }}</p>
+    <p class="text-4xl font-bold mono {{ val_cls }}">{{ val }}</p>
+    {% if loop.index == 1 and stats.today_total > 0 %}
+      <p class="text-xs text-slate-500 mt-1">Tỷ lệ đến: <b class="text-emerald-600">{{ stats.today_rate }}%</b></p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Chart + Donut -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+  <div class="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-slate-800 text-sm">Xu hướng đặt khám</h2>
+      <span class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">12 tháng gần nhất</span>
+    </div>
+    <canvas id="chartMonthly" height="180"></canvas>
+  </div>
+
+  <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
+    <h2 class="font-semibold text-slate-800 text-sm mb-4">Tháng này</h2>
+    <div class="flex-1 flex items-center justify-center">
+      <canvas id="chartDonut" width="160" height="160"></canvas>
+    </div>
+    <div class="mt-4 space-y-2">
+      <div class="flex items-center gap-2 text-xs text-slate-600">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+        Đã đến: <b class="ml-auto mono text-emerald-600">{{ stats.today_attended }}</b>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-slate-600">
+        <span class="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0"></span>
+        Vắng: <b class="ml-auto mono text-red-600">{{ stats.today_absent }}</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bệnh nhân gần đây -->
+<div class="bg-white rounded-xl border border-slate-200">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+    <h2 class="font-semibold text-slate-800 text-sm">Bệnh nhân gần đây</h2>
+    <a href="{{ url_for('patients') }}" class="text-xs text-blue-600 hover:underline">Xem tất cả →</a>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          <th class="px-5 py-3 text-left">Họ tên</th>
+          <th class="px-4 py-3 text-left">Ngày khám</th>
+          <th class="px-4 py-3 text-left">Chuyên khoa</th>
+          <th class="px-4 py-3 text-left">Nguồn</th>
+          <th class="px-4 py-3 text-left">Trạng thái</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in stats.recent_patients %}
+        <tr class="hover:bg-slate-50 transition-colors">
+          <td class="px-5 py-3 font-medium text-slate-800">{{ r.get('1. HỌ VÀ TÊN BỆNH NHÂN','—') }}</td>
+          <td class="px-4 py-3 text-slate-600 mono text-xs">{{ r.get('NGÀY KHÁM','—') }}</td>
+          <td class="px-4 py-3 text-slate-600 text-xs">{{ r.get('CHUYÊN KHOA MONG MUỐN KHÁM','—') }}</td>
+          <td class="px-4 py-3 text-xs">
+            {% set src = r.get('NGUỒN BỆNH NHÂN','') %}
+            {% if 'minh lộ' in src|lower or 'nội khoa' in src|lower %}
+              <span class="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-medium">Minh Lộ</span>
+            {% else %}
+              <span class="bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-medium">GG Form</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            {% set st = r.get('TRẠNG THÁI','') %}
+            {% if 'ĐÃ KHÁM' in st %}
+              <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-xs font-semibold">✓ Đã khám</span>
+            {% elif 'CHƯA' in st or 'BỎ' in st %}
+              <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded-full text-xs font-semibold">✕ Vắng</span>
+            {% else %}
+              <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full text-xs font-semibold">⏳ Chờ</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-5 py-8 text-center text-slate-400 text-sm">Chưa có dữ liệu.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Dữ liệu từ Flask → JavaScript
+const monthly = {{ stats.monthly_chart | tojson }};
+
+// Biểu đồ cột theo tháng
+const ctx1 = document.getElementById('chartMonthly').getContext('2d');
+new Chart(ctx1, {
+  type: 'bar',
+  data: {
+    labels: monthly.map(d => d.month.replace('-','/').slice(3)),
+    datasets: [
+      { label:'Đăng ký', data: monthly.map(d=>d.registered), backgroundColor:'#bfdbfe', borderRadius:4 },
+      { label:'Đã khám', data: monthly.map(d=>d.attended),   backgroundColor:'#6ee7b7', borderRadius:4 },
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ font:{ size:11 } } } },
+    scales:{
+      x:{ grid:{display:false}, ticks:{ font:{size:10} } },
+      y:{ grid:{color:'#f1f5f9'}, ticks:{ font:{size:10} } }
+    }
+  }
+});
+
+// Donut tỷ lệ đến/vắng hôm nay
+const ctx2 = document.getElementById('chartDonut').getContext('2d');
+const att  = {{ stats.today_attended }};
+const abs  = {{ stats.today_absent }};
+new Chart(ctx2, {
+  type:'doughnut',
+  data:{
+    labels:['Đã khám','Vắng'],
+    datasets:[{ data:[att||1,abs], backgroundColor:['#34d399','#f87171'],
+                borderWidth:0, hoverOffset:4 }]
+  },
+  options:{
+    responsive:false, cutout:'72%',
+    plugins:{
+      legend:{display:false},
+      tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed}` } }
+    }
+  }
+});
+</script>
+{% endblock %}

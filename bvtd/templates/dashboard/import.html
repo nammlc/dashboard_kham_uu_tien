@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Import Lịch Hẹn{% endblock %}
+{% block page_title %}📥 Import Lịch Hẹn từ Minh Lộ{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl space-y-5">
+
+  <!-- Upload form -->
+  <div class="bg-white rounded-xl border border-slate-200 p-6">
+    <h2 class="font-semibold text-slate-800 mb-4">Upload file Excel từ Minh Lộ HIS</h2>
+    <form method="POST" enctype="multipart/form-data">
+      <label
+        class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300
+               rounded-xl p-10 cursor-pointer text-center hover:border-blue-400 hover:bg-blue-50 transition-colors"
+        id="drop-zone">
+        <span class="text-4xl mb-3">📂</span>
+        <span class="font-semibold text-slate-700">Kéo thả hoặc click để chọn file .xlsx</span>
+        <span class="text-sm text-slate-400 mt-1">Báo cáo "Danh sách bệnh nhân hẹn khám" từ Minh Lộ</span>
+        <input type="file" name="excel_file" accept=".xlsx" class="hidden" id="file-input"
+               onchange="document.getElementById('file-name').textContent = this.files[0]?.name || ''">
+      </label>
+      <p id="file-name" class="text-sm text-blue-600 font-medium mt-2 text-center"></p>
+      <button type="submit"
+              class="mt-4 w-full bg-[#0f2642] text-white font-semibold py-3 rounded-xl
+                     hover:bg-[#1e3f6a] transition-colors text-sm">
+        Đọc và xem trước →
+      </button>
+    </form>
+  </div>
+
+  <!-- Hướng dẫn 3 bước -->
+  <div class="bg-white rounded-xl border border-slate-200 p-6">
+    <h2 class="font-semibold text-slate-800 mb-4">Hướng dẫn</h2>
+    <div class="grid grid-cols-3 gap-4">
+      {% for n, title, desc in [
+        ('1','Xuất Excel từ Minh Lộ','Vào báo cáo → DS bệnh nhân hẹn khám → chọn ngày → xuất Excel'),
+        ('2','Upload lên đây','Chọn file vừa xuất, hệ thống tự nhận dạng cột'),
+        ('3','Xác nhận & ghi','Kiểm tra preview rồi bấm Import để ghi vào Google Sheet'),
+      ] %}
+      <div class="border-l-4 border-blue-500 pl-4 py-1">
+        <p class="text-xs font-bold text-blue-500 uppercase mb-1">Bước {{ n }}</p>
+        <p class="font-semibold text-slate-800 text-sm">{{ title }}</p>
+        <p class="text-xs text-slate-500 mt-1">{{ desc }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Quy tắc mapping -->
+  <div class="bg-slate-50 rounded-xl border border-slate-200 p-5">
+    <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Quy tắc mapping cột</p>
+    <div class="space-y-1.5 text-xs">
+      {% for excel, sheet in [
+        ('Họ tên bệnh nhân','1. HỌ VÀ TÊN BỆNH NHÂN'),
+        ('Địa chỉ','ĐỊA CHỈ'),
+        ('Ngày hẹn','NGÀY KHÁM'),
+        ('Điện thoại','5. SỐ ĐIÊN THOẠI'),
+        ('Khoa hẹn','KHOA KHÁM CHỮA BỆNH'),
+        ('(tự động)','NGUỒN BỆNH NHÂN → "Bệnh nhân điều trị nội khoa tái khám"'),
+        ('(thời gian import)','Dấu thời gian'),
+      ] %}
+      <div class="flex items-center gap-2">
+        <span class="font-mono bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600 min-w-0">{{ excel }}</span>
+        <span class="text-slate-400">→</span>
+        <span class="font-medium text-slate-700">{{ sheet }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

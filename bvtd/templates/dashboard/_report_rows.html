@@ -1,0 +1,16 @@
+{% for r in rows %}
+<tr class="hover:bg-slate-50 transition-colors">
+  <td class="px-4 py-2.5 font-semibold text-slate-800" style="white-space:nowrap">{{ r.ky }}</td>
+  <td class="px-3 py-2.5 text-center mono text-slate-700">{{ r.tong }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-emerald-600' if r.den_tk else 'text-slate-400' }}">{{ r.den_tk }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-emerald-600' if r.den_vl else 'text-slate-400' }}">{{ r.den_vl }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-red-600' if r.vang_tk else 'text-slate-400' }}">{{ r.vang_tk }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-red-600' if r.vang_vl else 'text-slate-400' }}">{{ r.vang_vl }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-emerald-700' if r.tong_den else 'text-slate-400' }}">{{ r.tong_den }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-red-700' if r.tong_vang else 'text-slate-400' }}">{{ r.tong_vang }}</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-emerald-600' if r.pct_den >= 50 else 'text-red-600' }}">{{ r.pct_den }}%</td>
+  <td class="px-3 py-2.5 text-center mono font-bold {{ 'text-red-600' if r.pct_vang >= 50 else 'text-emerald-600' }}">{{ r.pct_vang }}%</td>
+</tr>
+{% else %}
+<tr><td colspan="10" class="px-5 py-8 text-center text-slate-400 text-sm">Chưa có dữ liệu.</td></tr>
+{% endfor %}

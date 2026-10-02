@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tâm Đức{% endblock %} · BVĐK Tâm Đức Cầu Quan</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏥</text></svg>">
+
+  <!-- Tailwind CSS (CDN, không cần build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { DEFAULT:'#0f2642', 2:'#162f52', 3:'#1e3f6a', light:'#2a7ae4' },
+          },
+          fontFamily: {
+            sans: ['Inter','system-ui','sans-serif'],
+            mono: ['JetBrains Mono','monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+  <!-- HTMX (cho cập nhật bảng không reload trang) -->
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+
+  <!-- Chart.js (biểu đồ) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    /* Scrollbar mỏng cho sidebar */
+    .sb-scroll::-webkit-scrollbar { width: 4px; }
+    .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:2px; }
+    /* Flash messages */
+    .flash-success { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+    .flash-error   { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+    .flash-info    { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+    /* Hiệu ứng HTMX loading */
+    .htmx-indicator { opacity:0; transition:opacity 200ms; }
+    .htmx-request .htmx-indicator { opacity:1; }
+  </style>
+
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-100 text-slate-900 flex min-h-screen">
+
+  <!-- ══════════════════════════════════════════════════
+       SIDEBAR
+  ══════════════════════════════════════════════════ -->
+  <nav class="w-56 flex-shrink-0 bg-navy flex flex-col fixed left-0 top-0 h-screen z-50">
+
+    <!-- Logo -->
+    <div class="px-4 py-4 border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-navy-light rounded-lg flex items-center justify-center text-xl flex-shrink-0">🏥</div>
+        <div class="min-w-0">
+          <p class="text-white font-bold text-sm leading-tight truncate">Tâm Đức Cầu Quan</p>
+          <p class="text-white/40 text-xs">Theo dõi đặt khám</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <div class="flex-1 py-3 overflow-y-auto sb-scroll">
+      <p class="px-4 pt-1 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Chính</p>
+
+      {% set nav_items = [
+        ('dashboard', '📊', 'Tổng Quan'),
+        ('patients',  '🔍', 'Tìm Theo Ngày'),
+      ] %}
+
+      <a href="{{ url_for('dashboard') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'dashboard' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📊</span>
+        <span class="text-sm">Tổng Quan</span>
+      </a>
+
+      <a href="{{ url_for('patients') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'patients' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">👤</span>
+        <span class="text-sm">Bệnh Nhân</span>
+      </a>
+
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Phân Tích</p>
+
+      <a href="{{ url_for('report') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'report' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📈</span>
+        <span class="text-sm">Báo Cáo</span>
+      </a>
+
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Dữ Liệu</p>
+
+      <a href="{{ url_for('import_excel') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'import_excel' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📥</span>
+        <span class="text-sm">Import Lịch Hẹn</span>
+      </a>
+
+      <a href="{{ url_for('refresh_cache') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] border-transparent
+                text-white/65 hover:bg-white/5 hover:text-white transition-colors">
+        <span class="text-base w-5">🔄</span>
+        <span class="text-sm">Làm mới dữ liệu</span>
+      </a>
+    </div>
+
+    <!-- User info -->
+    <div class="px-4 py-3 border-t border-white/10">
+      <div class="flex items-center gap-3">
+        {% if current_user.picture %}
+          <img src="{{ current_user.picture }}" class="w-8 h-8 rounded-full flex-shrink-0" alt="">
+        {% else %}
+          <div class="w-8 h-8 rounded-full bg-navy-light flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            {{ current_user.name[0].upper() }}
+          </div>
+        {% endif %}
+        <div class="flex-1 min-w-0">
+          <p class="text-white font-semibold text-sm truncate">{{ current_user.name }}</p>
+          <p class="text-white/40 text-xs truncate">{{ current_user.email }}</p>
+        </div>
+        <a href="{{ url_for('logout') }}" class="text-white/40 hover:text-white text-sm" title="Đăng xuất">⏻</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════
+       MAIN
+  ══════════════════════════════════════════════════ -->
+  <div class="ml-56 flex-1 flex flex-col min-h-screen">
+
+    <!-- Top bar -->
+    <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+      <div class="flex items-center gap-3">
+        <h1 class="font-semibold text-slate-800 text-sm">{% block page_title %}{% endblock %}</h1>
+        <span class="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">● Trực tiếp</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400">{{ today_str }}</span>
+      </div>
+    </header>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="px-6 pt-4">
+          {% for category, message in messages %}
+            <div class="flash-{{ category }} rounded-lg px-4 py-3 text-sm mb-2 flex items-start gap-2">
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Page content -->
+    <main class="p-6 flex-1">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="px-6 py-3 text-xs text-slate-400 border-t border-slate-200 bg-white">
+      © 2026 BVĐK Tâm Đức Cầu Quan · Flask + Google Sheets
+    </footer>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

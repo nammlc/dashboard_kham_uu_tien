@@ -1,0 +1,11 @@
+flask==3.1.0
+flask-login==0.6.3
+authlib==1.4.1
+requests==2.32.3
+gspread==6.1.4
+google-auth==2.38.0
+pandas==2.2.3
+openpyxl==3.1.5
+python-dotenv==1.0.1
+gunicorn==23.0.0
+flask-caching==2.3.0
