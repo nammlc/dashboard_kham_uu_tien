@@ -6,20 +6,21 @@
 <!-- KPI Cards -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   {% set kpis = [
-    ('Đăng ký hôm nay', stats.today_total,    'bg-blue-50 text-blue-700',  '📋', 'text-blue-700'),
-    ('Đã khám',         stats.today_attended,  'bg-emerald-50 text-emerald-700','✅','text-emerald-600'),
-    ('Vắng / Chưa',     stats.today_absent,    'bg-red-50 text-red-700',    '❌', 'text-red-600'),
-    ('3 ngày tới',      stats.next3_total,     'bg-violet-50 text-violet-700','🗓️','text-violet-600'),
+    ('Đăng ký hôm nay', stats.today_total,    'bg-blue-50 text-blue-700',  '📋', 'text-blue-700', 'today'),
+    ('Đã khám',         stats.today_attended,  'bg-emerald-50 text-emerald-700','✅','text-emerald-600', 'attended'),
+    ('Vắng / Chưa',     stats.today_absent,    'bg-red-50 text-red-700',    '❌', 'text-red-600', 'absent'),
+    ('3 ngày tới',      stats.next3_total,     'bg-violet-50 text-violet-700','🗓️','text-violet-600', 'next3'),
   ] %}
-  {% for label, val, badge_cls, icon, val_cls in kpis %}
-  <div class="bg-white rounded-xl border border-slate-200 p-4 relative overflow-hidden">
+  {% for label, val, badge_cls, icon, val_cls, scope in kpis %}
+  <a href="{{ url_for('patients', scope=scope) }}" title="Xem danh sách bệnh nhân"
+     class="block bg-white rounded-xl border border-slate-200 p-4 relative overflow-hidden hover:border-blue-400 hover:shadow-md transition cursor-pointer">
     <div class="absolute top-4 right-4 w-9 h-9 rounded-lg {{ badge_cls }} flex items-center justify-center text-lg">{{ icon }}</div>
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{{ label }}</p>
     <p class="text-4xl font-bold mono {{ val_cls }}">{{ val }}</p>
     {% if loop.index == 1 and stats.today_total > 0 %}
       <p class="text-xs text-slate-500 mt-1">Tỷ lệ đến: <b class="text-emerald-600">{{ stats.today_rate }}%</b></p>
     {% endif %}
-  </div>
+  </a>
   {% endfor %}
 </div>
 
@@ -30,13 +31,13 @@
       <h2 class="font-semibold text-slate-800 text-sm">Xu hướng đặt khám</h2>
       <span class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">12 tháng gần nhất</span>
     </div>
-    <canvas id="chartMonthly" height="180"></canvas>
+    <div class="relative" style="height:260px"><canvas id="chartMonthly"></canvas></div>
   </div>
 
   <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
     <h2 class="font-semibold text-slate-800 text-sm mb-4">Tháng này</h2>
     <div class="flex-1 flex items-center justify-center">
-      <canvas id="chartDonut" width="160" height="160"></canvas>
+      <div class="relative" style="width:160px;height:160px"><canvas id="chartDonut"></canvas></div>
     </div>
     <div class="mt-4 space-y-2">
       <div class="flex items-center gap-2 text-xs text-slate-600">
@@ -52,7 +53,7 @@
 </div>
 
 <!-- Bệnh nhân gần đây -->
-<div class="bg-white rounded-xl border border-slate-200">
+<div class="paged bg-white rounded-xl border border-slate-200" data-per="10">
   <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
     <h2 class="font-semibold text-slate-800 text-sm">Bệnh nhân gần đây</h2>
     <a href="{{ url_for('patients') }}" class="text-xs text-blue-600 hover:underline">Xem tất cả →</a>
@@ -99,11 +100,63 @@
       </tbody>
     </table>
   </div>
+  <div class="pager flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-t border-slate-100"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── Phân trang phía trình duyệt cho bảng Bệnh nhân gần đây ──
+  function initPaged(box) {
+    const per   = parseInt(box.dataset.per, 10) || 20;
+    const rows  = Array.from(box.querySelectorAll('tbody tr'));
+    const pager = box.querySelector('.pager');
+    const pages = Math.max(1, Math.ceil(rows.length / per));
+    let cur = 1;
+
+    function pageList() {                       // 1 … 4 5 [6] 7 8 … 20
+      const out = [], add = n => { if (n >= 1 && n <= pages && !out.includes(n)) out.push(n); };
+      add(1); for (let n = cur - 2; n <= cur + 2; n++) add(n); add(pages);
+      const res = [];
+      out.sort((a, b) => a - b).forEach((n, i) => {
+        if (i && n - out[i - 1] > 1) res.push(null);
+        res.push(n);
+      });
+      return res;
+    }
+    function btn(label, page, opts = {}) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label;
+      b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
+        (opts.active ? 'bg-[#0f2642] text-white border-[#0f2642]'
+                     : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
+      if (opts.disabled) b.disabled = true;
+      if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));
+      return b;
+    }
+    function render() {
+      const from = (cur - 1) * per, to = Math.min(cur * per, rows.length);
+      rows.forEach((r, i) => r.classList.toggle('hidden', i < from || i >= to));
+      pager.replaceChildren();
+      if (pages <= 1) { pager.classList.add('hidden'); return; }
+      pager.classList.remove('hidden');
+      const info = document.createElement('span');
+      info.className = 'text-xs text-slate-400';
+      info.textContent = `Hiển thị ${from + 1}–${to} / ${rows.length} bệnh nhân`;
+      const nav = document.createElement('div'); nav.className = 'flex gap-1';
+      nav.append(btn('‹', cur - 1, { disabled: cur === 1 }));
+      pageList().forEach(n => {
+        if (n === null) { const d = document.createElement('span'); d.textContent = '…'; d.className = 'px-1 text-slate-400 self-center'; nav.append(d); }
+        else nav.append(btn(String(n), n, { active: n === cur }));
+      });
+      nav.append(btn('›', cur + 1, { disabled: cur === pages }));
+      pager.append(info, nav);
+    }
+    function go(n) { cur = Math.min(Math.max(1, n), pages); render(); box.scrollIntoView({ block: 'nearest' }); }
+    render();
+  }
+  document.querySelectorAll('.paged').forEach(initPaged);
+
 // Dữ liệu từ Flask → JavaScript
 const monthly = {{ stats.monthly_chart | tojson }};
 
@@ -140,7 +193,7 @@ new Chart(ctx2, {
                 borderWidth:0, hoverOffset:4 }]
   },
   options:{
-    responsive:false, cutout:'72%',
+    responsive:true, maintainAspectRatio:false, cutout:'72%',
     plugins:{
       legend:{display:false},
       tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed}` } }

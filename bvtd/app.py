@@ -242,8 +242,11 @@ def _parse_date(value):
 @app.route("/benh-nhan")
 @login_required
 def patients():
-    from services.sheets import COL_STATUS, filter_by_date_range
+    from services.sheets import COL_STATUS, DASH_SCOPES, filter_by_date_range, filter_by_scope
     df       = _get_df()
+    scope    = request.args.get("scope", "")
+    if scope not in DASH_SCOPES:
+        scope = ""
     q        = request.args.get("q", "").strip()
     status   = request.args.get("status", "")
     d_from   = _parse_date(request.args.get("date_from", ""))
@@ -257,7 +260,7 @@ def patients():
     if d_from and d_to and d_from > d_to:          # người dùng chọn ngược → tự đổi chỗ
         d_from, d_to = d_to, d_from
 
-    filtered = filter_by_date_range(df.copy(), d_from, d_to)
+    filtered = filter_by_date_range(filter_by_scope(df.copy(), scope), d_from, d_to)
     if q:
         mask = filtered.apply(lambda row: q.lower() in " ".join(str(v) for v in row).lower(), axis=1)
         filtered = filtered[mask]
@@ -272,6 +275,7 @@ def patients():
                            records=records, total=total,
                            page=page, per_page=per_page,
                            q=q, status=status,
+                           scope=scope, scope_label=DASH_SCOPES.get(scope, ""),
                            date_from=d_from.isoformat() if d_from else "",
                            date_to=d_to.isoformat() if d_to else "")
 

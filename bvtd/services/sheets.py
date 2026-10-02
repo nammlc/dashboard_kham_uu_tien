@@ -153,8 +153,8 @@ def get_dashboard_stats(df: pd.DataFrame) -> dict:
     }).tolist()
     stats["monthly_chart"] = sorted(monthly, key=lambda x: x["month"])[-12:]
 
-    # Bệnh nhân gần đây (20 dòng cuối)
-    recent = df.sort_values("_ts", ascending=False).head(20) if "_ts" in df.columns else df.tail(20)
+    # Bệnh nhân gần đây (50 dòng cuối, giao diện tự chia trang)
+    recent = df.sort_values("_ts", ascending=False).head(50) if "_ts" in df.columns else df.tail(50)
     keep = [COL_STT, COL_NAME, COL_EXAM_DATE, COL_SPECIALTY, COL_DOCTOR, COL_STATUS, COL_SOURCE]
     stats["recent_patients"] = recent[[c for c in keep if c in recent.columns]].to_dict("records")
 
@@ -336,6 +336,31 @@ def source_kind(src) -> str:
     if any(k in sl for k in ["vãng lai", "vang lai", "ngoài", "ngoai"]):
         return "vl"
     return "other"
+
+
+DASH_SCOPES = {
+    "today":    "Đăng ký hôm nay",
+    "attended": "Đã khám hôm nay",
+    "absent":   "Vắng / chưa khám hôm nay",
+    "next3":    "Lịch hẹn 3 ngày tới",
+}
+
+
+def filter_by_scope(df: pd.DataFrame, scope: str) -> pd.DataFrame:
+    """Lọc theo ô KPI ở trang Tổng quan (cùng logic với get_dashboard_stats)."""
+    if scope not in DASH_SCOPES or df.empty or "_date" not in df.columns:
+        return df
+    today = vn_today()
+    dates = df["_date"].dt.date
+    if scope == "next3":
+        nxt = [today + timedelta(days=i) for i in range(1, 4)]
+        return df[dates.isin(nxt)]
+    sub = df[dates == today]
+    if scope == "attended":
+        return sub[sub.get(COL_STATUS, "") == STATUS_ATTENDED]
+    if scope == "absent":
+        return sub[sub.get(COL_STATUS, "") != STATUS_ATTENDED]
+    return sub
 
 
 def filter_by_date_range(df: pd.DataFrame, date_from=None, date_to=None) -> pd.DataFrame:
