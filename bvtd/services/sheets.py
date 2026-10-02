@@ -71,8 +71,26 @@ def load_dataframe() -> pd.DataFrame:
 
     client = _get_client()
     ws     = client.open_by_key(sheet_id).worksheet(sheet_name)
-    rows   = ws.get_all_records(numericise_ignore=["all"])
-    df     = pd.DataFrame(rows)
+    values = ws.get_all_values()
+    if not values:
+        return pd.DataFrame()
+
+    # Làm sạch tiêu đề: bỏ cột không tên, đánh số lại cột trùng tên
+    raw_headers = [h.strip() for h in values[0]]
+    seen, keep_idx, headers = {}, [], []
+    for i, h in enumerate(raw_headers):
+        if not h:
+            continue                       # bỏ cột tiêu đề trống
+        if h in seen:
+            seen[h] += 1
+            h = f"{h} ({seen[h]})"         # cột trùng: "ĐỊA CHỈ (2)"
+        else:
+            seen[h] = 1
+        keep_idx.append(i)
+        headers.append(h)
+
+    data = [[(r[i] if i < len(r) else "") for i in keep_idx] for r in values[1:]]
+    df   = pd.DataFrame(data, columns=headers)
 
     if df.empty:
         return df
