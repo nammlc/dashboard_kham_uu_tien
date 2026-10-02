@@ -138,6 +138,17 @@
         <span class="text-sm">Import Lịch Hẹn</span>
       </a>
 
+      <a href="{{ url_for('reconcile_page') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'reconcile_page' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">✅</span>
+        <span class="text-sm">Đối Chiếu Tái Khám</span>
+      </a>
+
       <a href="{{ url_for('refresh_cache') }}"
          class="flex items-center gap-3 px-4 py-2 border-l-[3px] border-transparent
                 text-white/65 hover:bg-white/5 hover:text-white transition-colors">

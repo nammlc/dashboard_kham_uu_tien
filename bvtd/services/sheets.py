@@ -570,3 +570,89 @@ def append_patients(records: list[dict]) -> tuple[int, str | None]:
         return len(rows), None
     except Exception as e:
         return 0, f"Lỗi ghi Sheet: {type(e).__name__}: {e}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GHI SHEET CHO ĐỐI CHIẾU TÁI KHÁM / LỌC TRÙNG
+# Mọi hàm: tra lại dòng THỰC TẾ ngay lúc ghi (theo khoá chính STT nếu có) rồi
+# ĐỐI CHIẾU LẠI TÊN ở dòng đó — nếu Sheet vừa bị thêm/xoá/sắp xếp lại và dòng không
+# còn đúng bệnh nhân thì DỪNG, không ghi nhầm người.
+# ══════════════════════════════════════════════════════════════════════════════
+def _open_ws():
+    return _get_client().open_by_key(current_app.config["SHEET_ID"]) \
+                        .worksheet(current_app.config["SHEET_NAME"])
+
+
+def _resolve_rows(ws, headers, items):
+    """items: list dict {sheet_row, stt, name} → (list số dòng thực tế, lỗi | None)."""
+    stt_map = {}
+    if COL_STT in headers:
+        for i, v in enumerate(ws.col_values(headers.index(COL_STT) + 1)):
+            if i and str(v).strip():
+                stt_map.setdefault(str(v).strip(), i + 1)
+    names = ws.col_values(headers.index(COL_NAME) + 1) if COL_NAME in headers else []
+
+    rows = []
+    for it in items:
+        stt = str(it.get("stt") or "").strip()
+        if stt:
+            row = stt_map.get(stt)
+            if row is None:
+                return [], f"Không tìm thấy STT {stt} trên Google Sheet (dòng có thể đã bị xoá). Bấm Làm mới rồi thử lại."
+        else:
+            row = int(it["sheet_row"])
+        expect = norm_name(it.get("name", ""))
+        if names and expect:
+            cell = names[row - 1] if 0 < row <= len(names) else ""
+            if norm_name(cell) != expect:
+                return [], (f"Dòng {row} trên Sheet không còn là bệnh nhân «{it.get('name', '')}» "
+                            f"(Sheet vừa bị sửa/sắp xếp lại?). Đã dừng để không ghi nhầm — "
+                            f"bấm Làm mới rồi đối chiếu lại.")
+        rows.append(row)
+    return rows, None
+
+
+def write_cells(updates, raw=False):
+    """updates: list dict {sheet_row, stt, name, values: {tên_cột: giá_trị}}.
+    Trả về (số dòng đã ghi, lỗi | None). Ghi bằng 1 lần batch_update."""
+    if not updates:
+        return 0, None
+    try:
+        ws = _open_ws()
+        headers = [h.strip() for h in ws.row_values(1)]
+        rows, err = _resolve_rows(ws, headers, updates)
+        if err:
+            return 0, err
+        body = []
+        for u, row in zip(updates, rows):
+            for col, val in u["values"].items():
+                if col in headers:
+                    body.append({"range": gspread.utils.rowcol_to_a1(row, headers.index(col) + 1),
+                                 "values": [[val]]})
+        if not body:
+            return 0, "Không tìm thấy cột nào khớp trên Google Sheet."
+        ws.batch_update(body, value_input_option="RAW" if raw else "USER_ENTERED")
+        return len(updates), None
+    except Exception as e:
+        return 0, f"Lỗi ghi Sheet: {type(e).__name__}: {e}"
+
+
+def delete_rows(items):
+    """XOÁ HẲN các dòng khỏi Sheet (không hoàn tác được). items như _resolve_rows.
+    Xoá từ dòng LỚN → NHỎ trong 1 lần gọi API để không lệch số dòng. Trả về (số dòng, lỗi)."""
+    if not items:
+        return 0, None
+    try:
+        ws = _open_ws()
+        headers = [h.strip() for h in ws.row_values(1)]
+        rows, err = _resolve_rows(ws, headers, items)
+        if err:
+            return 0, err
+        uniq = sorted(set(rows), reverse=True)
+        ws.spreadsheet.batch_update({"requests": [
+            {"deleteDimension": {"range": {"sheetId": ws.id, "dimension": "ROWS",
+                                           "startIndex": r - 1, "endIndex": r}}}
+            for r in uniq]})
+        return len(uniq), None
+    except Exception as e:
+        return 0, f"Lỗi xoá dòng: {type(e).__name__}: {e}"

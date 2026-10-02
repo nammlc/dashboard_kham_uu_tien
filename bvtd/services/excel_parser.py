@@ -284,3 +284,120 @@ def parse_minh_lo_excel(file_bytes: bytes, current_year: int | None = None):
 
     except Exception as e:
         return [], f"Lỗi đọc file: {type(e).__name__}: {e}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NHẬT KÝ KHÁM THỰC TẾ (file 01-1 "Báo cáo ĐK Khám Chữa Bệnh" của Minh Lộ)
+# Dùng cho chức năng Đối Chiếu Tái Khám — port từ Streamlit.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _serial_to_date_str(val):
+    try:
+        s = float(val)
+        if 20000 < s < 60000:
+            return (datetime(1899, 12, 30) + timedelta(days=int(s))).strftime("%d/%m/%Y")
+    except Exception:
+        pass
+    return None
+
+
+def parse_minhlo_date(val):
+    """Ô ngày Minh Lộ → ('dd/mm/yyyy' | '', đọc_được: bool).
+    Chấp nhận số serial Excel lẫn chữ (dd/mm/yyyy, d/m/yyyy, dd-mm-yyyy, yyyy-mm-dd,
+    có hoặc không kèm giờ). Ô trống → ('', True) (không phải lỗi)."""
+    raw = str(val).strip()
+    if not raw:
+        return "", True
+    serial = _serial_to_date_str(raw)
+    if serial:
+        return serial, True
+    date_part = re.split(r"\s+", raw, maxsplit=1)[0]
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(date_part, fmt).strftime("%d/%m/%Y"), True
+        except Exception:
+            continue
+    return "", False
+
+
+def parse_minh_lo_visit_log(file_bytes: bytes):
+    """Đọc nhật ký bệnh nhân THỰC TẾ đến khám.
+    Trả về (records, error | None, warning | None)."""
+    grid, max_row, max_col, get_row, err = _load_xlsx_grid(file_bytes)
+    if err:
+        return [], err, None
+    try:
+        header_row_idx = None
+        for r in range(1, min(max_row + 1, 15)):
+            row_vals = [str(v).strip().lower() for v in get_row(r)]
+            has_ma_bn = any("mã bn" in v or "ma bn" in v for v in row_vals)
+            has_ngay_dk = any(v in ("ngày đk", "ngay dk") for v in row_vals)
+            if has_ma_bn and has_ngay_dk:
+                header_row_idx = r
+                break
+        if header_row_idx is None:
+            return [], ("Không tìm thấy hàng tiêu đề \"Mã BN\" / \"Ngày ĐK\". "
+                        "Kiểm tra đúng loại báo cáo \"ĐK Khám Chữa Bệnh\" (file 01-1) của Minh Lộ."), None
+
+        headers = [str(v).strip().replace("\n", " ").lower() for v in get_row(header_row_idx)]
+
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                if any(k.lower() in h for k in keywords):
+                    return i
+            return None
+
+        idx = {
+            "ma_bn":     find_col(["mã bn", "ma bn"]),
+            "ho_ten":    find_col(["họ tên", "ho ten"]),
+            "ngay_sinh": find_col(["ngày tháng năm sinh", "ngay thang nam sinh"]),
+            # "năm sinh" là chuỗi con của "ngày tháng năm sinh" → phải khớp CHÍNH XÁC cả ô
+            "nam_sinh":  next((i for i, h in enumerate(headers) if h.strip() == "năm sinh"), None),
+            "tuoi":      find_col(["tuổi", "tuoi"]),
+            "gioi_tinh": find_col(["giới tính", "gioi tinh"]),
+            "xa":        find_col(["xã,phường", "xã", "phường", "xa,phuong"]),
+            "huyen":     find_col(["huyện,tỉnh", "huyện", "tỉnh", "huyen,tinh"]),
+            "cmnd":      find_col(["số cmnd", "so cmnd", "cmnd"]),
+            "ngay_dk":   find_col(["ngày đk", "ngay dk"]),
+            "gio_dk":    find_col(["giờ đk", "gio dk"]),
+            "khoa_dk":   find_col(["khoa đk", "khoa dk"]),
+            "dt":        find_col(["điện thoại", "dien thoai"]),
+            "dia_chi":   find_col(["địa chỉ", "dia chi"]),
+            "chan_doan": find_col(["chẩn đoán", "chan doan"]),
+            "bhyt":      find_col(["mã thẻ bhyt", "ma the bhyt", "bhyt"]),
+        }
+
+        def cv(row_vals, key):
+            i = idx.get(key)
+            if i is None or i >= len(row_vals):
+                return ""
+            return str(row_vals[i]).strip()
+
+        data_rows, n_bad_date = [], 0
+        for r in range(header_row_idx + 1, max_row + 1):
+            row_vals = get_row(r)
+            ho_ten = cv(row_vals, "ho_ten")
+            if not ho_ten or not re.search(r"[^\W\d_]", ho_ten, re.UNICODE):
+                continue                     # bỏ dòng trống / không phải bệnh nhân
+            ngay_sinh, _ = parse_minhlo_date(cv(row_vals, "ngay_sinh"))
+            ngay_dk, dk_ok = parse_minhlo_date(cv(row_vals, "ngay_dk"))
+            if not dk_ok:
+                n_bad_date += 1
+            dia_chi = cv(row_vals, "dia_chi") or " ".join(
+                p for p in [cv(row_vals, "xa"), cv(row_vals, "huyen")] if p)
+            data_rows.append({
+                "MÃ BN": cv(row_vals, "ma_bn"), "HỌ TÊN": ho_ten,
+                "NGÀY SINH": ngay_sinh, "NĂM SINH": cv(row_vals, "nam_sinh"),
+                "TUỔI": cv(row_vals, "tuoi"), "GIỚI TÍNH": cv(row_vals, "gioi_tinh"),
+                "ĐỊA CHỈ": dia_chi, "SỐ CMND": cv(row_vals, "cmnd"),
+                "NGÀY ĐK": ngay_dk, "GIỜ ĐK": cv(row_vals, "gio_dk"),
+                "KHOA ĐK": cv(row_vals, "khoa_dk"),
+                "SỐ ĐIỆN THOẠI": fix_phone(cv(row_vals, "dt")),
+                "CHẨN ĐOÁN": cv(row_vals, "chan_doan"), "SỐ BHYT": cv(row_vals, "bhyt"),
+            })
+        warn = (f"⚠️ {n_bad_date} dòng trong file không đọc được NGÀY ĐK (định dạng lạ) — "
+                f"những dòng này sẽ KHÔNG đối chiếu được, cần kiểm tra thủ công."
+                if n_bad_date else None)
+        return data_rows, None, warn
+    except Exception as e:
+        return [], f"Lỗi đọc file: {type(e).__name__}: {e}", None

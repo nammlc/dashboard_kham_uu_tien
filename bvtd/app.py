@@ -7,7 +7,7 @@ Deploy Render: gunicorn app:app
 """
 
 import os, json, uuid, threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import (Flask, render_template, redirect, url_for,
                    session, request, flash, jsonify, g)
@@ -471,6 +471,376 @@ def api_update_status():
     ok = update_status(row_number, new_status)
     cache.delete("main_df")
     return jsonify({"ok": ok})
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ĐỐI CHIẾU TÁI KHÁM + LỌC TRÙNG  (port từ tab "Đối Chiếu Tái Khám" của Streamlit)
+#   /doi-chieu               → trang chính (upload file 01-1 · kết quả · quét trùng)
+#   /doi-chieu/upload        → đọc file nhật ký khám
+#   /doi-chieu/chay          → chạy đối chiếu
+#   /doi-chieu/cap-nhat      → Bước 2: ghi "Đã khám" cho các ca khớp chắc chắn đã chọn
+#   /doi-chieu/xu-ly         → Bước 3/4: sửa SĐT/năm sinh hoặc xác nhận từng ca
+#   /doi-chieu/csv           → tải báo cáo
+#   /doi-chieu/trung/...     → quét & xoá dòng Form trùng với dòng tái khám
+# Kết quả giữ trên server (đĩa) theo token trong session, không nhét vào cookie.
+# ════════════════════════════════════════════════════════════════════════════════
+_rec_lock = threading.Lock()
+
+
+def _rec_token(create=False):
+    tok = session.get("rec_token", "")
+    if not tok and create:
+        tok = uuid.uuid4().hex
+        session["rec_token"] = tok
+    return tok
+
+
+@app.template_filter("dmy")
+def _dmy_filter(v):
+    """'2026-10-05' → '05/10/2026' (kết quả đối chiếu lưu ngày dạng ISO)."""
+    s = str(v or "")
+    if len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-":
+        return f"{s[8:10]}/{s[5:7]}/{s[0:4]}"
+    return s or "—"
+
+
+def _rec_back(tab="tk", anchor=""):
+    return redirect(url_for("reconcile_page", tab=tab, _anchor=anchor or None))
+
+
+def _mark_attended(entries):
+    """Ghi 'Đã khám' (và gán nguồn vãng lai nếu nguồn đang trống). Trả (n, err)."""
+    from services.sheets import write_cells, STATUS_ATTENDED, COL_STATUS, COL_SOURCE
+    from services.reconcile import blank_source, SOURCE_VANG_LAI
+    ups = []
+    for r in entries:
+        vals = {COL_STATUS: STATUS_ATTENDED}
+        if blank_source(r.get("source")):
+            vals[COL_SOURCE] = SOURCE_VANG_LAI
+        ups.append({"sheet_row": r["sheet_row"], "stt": r.get("stt"), "name": r.get("name"), "values": vals})
+    n, err = write_cells(ups)
+    if not err:
+        for r in entries:
+            r["done"] = True
+            r["status_now"] = STATUS_ATTENDED
+            if blank_source(r.get("source")):
+                r["source"] = SOURCE_VANG_LAI
+        cache.delete("main_df")
+    return n, err
+
+
+@app.route("/doi-chieu")
+@login_required
+def reconcile_page():
+    from services.reconcile import (store_load, build_reconcile_scope, build_dup_lists,
+                                    patient_kind, RECONCILE_LOOKBACK_DAYS, RECONCILE_WINDOW_BEFORE,
+                                    RECONCILE_WINDOW_AFTER, DUPLICATE_WINDOW_DAYS)
+    from services.sheets import vn_today
+    tok   = _rec_token()
+    visit = store_load(tok, "visit")
+    rec   = store_load(tok, "rec")
+    dup   = store_load(tok, "dup")
+    today = vn_today()
+    df    = _get_df()
+
+    tab = request.args.get("tab", "tk")
+    tab = tab if tab in ("tk", "vl") else "tk"
+    flt = request.args.get("f", "all")
+    flt = flt if flt in ("all", "attended_sure", "attended_unsure", "not_attended") else "all"
+
+    scope_n = scope_cnt = None
+    if visit:
+        pts, scope_cnt = build_reconcile_scope(df, today)
+        scope_n = len(pts)
+
+    groups = {"tk": [], "vl": []}
+    g = {}
+    if rec:
+        for r in rec["results"]:
+            groups["tk" if patient_kind(r.get("source")) == "tai_kham" else "vl"].append(r)
+        rows = groups[tab]
+        sure   = [r for r in rows if r["status"] == "attended_sure"]
+        unsure = [r for r in rows if r["status"] == "attended_unsure"]
+        notatt = [r for r in rows if r["status"] == "not_attended"]
+        g = {
+            "rows": rows, "shown": rows if flt == "all" else [r for r in rows if r["status"] == flt],
+            "n_sure": len(sure), "n_unsure": len(unsure), "n_not": len(notatt),
+            "to_update": [r for r in sure if not r.get("done")],
+            "need_review": [r for r in unsure if not r.get("done")],
+            "sot": [r for r in notatt if r.get("near_miss") and not r.get("done")],
+        }
+
+    legacy = build_dup_lists(df, today)[2] if df is not None and not df.empty else []
+    return render_template(
+        "dashboard/reconcile.html", visit=visit, rec=rec, g=g, tab=tab, flt=flt,
+        n_tk=len(groups["tk"]), n_vl=len(groups["vl"]),
+        scope_n=scope_n, scope_cnt=scope_cnt, dup=dup, legacy=legacy, today=today,
+        LOOKBACK=RECONCILE_LOOKBACK_DAYS, WB=RECONCILE_WINDOW_BEFORE, WA=RECONCILE_WINDOW_AFTER,
+        DUPWIN=DUPLICATE_WINDOW_DAYS,
+        range_start=today - timedelta(days=RECONCILE_LOOKBACK_DAYS),
+    )
+
+
+@app.route("/doi-chieu/upload", methods=["POST"])
+@login_required
+def reconcile_upload():
+    from services.excel_parser import parse_minh_lo_visit_log
+    from services.reconcile import store_save, store_delete, parse_dmy
+    f = request.files.get("visit_file")
+    if not f or not f.filename.lower().endswith(".xlsx"):
+        flash("Vui lòng chọn file .xlsx (Báo cáo ĐK KCB — file 01-1).", "error")
+        return _rec_back()
+    records, err, warn = parse_minh_lo_visit_log(f.read())
+    if err:
+        flash(f"❌ {err}", "error")
+        return _rec_back()
+    if not records:
+        flash("⚠️ Không tìm thấy dữ liệu trong file. Kiểm tra đúng loại báo cáo \"ĐK KCB\".", "warning")
+        return _rec_back()
+    ds = [d for d in (parse_dmy(v["NGÀY ĐK"]) for v in records) if d]
+    tok = _rec_token(create=True)
+    store_delete(tok, "rec")                       # file mới → kết quả cũ không còn đúng
+    store_save(tok, "visit", {
+        "filename": f.filename, "records": records, "warn": warn,
+        "vmin": min(ds).strftime("%d/%m/%Y") if ds else "?",
+        "vmax": max(ds).strftime("%d/%m/%Y") if ds else "?",
+    })
+    cache.delete("main_df")
+    if warn:
+        flash(warn, "warning")
+    return _rec_back(anchor="buoc1")
+
+
+@app.route("/doi-chieu/chay", methods=["POST"])
+@login_required
+def reconcile_run():
+    from services.reconcile import (store_load, store_save, build_reconcile_scope, reconcile_attendance,
+                                    blank_source, SOURCE_VANG_LAI)
+    from services.sheets import vn_today, vn_now, write_cells, STATUS_NOT_ATTENDED, COL_STATUS, COL_SOURCE
+    tok = _rec_token()
+    visit = store_load(tok, "visit")
+    if not visit:
+        flash("Phiên đối chiếu đã hết hạn — vui lòng upload lại file.", "info")
+        return _rec_back()
+    with _rec_lock:
+        cache.delete("main_df")
+        today = vn_today()
+        pts, _ = build_reconcile_scope(_get_df(), today)
+        results = reconcile_attendance(pts, visit["records"], today=today)
+
+        # Như Streamlit: BN đăng ký online (nguồn trống) mà CHƯA đến khám → tự gán nguồn
+        # "BỆNH NHÂN VÃNG LAI" + trạng thái chưa khám ngay (lượt đối chiếu chính là bước xác nhận).
+        auto = [r for r in results if r["status"] == "not_attended" and blank_source(r.get("source"))]
+        n_auto, err_auto = 0, None
+        if auto:
+            n_auto, err_auto = write_cells([
+                {"sheet_row": r["sheet_row"], "stt": r.get("stt"), "name": r.get("name"),
+                 "values": {COL_STATUS: STATUS_NOT_ATTENDED, COL_SOURCE: SOURCE_VANG_LAI}} for r in auto])
+            if not err_auto:
+                for r in auto:
+                    r["source"] = SOURCE_VANG_LAI
+                cache.delete("main_df")
+        store_save(tok, "rec", {"results": results, "ran_at": vn_now().strftime("%H:%M %d/%m/%Y"),
+                                "n_auto": n_auto})
+    if err_auto:
+        flash(f"⚠️ Không tự gán được nguồn/trạng thái cho BN vãng lai chưa khám: {err_auto}", "warning")
+    flash(f"📊 Đã đối chiếu {len(results)} bệnh nhân.", "success")
+    return _rec_back(anchor="ketqua")
+
+
+@app.route("/doi-chieu/cap-nhat", methods=["POST"])
+@login_required
+def reconcile_apply():
+    from services.reconcile import store_load, store_save
+    tok, tab = _rec_token(), request.form.get("tab", "tk")
+    rec = store_load(tok, "rec")
+    if not rec:
+        flash("Kết quả đối chiếu đã hết hạn — hãy đối chiếu lại.", "info")
+        return _rec_back(tab)
+    if not request.form.get("confirm"):
+        flash("⚠️ Hãy tích ô xác nhận đã xem kỹ danh sách trước khi ghi vào Google Sheet.", "warning")
+        return _rec_back(tab, "buoc2")
+    picked = set()
+    for x in request.form.getlist("row"):
+        try:
+            picked.add(int(x))
+        except ValueError:
+            pass
+    with _rec_lock:
+        entries = [r for r in rec["results"]
+                   if r["sheet_row"] in picked and r["status"] == "attended_sure" and not r.get("done")]
+        if not entries:
+            flash("Không có bệnh nhân nào được chọn để cập nhật.", "warning")
+            return _rec_back(tab, "buoc2")
+        n, err = _mark_attended(entries)
+        if not err:
+            store_save(tok, "rec", rec)
+    if err:
+        flash(f"❌ {err}", "error")
+    else:
+        flash(f"✅ Đã cập nhật \"Đã khám\" cho {n} bệnh nhân.", "success")
+    return _rec_back(tab, "buoc2")
+
+
+@app.route("/doi-chieu/xu-ly", methods=["POST"])
+@login_required
+def reconcile_one():
+    """Bước 3 (chỉ khớp tên) & Bước 4 (nghi bị sót): lưu SĐT/năm sinh hoặc xác nhận Đã khám."""
+    from services.reconcile import store_load, store_save
+    from services.sheets import write_cells, COL_PHONE, COL_BIRTH_YEAR
+    tok, tab = _rec_token(), request.form.get("tab", "tk")
+    rec = store_load(tok, "rec")
+    try:
+        row = int(request.form.get("sheet_row", ""))
+    except ValueError:
+        row = -1
+    entry = next((r for r in (rec or {}).get("results", []) if r["sheet_row"] == row), None)
+    if not entry or entry.get("done"):
+        flash("Không tìm thấy bệnh nhân này trong kết quả (có thể đã xử lý) — hãy đối chiếu lại.", "info")
+        return _rec_back(tab)
+    anchor = request.form.get("anchor", "buoc3")
+    action = request.form.get("action")
+    with _rec_lock:
+        if action == "save":
+            phone = request.form.get("phone", "").strip()
+            birth = request.form.get("birth", "").strip()
+            n, err = write_cells([{"sheet_row": row, "stt": entry.get("stt"), "name": entry["name"],
+                                   "values": {COL_PHONE: phone, COL_BIRTH_YEAR: birth}}], raw=True)
+            if err:
+                flash(f"❌ {err}", "error")
+            else:
+                entry["phone"], entry["birth_year"] = phone, birth
+                store_save(tok, "rec", rec)
+                cache.delete("main_df")
+                flash(f"💾 Đã lưu SĐT/Năm sinh cho {entry['name']} — lần đối chiếu sau sẽ tự khớp đúng hơn.", "success")
+        elif action == "confirm" and (entry["status"] == "attended_unsure" or entry.get("near_miss")):
+            n, err = _mark_attended([entry])
+            if err:
+                flash(f"❌ {err}", "error")
+            else:
+                store_save(tok, "rec", rec)
+                flash(f"✅ Đã đánh dấu Đã khám cho {entry['name']}.", "success")
+    return _rec_back(tab, anchor)
+
+
+@app.route("/doi-chieu/csv")
+@login_required
+def reconcile_csv():
+    import csv, io
+    from flask import Response
+    from services.reconcile import store_load, patient_kind
+    from services.sheets import vn_now
+    tab = request.args.get("tab", "tk")
+    rec = store_load(_rec_token(), "rec")
+    if not rec:
+        flash("Chưa có kết quả đối chiếu.", "info")
+        return _rec_back(tab)
+    lab = {"attended_sure": "Đã đến khám", "attended_unsure": "Có thể đã đến (cần xác nhận)",
+           "not_attended": "Chưa đến khám"}
+    tier = {1: "Tên + SĐT", 2: "Tên + Năm sinh", 3: "Chỉ Tên"}
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["STT", "Họ tên", "SĐT", "Năm sinh", "Tuổi", "Nguồn", "Ngày hẹn", "Kết quả", "Khớp qua",
+                "Ngày thực đến", "SĐT lúc khám", "Năm sinh lúc khám", "Khoa thực khám", "Độ tin cậy"])
+    for r in rec["results"]:
+        if (patient_kind(r.get("source")) == "tai_kham") != (tab == "tk"):
+            continue
+        v = r.get("visit") or {}
+        w.writerow([r.get("stt", ""), r["name"], r.get("phone", ""), r.get("birth_year", ""), r.get("age", ""),
+                    r.get("source", ""), _dmy_filter(r.get("exam_date")), lab[r["status"]],
+                    tier.get(r.get("match_tier"), ""), v.get("NGÀY ĐK", ""), v.get("SỐ ĐIỆN THOẠI", ""),
+                    v.get("NĂM SINH", ""), v.get("KHOA ĐK", ""), f"{r['score']:.0f}%"])
+    fname = f"doi_chieu_taikham_{tab}_{vn_now().strftime('%Y%m%d_%H%M')}.csv"
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+
+# ── Lọc trùng: dòng tái khám (từ khoa) ↔ dòng đăng ký Form ───────────────────
+@app.route("/doi-chieu/trung/quet", methods=["POST"])
+@login_required
+def dup_scan():
+    from services.reconcile import (store_save, build_dup_lists, find_duplicate_tk_form, classify_dup_pairs)
+    from services.sheets import vn_today, vn_now
+    tok = _rec_token(create=True)
+    cache.delete("main_df")
+    khoa, form, _ = build_dup_lists(_get_df(), vn_today())
+    pairs = classify_dup_pairs(find_duplicate_tk_form(khoa, form))
+    store_save(tok, "dup", {"pairs": pairs, "n_khoa": len(khoa), "n_form": len(form),
+                            "scanned_at": vn_now().strftime("%H:%M %d/%m/%Y")})
+    if not pairs:
+        flash("✅ Không phát hiện trường hợp nghi trùng nào trong phạm vi quét.", "success")
+    return redirect(url_for("reconcile_page", _anchor="trung"))
+
+
+@app.route("/doi-chieu/trung/xoa", methods=["POST"])
+@login_required
+def dup_delete():
+    """Xoá HẲN các dòng Form đã chọn (giữ dòng tái khám). Dòng Form đang 'Đã khám' mà dòng tái khám
+    chưa → chuyển trạng thái sang dòng tái khám TRƯỚC khi xoá để không mất dấu lượt khám."""
+    from services.reconcile import store_load, store_delete
+    from services.sheets import write_cells, delete_rows, STATUS_ATTENDED, COL_STATUS
+    tok = _rec_token()
+    dup = store_load(tok, "dup")
+    back = redirect(url_for("reconcile_page", _anchor="trung"))
+    if not dup:
+        flash("Kết quả quét đã hết hạn — hãy quét lại.", "info")
+        return back
+    if not request.form.get("confirm"):
+        flash("⚠️ Hãy tích ô xác nhận (xoá không thể hoàn tác) trước khi xoá.", "warning")
+        return back
+    picked = set()
+    for x in request.form.getlist("row"):
+        try:
+            picked.add(int(x))
+        except ValueError:
+            pass
+    sel = [d for d in dup["pairs"] if d["form"]["sheet_row"] in picked]
+    if not sel:
+        flash("Chưa chọn dòng Form nào để xoá.", "warning")
+        return back
+    with _rec_lock:
+        transfer = [d for d in sel if d.get("needs_status_transfer")]
+        if transfer:
+            _, err = write_cells([{"sheet_row": d["khoa"]["sheet_row"], "stt": d["khoa"].get("stt"),
+                                   "name": d["khoa"]["name"], "values": {COL_STATUS: STATUS_ATTENDED}}
+                                  for d in transfer])
+            if err:
+                flash(f"❌ Lỗi khi chuyển trạng thái sang dòng tái khám (chưa xoá gì): {err}", "error")
+                return back
+        n, err = delete_rows([{"sheet_row": d["form"]["sheet_row"], "stt": d["form"].get("stt"),
+                               "name": d["form"]["name"]} for d in sel])
+    cache.delete("main_df")
+    if err:
+        flash(f"❌ {err}", "error")
+        return back
+    store_delete(tok, "dup")
+    store_delete(tok, "rec")        # số dòng trên Sheet đã đổi → kết quả đối chiếu cũ không còn đúng
+    flash(f"✅ Đã xoá {n} dòng Form khỏi Google Sheet"
+          + (f" · đã cập nhật {len(transfer)} dòng tái khám thành \"Đã khám\"" if transfer else "") + ".", "success")
+    return back
+
+
+@app.route("/doi-chieu/trung/don-nhan-cu", methods=["POST"])
+@login_required
+def dup_clean_legacy():
+    """Dọn các dòng đã bị phiên bản cũ gắn nhãn '⚠️ TRÙNG' nhưng chưa xoá."""
+    from services.reconcile import build_dup_lists, store_delete
+    from services.sheets import vn_today, delete_rows
+    back = redirect(url_for("reconcile_page", _anchor="trung"))
+    if not request.form.get("confirm"):
+        flash("⚠️ Hãy tích ô xác nhận (xoá không thể hoàn tác) trước khi xoá.", "warning")
+        return back
+    with _rec_lock:
+        cache.delete("main_df")
+        legacy = build_dup_lists(_get_df(), vn_today())[2]
+        n, err = delete_rows([{"sheet_row": r["sheet_row"], "stt": r.get("stt"), "name": r["name"]} for r in legacy])
+    cache.delete("main_df")
+    if err:
+        flash(f"❌ {err}", "error")
+    else:
+        store_delete(_rec_token(), "rec")
+        flash(f"✅ Đã xoá {n} dòng đã gắn nhãn trùng khỏi Google Sheet.", "success")
+    return back
 
 
 # ── Làm mới cache thủ công ────────────────────────────────────────────────────

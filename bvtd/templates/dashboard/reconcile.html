@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block title %}Đối Chiếu Tái Khám{% endblock %}
+{% block page_title %}✅ Đối Chiếu Tái Khám & Lọc Trùng{% endblock %}
+
+{% macro blank_src(v) %}{{ (v|string|trim) in ('', 'nan', 'N/A', '—', 'None') }}{% endmacro %}
+
+{% block content %}
+<div class="space-y-5 max-w-6xl">
+
+  <!-- ═════════ BƯỚC 1: UPLOAD + CHẠY ═════════ -->
+  <section id="buoc1" class="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+    <h2 class="font-semibold text-slate-800 text-sm flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-emerald-500"></span>Đối chiếu bệnh nhân đã hẹn với thực tế đến khám
+    </h2>
+
+    <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 leading-relaxed">
+      <b>📋 Hướng dẫn:</b> Minh Lộ → Báo cáo → <b>ĐK Khám Chữa Bệnh</b> → chọn <b>khoảng ngày rộng</b>
+      (cả tháng, hoặc từ ngày hẹn sớm nhất tới nay) → Export Excel → upload vào đây. Hệ thống dò từng bệnh nhân
+      <b>chưa khám</b> trên Sheet xem có trong log không — <b>không cần đúng 1 ngày</b> (đến sớm/muộn vẫn bắt được).
+    </div>
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+      ⚠️ <b>Đúng file cần upload:</b> file <b>01-1</b> (Báo cáo ĐK KCB — nhật ký BN thực tế đến khám), không nhầm với file 04-4 ở trang Import.
+    </div>
+
+    <form method="POST" action="{{ url_for('reconcile_upload') }}" enctype="multipart/form-data" class="flex flex-wrap items-center gap-3">
+      <input type="file" name="visit_file" accept=".xlsx" required
+             class="text-sm file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold hover:file:bg-slate-200">
+      <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Đọc file</button>
+    </form>
+
+    {% if visit %}
+    <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+      ✅ <b>{{ visit.filename }}</b> — đọc được <b>{{ visit.records|length }}</b> lượt khám thực tế, từ <b>{{ visit.vmin }}</b> đến <b>{{ visit.vmax }}</b>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 leading-relaxed">
+      📅 Danh sách gốc: BN <b>từ khoa/tái khám</b>, BN <b>đăng ký Form</b> (nguồn trống) và BN gắn nhãn <b>vãng lai</b>, có NGÀY KHÁM từ
+      <b>{{ range_start.strftime('%d/%m/%Y') }}</b> đến <b>{{ today.strftime('%d/%m/%Y') }}</b> ({{ LOOKBACK }} ngày) và đang <b>CHƯA KHÁM</b>.<br>
+      🔍 Mỗi BN chỉ chấp nhận lượt đến nằm trong <b>[Ngày hẹn − {{ WB }}, min(Ngày hẹn + {{ WA }}, Hôm nay)]</b> — cửa sổ tự thu hẹp khi ngày hẹn gần hôm nay để không nhầm sang đợt khám cũ của cùng người.<br>
+      🏷️ BN đăng ký Form (nguồn trống) <b>đã đến</b> hoặc <b>chưa đến</b> khám đều được tự gán <b>NGUỒN = "BỆNH NHÂN VÃNG LAI"</b> khi ghi vào Sheet.
+    </div>
+    <p class="text-xs text-slate-500">Sẽ kiểm tra <b>{{ scope_n }}</b> bệnh nhân chưa khám
+      ({{ scope_cnt.khoa }} từ khoa/tái khám · {{ scope_cnt.blank }} đăng ký Form · {{ scope_cnt.vl }} đã gắn nhãn vãng lai).</p>
+    <form method="POST" action="{{ url_for('reconcile_run') }}"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Đang đối chiếu…';">
+      <button {% if not scope_n %}disabled{% endif %}
+              class="bg-emerald-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-emerald-700 disabled:opacity-40">
+        🔍 Bắt đầu đối chiếu
+      </button>
+      <span class="text-xs text-slate-400 ml-2">Lưu ý: BN nguồn trống mà chưa đến khám sẽ được ghi nguồn "vãng lai" lên Sheet ngay.</span>
+    </form>
+    {% endif %}
+  </section>
+
+  <!-- ═════════ KẾT QUẢ ═════════ -->
+  {% if rec %}
+  <section id="ketqua" class="bg-white rounded-xl border border-slate-200">
+    <div class="px-5 pt-4 pb-0 flex items-center justify-between flex-wrap gap-2">
+      <h2 class="font-semibold text-slate-800 text-sm">Kết quả đối chiếu {{ rec.results|length }} bệnh nhân
+        <span class="text-xs font-normal text-slate-400">· lúc {{ rec.ran_at }}</span></h2>
+      {% if rec.n_auto %}<span class="text-xs text-slate-500">🏷️ Đã tự gán nguồn "vãng lai" cho {{ rec.n_auto }} BN chưa đến.</span>{% endif %}
+    </div>
+
+    <!-- Tabs nhóm -->
+    <div class="flex gap-1 px-5 pt-3 border-b border-slate-200">
+      {% for key, label, n in [('tk','🏥 Bệnh nhân tái khám', n_tk), ('vl','🚶 Bệnh nhân vãng lai', n_vl)] %}
+      <a href="{{ url_for('reconcile_page', tab=key, _anchor='ketqua') }}"
+         class="px-4 py-2 text-sm -mb-px border-b-2 {{ 'border-blue-500 text-blue-700 font-semibold' if tab==key else 'border-transparent text-slate-500 hover:text-slate-700' }}">
+        {{ label }} ({{ n }})</a>
+      {% endfor %}
+    </div>
+
+    {% if not g.rows %}
+      <p class="px-5 py-8 text-center text-sm text-slate-400">Không có bệnh nhân nào thuộc nhóm này trong lần đối chiếu này.</p>
+    {% else %}
+    <div class="p-5 space-y-6">
+      <!-- KPI -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><p class="text-xs text-emerald-700 font-semibold">✅ Đã đến khám</p><p class="text-2xl font-bold text-emerald-700 mono">{{ g.n_sure }}</p></div>
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-3"><p class="text-xs text-blue-700 font-semibold">❓ Cần xác nhận</p><p class="text-2xl font-bold text-blue-700 mono">{{ g.n_unsure }}</p></div>
+        <div class="rounded-lg border border-violet-200 bg-violet-50 p-3"><p class="text-xs text-violet-700 font-semibold">⏳ Chưa đến</p><p class="text-2xl font-bold text-violet-700 mono">{{ g.n_not }}</p></div>
+      </div>
+
+      <!-- Lọc + CSV -->
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        {% for key, label in [('all','Tất cả'),('attended_sure','✅ Đã đến'),('attended_unsure','❓ Cần xác nhận'),('not_attended','⏳ Chưa đến')] %}
+        <a href="{{ url_for('reconcile_page', tab=tab, f=key, _anchor='ketqua') }}"
+           class="px-3 py-1.5 rounded-full border {{ 'bg-[#0f2642] text-white border-[#0f2642]' if flt==key else 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ label }}</a>
+        {% endfor %}
+        <a href="{{ url_for('reconcile_csv', tab=tab) }}" class="ml-auto px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">⬇️ Tải báo cáo (.csv)</a>
+      </div>
+
+      <!-- Bảng kết quả -->
+      <div class="overflow-auto max-h-[28rem] border border-slate-200 rounded-lg">
+        <table class="w-full text-xs" style="min-width:900px">
+          <thead class="bg-slate-50 text-slate-500 uppercase sticky top-0"><tr>
+            <th class="px-3 py-2 text-left">STT</th><th class="px-3 py-2 text-left">Họ tên</th><th class="px-3 py-2 text-left">SĐT</th>
+            <th class="px-3 py-2 text-left">Năm sinh</th><th class="px-3 py-2 text-left">Nguồn</th><th class="px-3 py-2 text-left">Ngày hẹn</th>
+            <th class="px-3 py-2 text-left">Kết quả</th><th class="px-3 py-2 text-left">Khớp qua</th><th class="px-3 py-2 text-left">Ngày thực đến</th>
+            <th class="px-3 py-2 text-left">Khoa thực khám</th><th class="px-3 py-2 text-right">Tin cậy</th>
+          </tr></thead>
+          <tbody class="divide-y divide-slate-100">
+          {% for r in g.shown %}{% set v = r.visit or {} %}
+            <tr class="hover:bg-slate-50">
+              <td class="px-3 py-2 mono text-slate-400">{{ r.stt or '—' }}</td>
+              <td class="px-3 py-2 font-medium text-slate-800">{{ r.name }}</td>
+              <td class="px-3 py-2 mono">{{ r.phone or '—' }}</td>
+              <td class="px-3 py-2 mono">{{ r.birth_year or '—' }}</td>
+              <td class="px-3 py-2 text-slate-500">{{ r.source or '—' }}</td>
+              <td class="px-3 py-2 mono">{{ r.exam_date|dmy }}</td>
+              <td class="px-3 py-2 whitespace-nowrap">
+                {% if r.done %}<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold">✓ Đã ghi Sheet</span>
+                {% elif r.status=='attended_sure' %}<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">✅ Đã đến</span>
+                {% elif r.status=='attended_unsure' %}<span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold">❓ Cần xác nhận</span>
+                {% else %}<span class="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-semibold">⏳ Chưa đến</span>{% endif %}
+              </td>
+              <td class="px-3 py-2">{{ {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'Chỉ Tên'}.get(r.match_tier,'—') }}</td>
+              <td class="px-3 py-2 mono">{{ v.get('NGÀY ĐK','—') }}</td>
+              <td class="px-3 py-2">{{ v.get('KHOA ĐK','—') or '—' }}</td>
+              <td class="px-3 py-2 text-right mono">{{ '%.0f'|format(r.score) }}%</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- BƯỚC 2 -->
+      <div id="buoc2" class="space-y-3">
+        <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>📋 Bước 2 — Xem lại & chọn trước khi cập nhật</h3>
+        <p class="text-xs text-slate-500">Có <b>{{ g.to_update|length }}</b> BN khớp CHẮC CHẮN (Tên+SĐT, hoặc Tên+Năm sinh lệch ≤ 1) đang chưa "Đã khám".
+          Ca "cần xác nhận" ({{ g.n_unsure }}) <b>không</b> nằm ở đây — xử lý ở Bước 3. <b>Bỏ tích ca nào nhận diện SAI.</b></p>
+        {% if g.to_update %}
+        <form method="POST" action="{{ url_for('reconcile_apply') }}" class="space-y-3"
+              onsubmit="return confirm('Ghi trạng thái ĐÃ KHÁM vào Google Sheet cho các bệnh nhân đã chọn?');">
+          <input type="hidden" name="tab" value="{{ tab }}">
+          <div class="overflow-auto max-h-96 border border-slate-200 rounded-lg">
+            <table class="w-full text-xs" style="min-width:760px">
+              <thead class="bg-slate-50 text-slate-500 uppercase sticky top-0"><tr>
+                <th class="px-3 py-2 w-8"><input type="checkbox" checked onclick="document.querySelectorAll('.pick2').forEach(c=>c.checked=this.checked)" title="Chọn / bỏ tất cả"></th>
+                <th class="px-3 py-2 text-left">STT</th><th class="px-3 py-2 text-left">Họ tên</th><th class="px-3 py-2 text-left">SĐT</th>
+                <th class="px-3 py-2 text-left">Năm sinh</th><th class="px-3 py-2 text-left">Nguồn</th><th class="px-3 py-2 text-left">Ngày hẹn</th>
+                <th class="px-3 py-2 text-left">Ngày thực đến</th><th class="px-3 py-2 text-left">Khớp qua</th><th class="px-3 py-2 text-right">Tin cậy</th>
+              </tr></thead>
+              <tbody class="divide-y divide-slate-100">
+              {% for r in g.to_update %}
+                <tr class="hover:bg-slate-50">
+                  <td class="px-3 py-2"><input class="pick2" type="checkbox" name="row" value="{{ r.sheet_row }}" checked></td>
+                  <td class="px-3 py-2 mono text-slate-400">{{ r.stt or '—' }}</td>
+                  <td class="px-3 py-2 font-medium text-slate-800">{{ r.name }}</td>
+                  <td class="px-3 py-2 mono">{{ r.phone or '—' }}</td>
+                  <td class="px-3 py-2 mono">{{ r.birth_year or '—' }}</td>
+                  <td class="px-3 py-2">{% if blank_src(r.source)|trim == 'True' %}<span class="text-amber-700">🏷️ sẽ gán: BỆNH NHÂN VÃNG LAI</span>{% else %}{{ r.source }}{% endif %}</td>
+                  <td class="px-3 py-2 mono">{{ r.exam_date|dmy }}</td>
+                  <td class="px-3 py-2 mono">{{ r.visit['NGÀY ĐK'] if r.visit else '—' }}</td>
+                  <td class="px-3 py-2">{{ {1:'Tên + SĐT',2:'Tên + Năm sinh'}.get(r.match_tier,'—') }}</td>
+                  <td class="px-3 py-2 text-right mono">{{ '%.0f'|format(r.score) }}%</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <label class="flex items-start gap-2 text-xs text-slate-600">
+            <input type="checkbox" name="confirm" value="1" class="mt-0.5">
+            Tôi đã xem kỹ danh sách và xác nhận đúng người trước khi ghi vào Google Sheet.
+          </label>
+          <button class="bg-emerald-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-emerald-700">
+            ✅ Cập nhật "Đã khám" cho các bệnh nhân đã chọn
+          </button>
+        </form>
+        {% else %}
+        <p class="text-xs text-slate-400 bg-slate-50 rounded-lg px-4 py-3">Không có bệnh nhân nào còn chờ cập nhật tự động ở nhóm này.</p>
+        {% endif %}
+      </div>
+
+      <!-- BƯỚC 3 -->
+      {% if g.need_review %}
+      <div id="buoc3" class="space-y-3">
+        <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span>🔎 Bước 3 — Cần kiểm tra thủ công (chỉ khớp tên) · {{ g.need_review|length }} ca</h3>
+        <p class="text-xs text-slate-500">Chỉ khớp được TÊN, không có SĐT/năm sinh xác nhận. Xem 2 bên rồi <b>sửa SĐT/Năm sinh</b> (để lần sau tự khớp đúng) hoặc <b>xác nhận đúng người</b>.</p>
+        {% for r in g.need_review %}{% set v = r.visit or {} %}
+        <details class="border border-slate-200 rounded-lg">
+          <summary class="px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50">
+            👤 <b>{{ r.name }}</b> <span class="text-slate-400 text-xs">· STT {{ r.stt or '—' }} · hẹn {{ r.exam_date|dmy }} · giống tên {{ '%.0f'|format(r.score) }}%</span>
+          </summary>
+          <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs">
+            <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc3">
+            <div class="grid md:grid-cols-2 gap-3">
+              <div class="rounded-lg bg-slate-50 p-3 space-y-0.5"><p class="font-semibold text-slate-700 mb-1">Trên Google Sheet</p>
+                <p>SĐT: {{ r.phone or '—' }}</p><p>Năm sinh: {{ r.birth_year or '—' }}</p><p>Tuổi: {{ r.age or '—' }}</p><p>Nguồn: {{ r.source or '—' }}</p></div>
+              <div class="rounded-lg bg-blue-50 p-3 space-y-0.5"><p class="font-semibold text-blue-800 mb-1">Ứng viên trong log Minh Lộ</p>
+                <p>Tên: {{ v.get('HỌ TÊN','—') }}</p><p>SĐT: {{ v.get('SỐ ĐIỆN THOẠI') or '—' }}</p><p>Năm sinh: {{ v.get('NĂM SINH') or '—' }}</p>
+                <p>Ngày ĐK: {{ v.get('NGÀY ĐK') or '—' }} · Khoa: {{ v.get('KHOA ĐK') or '—' }}</p></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="block">Sửa SĐT trên Sheet<input name="phone" value="{{ v.get('SỐ ĐIỆN THOẠI') or r.phone or '' }}" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></label>
+              <label class="block">Sửa Năm sinh trên Sheet<input name="birth" value="{{ v.get('NĂM SINH') or r.birth_year or '' }}" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></label>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button name="action" value="save" class="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold">💾 Lưu SĐT/Năm sinh vào Sheet</button>
+              <button name="action" value="confirm" onclick="return confirm('Xác nhận {{ r.name }} đúng là người này và đánh dấu ĐÃ KHÁM?')" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">✅ Xác nhận đúng — đánh dấu Đã khám</button>
+            </div>
+          </form>
+        </details>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- BƯỚC 4 -->
+      {% if g.sot %}
+      <div id="buoc4" class="space-y-3">
+        <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-red-500"></span>⚠️ Bước 4 — Nghi bị sót (tên giống, ngoài cửa sổ ngày) · {{ g.sot|length }} ca</h3>
+        <p class="text-xs text-slate-500">Đang là "chưa khám" nhưng log có lượt khám TÊN GIỐNG, chỉ là ngày thực đến nằm NGOÀI cửa sổ [hẹn − {{ WB }}, hẹn + {{ WA }}]. Xem kỹ rồi xác nhận nếu đúng cùng 1 người.</p>
+        {% for r in g.sot %}{% set nm = r.near_miss %}{% set v = nm.visit %}
+        <details class="border border-slate-200 rounded-lg">
+          <summary class="px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50">
+            ⚠️ <b>{{ r.name }}</b> <span class="text-slate-400 text-xs">· STT {{ r.stt or '—' }} · hẹn {{ r.exam_date|dmy }} · thực đến {{ nm.visit_date|dmy }} · giống tên {{ '%.0f'|format(nm.score) }}%</span>
+          </summary>
+          <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs">
+            <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc4">
+            <div class="grid md:grid-cols-2 gap-3">
+              <div class="rounded-lg bg-slate-50 p-3 space-y-0.5"><p class="font-semibold text-slate-700 mb-1">Trên Google Sheet (đã hẹn)</p>
+                <p>👤 {{ r.name }}</p><p>📅 Ngày hẹn: {{ r.exam_date|dmy }}</p><p>📞 SĐT: {{ r.phone or '—' }}</p><p>🎂 Năm sinh: {{ r.birth_year or '—' }}</p></div>
+              <div class="rounded-lg bg-red-50 p-3 space-y-0.5"><p class="font-semibold text-red-800 mb-1">Lượt khám tìm thấy (ngoài cửa sổ)</p>
+                <p>👤 {{ v.get('HỌ TÊN','') }}</p><p>📅 Ngày thực đến: {{ nm.visit_date|dmy }}</p><p>📞 SĐT lúc khám: {{ v.get('SỐ ĐIỆN THOẠI') or '—' }}</p>
+                <p>🎂 Năm sinh lúc khám: {{ v.get('NĂM SINH') or '—' }}</p><p>🏥 Khoa: {{ v.get('KHOA ĐK') or '—' }}</p></div>
+            </div>
+            <button name="action" value="confirm" onclick="return confirm('Xác nhận {{ r.name }} đúng là người này và đánh dấu ĐÃ KHÁM?')" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">✅ Đúng là người này — đánh dấu Đã khám</button>
+          </form>
+        </details>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <!-- ═════════ LỌC TRÙNG ═════════ -->
+  <section id="trung" class="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+    <h2 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-violet-500"></span>🔁 Đối chiếu trùng — Tái khám (từ khoa) ↔ Đăng ký Form</h2>
+    <div class="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-xs text-violet-900 leading-relaxed">
+      Quét BN <b>đã có lịch tái khám (từ khoa)</b> nhưng gần ngày hẹn lại <b>tự đăng ký thêm qua Form</b> (nguồn trống hoặc "vãng lai") cho CÙNG 1 đợt khám —
+      khớp Tên + SĐT / Tên + Năm sinh, ngày hẹn lệch tối đa <b>{{ DUPWIN }} ngày</b>, trong {{ LOOKBACK }} ngày gần nhất, <b>bất kể đã/chưa khám</b> (tránh đếm 1 lượt khám thành 2).<br>
+      🗑️ Sau khi xem 2 bên và xác nhận, dòng Form nghi trùng bị <b>xoá HẲN khỏi Google Sheet</b>, luôn giữ dòng tái khám. <b>Không thể hoàn tác.</b>
+    </div>
+
+    {% if legacy %}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">
+      <p>🧹 Có <b>{{ legacy|length }}</b> dòng đã được gắn nhãn trùng từ phiên bản cũ, chưa xoá:</p>
+      <ul class="list-disc pl-5 text-slate-600">{% for l in legacy[:15] %}<li>STT {{ l.stt or '—' }} · {{ l.name }} · <i>{{ l.source }}</i></li>{% endfor %}
+        {% if legacy|length > 15 %}<li>… và {{ legacy|length - 15 }} dòng nữa</li>{% endif %}</ul>
+      <form method="POST" action="{{ url_for('dup_clean_legacy') }}" class="flex flex-wrap items-center gap-3"
+            onsubmit="return confirm('Xoá HẲN {{ legacy|length }} dòng khỏi Google Sheet — KHÔNG THỂ HOÀN TÁC. Chắc chắn?');">
+        <label class="flex items-center gap-2"><input type="checkbox" name="confirm" value="1"> Tôi hiểu thao tác này không thể hoàn tác</label>
+        <button class="px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700">🗑️ Xoá {{ legacy|length }} dòng</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('dup_scan') }}"
+          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Đang quét…';">
+      <button class="bg-violet-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-violet-700">🔁 Quét trùng Tái khám ↔ Form</button>
+    </form>
+
+    {% if dup %}
+      <p class="text-xs text-slate-500">Đã quét {{ dup.n_khoa }} dòng tái khám và {{ dup.n_form }} dòng Form/vãng lai lúc {{ dup.scanned_at }}.</p>
+      {% if not dup.pairs %}
+        <p class="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-4 py-3">✅ Không phát hiện trường hợp nghi trùng nào trong phạm vi quét.</p>
+      {% else %}
+        {% set n_crit = dup.pairs|selectattr('severity','equalto','critical')|list|length %}
+        {% set n_left = dup.pairs|selectattr('severity','equalto','leftover')|list|length %}
+        <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          🔁 Phát hiện <b>{{ dup.pairs|length }}</b> cặp nghi trùng:
+          <b>🔴 {{ n_crit }}</b> đang bị ĐẾM TRÙNG (cả 2 dòng "Đã khám") ·
+          <b>🟡 {{ n_left }}</b> dư thừa (1 bên đã khám) ·
+          <b>⚪ {{ dup.pairs|length - n_crit - n_left }}</b> cả 2 chưa khám.
+        </div>
+
+        <form method="POST" action="{{ url_for('dup_delete') }}" class="space-y-3"
+              onsubmit="var n=document.querySelectorAll('.pickd:checked').length; if(!n){alert('Chưa chọn dòng Form nào.');return false;} return confirm('Xoá HẲN '+n+' dòng Form khỏi Google Sheet — KHÔNG THỂ HOÀN TÁC. Chắc chắn?');">
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" onclick="document.querySelectorAll('.pickd').forEach(c=>c.checked=this.checked)"> ☑️ Chọn tất cả</label>
+          {% set sev = {'critical':'🔴 ĐẾM TRÙNG','leftover':'🟡 DƯ THỪA','normal':'⚪ Bình thường'} %}
+          {% set tier = {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'❓ Chỉ khớp tên'} %}
+          {% for d in dup.pairs %}{% set pk = d.khoa %}{% set pf = d.form %}
+          <div class="flex items-start gap-3 border border-slate-200 rounded-lg px-3 py-2">
+            <input type="checkbox" class="pickd mt-1" name="row" value="{{ pf.sheet_row }}" title="Chọn xoá dòng Form: STT {{ pf.stt or '—' }} · {{ pf.name }}">
+            <details class="flex-1">
+              <summary class="text-sm cursor-pointer">
+                {{ sev[d.severity] }} · <b>{{ pk.name }}</b> · khớp {{ tier[d.match_tier] }} ·
+                lệch ngày hẹn {% if d.day_diff is not none %}{{ '%+d'|format(d.day_diff) }}{% else %}—{% endif %} · giống tên {{ '%.0f'|format(d.score) }}%
+              </summary>
+              <div class="mt-3 space-y-3 text-xs">
+                {% if d.severity=='critical' %}<p class="rounded bg-red-50 text-red-800 px-3 py-2">🔴 CẢ 2 dòng đều "Đã khám" — 1 lượt khám đang bị đếm thành 2. Xoá dòng Form để số liệu đúng lại.</p>
+                {% elif d.needs_status_transfer %}<p class="rounded bg-blue-50 text-blue-800 px-3 py-2">🟡 Dòng Form đang "Đã khám" nhưng dòng tái khám chưa — khi xoá, hệ thống <b>tự cập nhật dòng tái khám thành "Đã khám"</b> để không mất dấu lượt khám.</p>
+                {% elif d.severity=='leftover' %}<p class="rounded bg-blue-50 text-blue-800 px-3 py-2">🟡 Dòng tái khám đã "Đã khám", dòng Form còn "chưa khám" — xoá dòng Form để dọn.</p>{% endif %}
+                {% if d.match_tier==3 %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❓ Chỉ khớp được TÊN (không có SĐT/năm sinh xác nhận) — hãy so kỹ 2 bên trước khi xoá.</p>{% endif %}
+                <div class="grid md:grid-cols-2 gap-3">
+                  <div class="rounded-lg bg-emerald-50 p-3 space-y-0.5"><p class="font-semibold text-emerald-800 mb-1">📋 Dòng tái khám (từ khoa) — GIỮ LẠI</p>
+                    <p>STT: {{ pk.stt or '—' }}</p><p>SĐT: {{ pk.phone or '—' }}</p><p>Năm sinh: {{ pk.birth_year or '—' }}</p><p>Ngày hẹn: {{ pk.exam_date|dmy }}</p>
+                    <p>Nguồn: {{ pk.source or '—' }}</p><p>Trạng thái: {{ '✅ Đã khám' if d.khoa_attended else '⏳ Chưa khám' }}</p></div>
+                  <div class="rounded-lg bg-red-50 p-3 space-y-0.5"><p class="font-semibold text-red-800 mb-1">📝 Dòng đăng ký Form — NGHI TRÙNG (sẽ xoá)</p>
+                    <p>STT: {{ pf.stt or '—' }}</p><p>SĐT: {{ pf.phone or '—' }}</p><p>Năm sinh: {{ pf.birth_year or '—' }}</p><p>Ngày hẹn: {{ pf.exam_date|dmy }}</p>
+                    <p>Nguồn: {{ pf.source or '(trống)' }}</p><p>Trạng thái: {{ '✅ Đã khám' if d.form_attended else '⏳ Chưa khám' }}</p></div>
+                </div>
+              </div>
+            </details>
+          </div>
+          {% endfor %}
+          <label class="flex items-start gap-2 text-xs text-slate-600">
+            <input type="checkbox" name="confirm" value="1" class="mt-0.5"> Tôi đã xem kỹ thông tin 2 bên và hiểu việc xoá dòng khỏi Google Sheet <b>không thể hoàn tác</b>.
+          </label>
+          <button class="bg-red-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-red-700">🗑️ Xoá các dòng Form đã chọn</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
