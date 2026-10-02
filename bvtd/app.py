@@ -294,13 +294,12 @@ def upcoming():
 # Dữ liệu đã đọc được giữ trên server (cache) theo token trong session — KHÔNG nhét
 # vào cookie (cookie tối đa ~4KB, không chứa nổi danh sách BN).
 # ════════════════════════════════════════════════════════════════════════════════
-_IMPORT_TTL  = 3600                # giữ file đã upload 1 giờ
-_import_lock = threading.Lock()    # chặn 2 người/2 cú click cùng ghi 1 lúc
+_import_lock = threading.Lock()    # chặn 2 cú click cùng ghi 1 lúc (trong 1 worker)
 
 
 def _import_data():
-    token = session.get("import_token")
-    return (cache.get(f"import:{token}") if token else None)
+    from services.importer import load_import
+    return load_import(session.get("import_token", ""))
 
 
 def _import_context(selected_arg: list[str] | None, has_sel: bool, fresh: bool = False):
@@ -334,6 +333,12 @@ def _import_context(selected_arg: list[str] | None, has_sel: bool, fresh: bool =
     }
 
 
+@app.errorhandler(413)
+def too_large(_e):
+    flash("File quá lớn (tối đa 10MB). Hãy xuất lại file 04-4 với khoảng ngày ngắn hơn.", "error")
+    return redirect(url_for("import_excel"))
+
+
 @app.route("/import", methods=["GET", "POST"])
 @login_required
 def import_excel():
@@ -353,11 +358,10 @@ def import_excel():
             flash("⚠️ Không tìm thấy dữ liệu bệnh nhân trong file. Kiểm tra lại định dạng file.", "warning")
             return redirect(url_for("import_excel"))
 
-        old = session.get("import_token")
-        if old:
-            cache.delete(f"import:{old}")
+        from services.importer import save_import, delete_import
+        delete_import(session.get("import_token", ""))
         token = uuid.uuid4().hex
-        cache.set(f"import:{token}", {"records": records, "filename": f.filename}, timeout=_IMPORT_TTL)
+        save_import(token, records, f.filename)
         session["import_token"] = token
         cache.delete("main_df")        # bắt đầu phiên import bằng dữ liệu Sheet mới nhất
         return redirect(url_for("import_preview_page"))
@@ -444,9 +448,8 @@ def import_confirm():
         flash("💡 Nếu lỗi Permission: vào Google Sheet → Share → đổi Service Account từ Viewer thành Editor.", "info")
         return redirect(back)
 
-    token = session.pop("import_token", None)       # xong → bỏ file, tránh import lại
-    if token:
-        cache.delete(f"import:{token}")
+    from services.importer import delete_import
+    delete_import(session.pop("import_token", ""))   # xong → bỏ file, tránh import lại
     flash(f"✅ Đã thêm thành công {n} dòng mới vào Google Sheet "
           f"(theo {len(ctx['selected'])} ngày lập đã chọn"
           + (f" · đã tự động bỏ qua {len(dup)} bệnh nhân trùng" if dup else "") + ").", "success")
@@ -478,7 +481,9 @@ def refresh_cache():
 # ── Context processor: inject user + ngày hiện tại vào mọi template ──────────
 @app.context_processor
 def inject_globals():
+    from services.importer import IMPORT_VERSION
     return {
+        "import_version": IMPORT_VERSION,
         "current_user": current_user,
         "today_str":    datetime.now().strftime("%A, %d/%m/%Y"),
     }
