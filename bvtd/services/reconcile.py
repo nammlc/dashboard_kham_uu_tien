@@ -7,6 +7,10 @@ services/reconcile.py
                                  3 tầng: Tên+SĐT → Tên+Năm sinh(±1) → chỉ Tên (cần xem tay)
   2. find_duplicate_tk_form    : dòng "tái khám (từ khoa)" ↔ dòng "đăng ký Form" trùng nhau
 
+Nguyên tắc so khớp (v3): MỘT NGƯỜI = TÊN giống + ÍT NHẤT 1 bằng chứng độc lập (SĐT / năm sinh), và
+KHÔNG có mâu thuẫn (năm sinh lệch > 1, khác giới tính). Tên chỉ "gần giống" thì không bao giờ được
+xếp vào nhóm khớp chắc chắn. Xem compare_person().
+
 Chỉ chứa logic thuần (không gọi Google Sheet) để dễ test. Việc ghi Sheet nằm ở sheets.py.
 """
 import difflib, json, os, re, tempfile, time
@@ -16,7 +20,7 @@ from datetime import date, datetime, timedelta
 import pandas as pd
 
 from services.sheets import (
-    COL_NAME, COL_PHONE, COL_BIRTH_YEAR, COL_SOURCE, COL_STATUS, COL_STT,
+    COL_NAME, COL_PHONE, COL_BIRTH_YEAR, COL_SOURCE, COL_STATUS, COL_STT, COL_GENDER,
     STATUS_ATTENDED, norm_name, norm_phone_key,
 )
 
@@ -78,10 +82,12 @@ def name_match_ok(a, b, min_ratio=NAME_RATIO_MIN):
     return ratio >= min_ratio, ratio
 
 
-# ── Bản NHANH của so khớp tên (kết quả y hệt name_match_ok) ───────────────────
-# name_match_ok chỉ đạt khi TỪ ĐẦU và TỪ CUỐI của 2 tên trùng nhau. Nên thay vì so mỗi bệnh nhân
-# với TOÀN BỘ nhật ký khám (hàng chục nghìn dòng × hàng trăm bệnh nhân → quá 60s, gunicorn giết worker),
-# ta gom nhật ký vào các "ngăn" theo (từ đầu, từ cuối) và chỉ so trong ngăn của đúng bệnh nhân đó.
+# ══════════════════════════════════════════════════════════════════════════════
+# LÕI SO KHỚP "CÙNG MỘT NGƯỜI" (dùng chung cho đối chiếu tái khám + lọc trùng)
+# ══════════════════════════════════════════════════════════════════════════════
+# Vì sao viết lại: bản cũ coi 2 tên là 1 người khi "từ đầu + từ cuối trùng và độ giống chuỗi ≥ 92%".
+# Với tên 3 từ, đổi 1 chữ ở tên đệm vẫn đạt ~93% — vd. "NGUYỄN THẾ HUẤN" (nam, 1956) bị coi là
+# "NGUYỄN THỊ HUẤN" (nữ, 1964). Bản mới: so TỪNG TỪ, và bắt buộc có bằng chứng độc lập + không mâu thuẫn.
 _norm = lru_cache(maxsize=200_000)(norm_name)
 
 
@@ -94,21 +100,149 @@ def _parse_dmy_cached(s):
 
 
 def _name_key(na):
-    """Khoá ngăn: (từ đầu, từ cuối) của tên ĐÃ chuẩn hoá; tên rỗng → None."""
+    """Khoá ngăn: (từ đầu, từ cuối) của tên ĐÃ chuẩn hoá; tên rỗng → None. Mọi kiểu 'cùng tên' đều
+    đòi từ đầu + từ cuối trùng, nên chỉ cần so trong cùng ngăn (nhanh, không đổi kết quả)."""
     t = na.split()
     return (t[0], t[-1]) if t else None
 
 
+def valid_phone(s) -> str:
+    """SĐT dùng làm BẰNG CHỨNG: chuẩn hoá, đổi +84 → 0, chỉ nhận số bắt đầu bằng 0 dài 10–11 chữ số.
+    Loại '0', 'N/A', số rác như 3997393303 (Excel làm mất số 0 + sai số) để không 'trùng SĐT' oan."""
+    k = norm_phone_key(s)
+    if k.startswith("84") and len(k) in (11, 12):
+        k = "0" + k[2:]
+    return k if re.fullmatch(r"0\d{9,10}", k) else ""
+
+
+def birth_int(v):
+    """Năm sinh hợp lệ (1900…năm nay+1) từ '1956' hoặc '01/01/1956'; không có → None."""
+    m = re.search(r"(?:19|20)\d{2}", str(v or ""))
+    if not m:
+        return None
+    y = int(m.group())
+    return y if 1900 <= y <= date.today().year + 1 else None
+
+
+def gender_key(v) -> str:
+    """'Nam' → 'M', 'Nữ' → 'F', còn lại ('N/A', trống) → ''."""
+    s = _norm(v)
+    return "M" if s.startswith("NAM") else ("F" if s.startswith("NU") else "")
+
+
+def _lev1(x, y) -> bool:
+    """2 từ khác nhau đúng 1 ký tự (thay / thêm / bớt)."""
+    if x == y:
+        return True
+    lx, ly = len(x), len(y)
+    if abs(lx - ly) > 1:
+        return False
+    if lx == ly:
+        return sum(a != b for a, b in zip(x, y)) == 1
+    if lx > ly:
+        x, y = y, x
+    i = 0
+    while i < len(x) and x[i] == y[i]:
+        i += 1
+    return x[i:] == y[i + 1:]
+
+
 @lru_cache(maxsize=500_000)
-def _ratio_ok(na, nb, min_ratio=NAME_RATIO_MIN):
-    """2 tên đã chuẩn hoá, CÙNG khoá (từ đầu/cuối) → (đạt, tỉ lệ)."""
+def name_relation(na, nb):
+    """Quan hệ giữa 2 tên ĐÃ chuẩn hoá (bỏ dấu, IN HOA). Trả về (kiểu, tỉ lệ giống chuỗi):
+      'exact'   — trùng hoàn toàn
+      'typo'    — cùng số từ, từ đầu & từ cuối trùng, mỗi từ đệm trùng HOẶC chỉ sai 1 ký tự và dài ≥ 4
+                  (từ ngắn ≤ 3 ký tự như THỊ/THẾ/VĂN/VINH… sai 1 ký tự là NGƯỜI KHÁC)
+      'partial' — thiếu/thừa tên đệm (từ đầu & cuối trùng, các từ của tên ngắn nằm trong tên dài đúng thứ tự)
+      None      — khác người
+    """
+    if not na or not nb:
+        return None, 0.0
     if na == nb:
-        return True, 1.0
-    sm = difflib.SequenceMatcher(None, na, nb)
-    if sm.real_quick_ratio() < min_ratio or sm.quick_ratio() < min_ratio:   # cận trên → loại sớm, không đổi kết quả
-        return False, 0.0
-    r = sm.ratio()
-    return r >= min_ratio, r
+        return "exact", 1.0
+    ta, tb = na.split(), nb.split()
+    if ta[0] != tb[0] or ta[-1] != tb[-1]:
+        return None, 0.0
+    ratio = difflib.SequenceMatcher(None, na, nb).ratio()
+    if len(ta) == len(tb):
+        ok = all(x == y or (len(x) >= 4 and len(y) >= 4 and _lev1(x, y))
+                 for x, y in zip(ta[1:-1], tb[1:-1]))
+        return ("typo", ratio) if ok else (None, ratio)
+    if abs(len(ta) - len(tb)) <= 2:
+        short, long_ = (ta, tb) if len(ta) < len(tb) else (tb, ta)
+        it = iter(long_)
+        if all(tok in it for tok in short):               # tên ngắn là dãy con của tên dài
+            return "partial", ratio
+    return None, ratio
+
+
+def person_view(rec: dict, kind: str = "sheet") -> dict:
+    """Chuẩn hoá 1 bản ghi (bệnh nhân trên Sheet hoặc lượt khám trong log Minh Lộ) về cùng 1 dạng."""
+    if kind == "visit":
+        name, phone = rec.get("HỌ TÊN"), rec.get("SỐ ĐIỆN THOẠI")
+        birth = birth_int(rec.get("NĂM SINH")) or birth_int(rec.get("NGÀY SINH"))
+        gender = rec.get("GIỚI TÍNH")
+    else:
+        name, phone = rec.get("name"), rec.get("phone")
+        birth, gender = birth_int(rec.get("birth_year")), rec.get("gender")
+    nn = _norm(name)
+    return {"name": str(name or "").strip(), "nn": nn, "key": _name_key(nn),
+            "phone": valid_phone(phone), "birth": birth, "gender": gender_key(gender)}
+
+
+def compare_person(a: dict, b: dict):
+    """So 2 `person_view`. Trả về None nếu KHÔNG phải cùng người, ngược lại dict:
+         tier  1 = Tên (trùng hẳn) + SĐT       → khớp chắc chắn
+               2 = Tên (trùng hẳn) + năm sinh lệch ≤ 1 → khớp chắc chắn
+               3 = khớp yếu → LUÔN cần người xem
+         score (0–100, độ giống tên) · rel · notes (lý do, hiển thị cho người xem)
+    Quy tắc:
+      • Tên khác người (name_relation=None) → loại.
+      • MÂU THUẪN (năm sinh lệch > 1 · khác giới tính) → loại, trừ khi tên trùng hẳn VÀ SĐT trùng
+        (khi đó hạ xuống tier 3 kèm cảnh báo — có thể nhập sai năm sinh, hoặc cha/con trùng tên chung SĐT).
+      • Tên chỉ 'gần giống' (typo/partial) → cần SĐT trùng hoặc năm sinh ±1; và chỉ được tier 3.
+      • Tên trùng hẳn nhưng không có bằng chứng nào khác → tier 3 ("chỉ khớp tên").
+    """
+    rel, ratio = name_relation(a["nn"], b["nn"])
+    if rel is None:
+        return None
+    phone_eq = bool(a["phone"] and b["phone"] and a["phone"] == b["phone"])
+    phone_ne = bool(a["phone"] and b["phone"] and a["phone"] != b["phone"])
+    diff = abs(a["birth"] - b["birth"]) if (a["birth"] and b["birth"]) else None
+    g_conflict = bool(a["gender"] and b["gender"] and a["gender"] != b["gender"])
+
+    conflicts = []
+    if diff is not None and diff > 1:
+        conflicts.append(f"năm sinh lệch {diff} năm ({a['birth']} ≠ {b['birth']})")
+    if g_conflict:
+        conflicts.append("khác giới tính")
+
+    notes = []
+    if rel == "typo":
+        notes.append(f"Tên lệch nhẹ: «{a['name']}» ↔ «{b['name']}»")
+    elif rel == "partial":
+        notes.append(f"Tên thiếu/thừa tên đệm: «{a['name']}» ↔ «{b['name']}»")
+    score = round(100 * ratio, 1)
+
+    if conflicts:
+        if rel == "exact" and phone_eq:
+            notes.append("⚠️ SĐT trùng nhưng " + " và ".join(conflicts) + " — có thể là 2 người khác nhau")
+            return {"tier": 3, "score": score, "rel": rel, "notes": notes}
+        return None
+
+    corroborated = phone_eq or (diff is not None and diff <= 1)
+    if rel == "exact":
+        tier = 1 if phone_eq else (2 if diff is not None and diff <= 1 else 3)
+        if tier == 3:
+            notes.append("Chỉ khớp tên — không có SĐT/năm sinh để xác nhận")
+    else:
+        if not corroborated:
+            return None                       # tên gần giống mà không có bằng chứng nào → coi là người khác
+        tier = 3
+        notes.append("Đã khớp " + ("SĐT" if phone_eq else f"năm sinh (lệch {diff})") + " nhưng tên chưa trùng hẳn")
+    if phone_ne:
+        notes.append(f"SĐT khác nhau ({a['phone']} ≠ {b['phone']})")
+    return {"tier": tier, "score": score, "rel": rel, "notes": notes}
 
 
 def parse_dmy(s):
@@ -129,58 +263,43 @@ def _to_int(v):
 # 1) ĐỐI CHIẾU TRÙNG — TÁI KHÁM (TỪ KHOA) ↔ ĐĂNG KÝ FORM
 # ══════════════════════════════════════════════════════════════════════════════
 def find_duplicate_tk_form(khoa_patients, form_patients, window_days=DUPLICATE_WINDOW_DAYS):
-    """Mỗi dòng Form chỉ ghép tối đa 1 dòng khoa. 3 tầng: Tên+SĐT, Tên+Năm sinh(±1),
-    chỉ Tên (cần kiểm tra tay). Chỉ ghép cặp có ngày hẹn lệch ≤ window_days."""
-    used_form_idx, results = set(), []
+    """Dòng 'tái khám (từ khoa)' ↔ dòng 'đăng ký Form' trùng nhau. Mỗi dòng chỉ thuộc tối đa 1 cặp.
+    Chỉ ghép cặp có ngày hẹn lệch ≤ window_days VÀ compare_person() chấp nhận (xem lõi so khớp).
+    Ghép TOÀN CỤC: cặp chắc chắn nhất (tier thấp, ngày gần, tên giống) được chọn trước — kết quả
+    không còn phụ thuộc thứ tự dòng trên Sheet như bản cũ."""
+    forms = [person_view(pf) for pf in form_patients]
+    buckets = {}
+    for j, fv in enumerate(forms):
+        if fv["key"]:
+            buckets.setdefault(fv["key"], []).append(j)
 
-    form_buckets = {}                                   # (từ đầu, từ cuối) → [(j, pf, tên_chuẩn_hoá)]
-    for j, pf in enumerate(form_patients):
-        nf = _norm(pf.get("name", ""))
-        key = _name_key(nf)
-        if key:
-            form_buckets.setdefault(key, []).append((j, pf, nf))
-
-    for pk in khoa_patients:
-        k_name = pk.get("name", "")
-        k_phone = norm_phone_key(pk.get("phone"))
-        k_birth = _to_int(pk.get("birth_year"))
-        k_date = pk.get("exam_date")
-        na = _norm(k_name)
-        key = _name_key(na)
-
-        candidates = []
-        for j, pf, nf in (form_buckets.get(key, ()) if key else ()):
-            if j in used_form_idx:
-                continue
-            f_date = pf.get("exam_date")
-            if k_date and f_date and abs((f_date - k_date).days) > window_days:
-                continue
-            ok, ratio = _ratio_ok(na, nf)
-            if ok:
-                candidates.append((ratio, j, pf))
-        if not candidates:
+    cand = []                                              # (tier, |lệch ngày|, -score, i, j, cmp)
+    for i, pk in enumerate(khoa_patients):
+        kv = person_view(pk)
+        if not kv["key"]:
             continue
+        k_date = pk.get("exam_date")
+        for j in buckets.get(kv["key"], ()):
+            f_date = form_patients[j].get("exam_date")
+            gap = abs((f_date - k_date).days) if (k_date and f_date) else None
+            if gap is not None and gap > window_days:
+                continue
+            c = compare_person(kv, forms[j])
+            if c:
+                cand.append((c["tier"], gap if gap is not None else 99, -c["score"], i, j, c))
+    cand.sort(key=lambda t: t[:5])
 
-        best = None
-        if k_phone:                                               # Tầng 1
-            for ratio, j, pf in candidates:
-                if norm_phone_key(pf.get("phone")) == k_phone and (best is None or ratio > best[0]):
-                    best = (ratio, j, pf, 1)
-        if best is None and k_birth is not None:                  # Tầng 2
-            for ratio, j, pf in candidates:
-                f_birth = _to_int(pf.get("birth_year"))
-                if f_birth is not None and abs(f_birth - k_birth) <= 1 and (best is None or ratio > best[0]):
-                    best = (ratio, j, pf, 2)
-        if best is None:                                          # Tầng 3
-            ratio, j, pf = max(candidates, key=lambda c: c[0])
-            best = (ratio, j, pf, 3)
-
-        ratio, j, pf, tier = best
-        used_form_idx.add(j)
-        day_diff = (pf["exam_date"] - k_date).days if (k_date and pf.get("exam_date")) else None
-        results.append({"khoa": pk, "form": pf, "match_tier": tier,
-                        "score": round(100 * ratio, 1), "day_diff": day_diff})
-    return results
+    used_k, used_f, results = set(), set(), []
+    for tier, _gap, _ns, i, j, c in cand:
+        if i in used_k or j in used_f:
+            continue
+        used_k.add(i); used_f.add(j)
+        pk, pf = khoa_patients[i], form_patients[j]
+        day_diff = (pf["exam_date"] - pk["exam_date"]).days if (pk.get("exam_date") and pf.get("exam_date")) else None
+        results.append((i, {"khoa": pk, "form": pf, "match_tier": tier, "score": c["score"],
+                            "day_diff": day_diff, "notes": c["notes"], "rel": c["rel"]}))
+    results.sort(key=lambda t: t[0])
+    return [r for _, r in results]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -191,83 +310,59 @@ def reconcile_attendance(sheet_patients, visit_records,
                          window_after=RECONCILE_WINDOW_AFTER, today=None):
     """Với BN có ngày hẹn D, cửa sổ = [D − before, min(D + after, HÔM NAY)] (chặn ở hôm nay
     để không vồ nhầm một đợt khám CŨ của cùng bệnh nhân).
-    status: attended_sure (tầng 1/2) · attended_unsure (tầng 3, cần xem tay) · not_attended
-    (kèm near_miss nếu tìm thấy tên giống NGOÀI cửa sổ ngày).
+    status: attended_sure (tier 1/2) · attended_unsure (tier 3, cần xem tay) · not_attended
+    (kèm near_miss nếu có lượt khám CÙNG NGƯỜI nhưng NGOÀI cửa sổ ngày).
+    Cùng 1 người = compare_person(): tên + bằng chứng + không mâu thuẫn (xem lõi so khớp).
 
-    Hiệu năng: chuẩn hoá tên + parse ngày 1 lần cho cả file, rồi gom nhật ký khám vào ngăn theo
-    (từ đầu, từ cuối) của tên — mỗi bệnh nhân chỉ so với vài chục dòng thay vì cả chục nghìn."""
+    Hiệu năng: gom nhật ký khám vào ngăn theo (từ đầu, từ cuối) của tên — mỗi bệnh nhân chỉ so với
+    vài chục dòng thay vì cả chục nghìn."""
     today_d = today or date.today()
 
-    buckets = {}                                       # (từ đầu, từ cuối) → [(ngày, bản_ghi, tên_chuẩn_hoá)]
+    buckets = {}                                       # (từ đầu, từ cuối) → [(ngày, bản_ghi, person_view)]
     for v in visit_records:
-        nb = _norm(v.get("HỌ TÊN"))
-        key = _name_key(nb)
-        if key:
-            buckets.setdefault(key, []).append((_parse_dmy_cached(v.get("NGÀY ĐK")), v, nb))
+        pv = person_view(v, "visit")
+        if pv["key"]:
+            buckets.setdefault(pv["key"], []).append((_parse_dmy_cached(v.get("NGÀY ĐK")), v, pv))
 
     results = []
     for p in sheet_patients:
-        p_name = p.get("name", "")
-        p_phone_key = norm_phone_key(p.get("phone"))
-        p_birth = _to_int(p.get("birth_year"))
+        pp = person_view(p)
         exam_date = p.get("exam_date")
-
-        na = _norm(p_name)
-        key = _name_key(na)
-        bucket = buckets.get(key, ()) if key else ()
+        bucket = buckets.get(pp["key"], ()) if pp["key"] else ()
 
         entry = {
-            "sheet_row": p.get("sheet_row"), "stt": p.get("stt", ""), "name": p_name,
+            "sheet_row": p.get("sheet_row"), "stt": p.get("stt", ""), "name": p.get("name", ""),
             "phone": p.get("phone", ""), "age": p.get("age", ""),
             "birth_year": p.get("birth_year", ""), "exam_date": exam_date,
             "source": p.get("source", ""), "status_now": p.get("status_now", ""),
-            "visit": None, "score": 0.0, "match_tier": None, "near_miss": None,
+            "visit": None, "score": 0.0, "match_tier": None, "near_miss": None, "match_notes": [],
         }
 
-        name_sims = []
+        best = None                                    # (tier, -score, v, cmp)
         if exam_date:                                  # không rõ ngày hẹn → không đủ an toàn để khớp
             w_start = exam_date - timedelta(days=window_before)
             w_end = min(exam_date + timedelta(days=window_after), today_d)
-            for vd, v, nb in bucket:
-                if vd is not None and w_start <= vd <= w_end:
-                    ok, ratio = _ratio_ok(na, nb)
-                    if ok:
-                        name_sims.append((ratio, v))
+            for vd, v, pv in bucket:
+                if vd is None or not (w_start <= vd <= w_end):
+                    continue
+                c = compare_person(pp, pv)
+                if c and (best is None or (c["tier"], -c["score"]) < best[:2]):
+                    best = (c["tier"], -c["score"], v, c)
 
-        best1 = None                                              # Tầng 1: Tên + SĐT
-        if p_phone_key:
-            for ns, v in name_sims:
-                if norm_phone_key(v.get("SỐ ĐIỆN THOẠI")) == p_phone_key and (best1 is None or ns > best1[0]):
-                    best1 = (ns, v)
-        if best1:
-            entry.update(visit=best1[1], score=round(100 * best1[0], 1), match_tier=1, status="attended_sure")
-            results.append(entry)
-            continue
-
-        best2 = None                                              # Tầng 2: Tên + Năm sinh ±1
-        for ns, v in name_sims:
-            v_birth = _to_int(v.get("NĂM SINH"))
-            if p_birth is None or v_birth is None:
-                continue
-            if abs(v_birth - p_birth) <= 1 and (best2 is None or ns > best2[0]):
-                best2 = (ns, v)
-        if best2:
-            entry.update(visit=best2[1], score=round(100 * best2[0], 1), match_tier=2, status="attended_sure")
-            results.append(entry)
-            continue
-
-        best3 = max(name_sims, key=lambda t: t[0], default=None)  # Tầng 3: chỉ Tên → luôn xem tay
-        if best3:
-            entry.update(visit=best3[1], score=round(100 * best3[0], 1), match_tier=3, status="attended_unsure")
+        if best:
+            c = best[3]
+            entry.update(visit=best[2], score=c["score"], match_tier=c["tier"], match_notes=c["notes"],
+                         status="attended_sure" if c["tier"] <= 2 else "attended_unsure")
         else:
             entry.update(score=0.0, status="not_attended")
-            near = None                                           # "nghi bị sót": tên giống nhưng ngoài cửa sổ
-            for vd, v, nb in bucket:
-                ok, ratio = _ratio_ok(na, nb)
-                if ok and (near is None or ratio > near[0]):
-                    near = (ratio, v, vd)
+            near = None                                # "nghi bị sót": cùng người nhưng ngoài cửa sổ ngày
+            for vd, v, pv in bucket:
+                c = compare_person(pp, pv)
+                if c and (near is None or (c["tier"], -c["score"]) < near[:2]):
+                    near = (c["tier"], -c["score"], v, vd, c)
             if near:
-                entry["near_miss"] = {"visit": near[1], "score": round(100 * near[0], 1), "visit_date": near[2]}
+                entry["near_miss"] = {"visit": near[2], "score": near[4]["score"],
+                                      "visit_date": near[3], "notes": near[4]["notes"]}
         results.append(entry)
     return results
 
@@ -289,6 +384,7 @@ def _row_to_patient(idx, row):
         "stt": row.get(COL_STT, "") if COL_STT in row.index else "",
         "name": row.get(COL_NAME, ""), "phone": row.get(COL_PHONE, ""),
         "birth_year": row.get(COL_BIRTH_YEAR, ""), "age": age,
+        "gender": row.get(COL_GENDER, "") if COL_GENDER in row.index else "",
         "exam_date": d, "source": row.get(COL_SOURCE, ""),
         "status_now": row.get(COL_STATUS, ""),
     }
@@ -342,10 +438,14 @@ def classify_dup_pairs(pairs):
     for d in pairs:
         k_att, f_att = is_attended(d["khoa"].get("status_now")), is_attended(d["form"].get("status_now"))
         d["khoa_attended"], d["form_attended"] = k_att, f_att
-        d["severity"] = "critical" if (k_att and f_att) else ("leftover" if (k_att or f_att) else "normal")
+        # Cả 2 đã khám: chỉ kết luận "đếm trùng" khi khớp CHẮC (tier 1/2). Khớp yếu → có thể là 2 người / 2 lượt thật.
+        if k_att and f_att:
+            d["severity"] = "critical" if d["match_tier"] <= 2 else "review"
+        else:
+            d["severity"] = "leftover" if (k_att or f_att) else "normal"
         # Dòng Form (sắp xoá) đã khám mà dòng tái khám (giữ lại) chưa → chuyển trạng thái trước khi xoá
         d["needs_status_transfer"] = f_att and not k_att
-    rank = {"critical": 0, "leftover": 1, "normal": 2}
+    rank = {"critical": 0, "review": 1, "leftover": 2, "normal": 3}
     return sorted(pairs, key=lambda x: (rank[x["severity"]], x["match_tier"]))
 
 

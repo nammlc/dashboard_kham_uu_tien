@@ -175,7 +175,7 @@
       {% if g.need_review %}
       <div id="buoc3" class="space-y-3">
         <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span>🔎 Bước 3 — Cần kiểm tra thủ công (chỉ khớp tên) · {{ g.need_review|length }} ca</h3>
-        <p class="text-xs text-slate-500">Chỉ khớp được TÊN, không có SĐT/năm sinh xác nhận. Xem 2 bên rồi <b>sửa SĐT/Năm sinh</b> (để lần sau tự khớp đúng) hoặc <b>xác nhận đúng người</b>.</p>
+        <p class="text-xs text-slate-500">Khớp yếu (chỉ khớp tên, hoặc tên chưa trùng hẳn) — hệ thống đã loại các ca có năm sinh/giới tính mâu thuẫn. Xem 2 bên rồi <b>sửa SĐT/Năm sinh</b> (để lần sau tự khớp đúng) hoặc <b>xác nhận đúng người</b>.</p>
         {% for r in g.need_review %}{% set v = r.visit or {} %}
         <details class="border border-slate-200 rounded-lg">
           <summary class="px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50">
@@ -183,8 +183,10 @@
           </summary>
           <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs">
             <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc3">
+            {% for n in r.match_notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-1.5">❓ {{ n }}</p>{% endfor %}
             <div class="grid md:grid-cols-2 gap-3">
               <div class="rounded-lg bg-slate-50 p-3 space-y-0.5"><p class="font-semibold text-slate-700 mb-1">Trên Google Sheet</p>
+                <p>Tên: <b>{{ r.name }}</b></p>
                 <p>SĐT: {{ r.phone or '—' }}</p><p>Năm sinh: {{ r.birth_year or '—' }}</p><p>Tuổi: {{ r.age or '—' }}</p><p>Nguồn: {{ r.source or '—' }}</p></div>
               <div class="rounded-lg bg-blue-50 p-3 space-y-0.5"><p class="font-semibold text-blue-800 mb-1">Ứng viên trong log Minh Lộ</p>
                 <p>Tên: {{ v.get('HỌ TÊN','—') }}</p><p>SĐT: {{ v.get('SỐ ĐIỆN THOẠI') or '—' }}</p><p>Năm sinh: {{ v.get('NĂM SINH') or '—' }}</p>
@@ -216,6 +218,7 @@
           </summary>
           <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs">
             <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc4">
+            {% for n in nm.notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-1.5">❓ {{ n }}</p>{% endfor %}
             <div class="grid md:grid-cols-2 gap-3">
               <div class="rounded-lg bg-slate-50 p-3 space-y-0.5"><p class="font-semibold text-slate-700 mb-1">Trên Google Sheet (đã hẹn)</p>
                 <p>👤 {{ r.name }}</p><p>📅 Ngày hẹn: {{ r.exam_date|dmy }}</p><p>📞 SĐT: {{ r.phone or '—' }}</p><p>🎂 Năm sinh: {{ r.birth_year or '—' }}</p></div>
@@ -239,7 +242,7 @@
     <h2 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-violet-500"></span>🔁 Đối chiếu trùng — Tái khám (từ khoa) ↔ Đăng ký Form</h2>
     <div class="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-xs text-violet-900 leading-relaxed">
       Quét BN <b>đã có lịch tái khám (từ khoa)</b> nhưng gần ngày hẹn lại <b>tự đăng ký thêm qua Form</b> (nguồn trống hoặc "vãng lai") cho CÙNG 1 đợt khám —
-      khớp Tên + SĐT / Tên + Năm sinh, ngày hẹn lệch tối đa <b>{{ DUPWIN }} ngày</b>, trong {{ LOOKBACK }} ngày gần nhất, <b>bất kể đã/chưa khám</b> (tránh đếm 1 lượt khám thành 2).<br>
+      khớp Tên (trùng hẳn) + SĐT / Năm sinh, <b>không mâu thuẫn năm sinh &amp; giới tính</b>, ngày hẹn lệch tối đa <b>{{ DUPWIN }} ngày</b>, trong {{ LOOKBACK }} ngày gần nhất, <b>bất kể đã/chưa khám</b> (tránh đếm 1 lượt khám thành 2).<br>
       🗑️ Sau khi xem 2 bên và xác nhận, dòng Form nghi trùng bị <b>xoá HẲN khỏi Google Sheet</b>, luôn giữ dòng tái khám. <b>Không thể hoàn tác.</b>
     </div>
 
@@ -268,18 +271,20 @@
       {% else %}
         {% set n_crit = dup.pairs|selectattr('severity','equalto','critical')|list|length %}
         {% set n_left = dup.pairs|selectattr('severity','equalto','leftover')|list|length %}
+        {% set n_rev = dup.pairs|selectattr('severity','equalto','review')|list|length %}
         <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           🔁 Phát hiện <b>{{ dup.pairs|length }}</b> cặp nghi trùng:
           <b>🔴 {{ n_crit }}</b> đang bị ĐẾM TRÙNG (cả 2 dòng "Đã khám") ·
+          <b>❔ {{ n_rev }}</b> cả 2 đã khám nhưng khớp yếu (cần xem tay) ·
           <b>🟡 {{ n_left }}</b> dư thừa (1 bên đã khám) ·
-          <b>⚪ {{ dup.pairs|length - n_crit - n_left }}</b> cả 2 chưa khám.
+          <b>⚪ {{ dup.pairs|length - n_crit - n_left - n_rev }}</b> cả 2 chưa khám.
         </div>
 
         <form method="POST" action="{{ url_for('dup_delete') }}" class="space-y-3"
               onsubmit="var n=document.querySelectorAll('.pickd:checked').length; if(!n){alert('Chưa chọn dòng Form nào.');return false;} return confirm('Xoá HẲN '+n+' dòng Form khỏi Google Sheet — KHÔNG THỂ HOÀN TÁC. Chắc chắn?');">
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" onclick="document.querySelectorAll('.pickd').forEach(c=>c.checked=this.checked)"> ☑️ Chọn tất cả</label>
-          {% set sev = {'critical':'🔴 ĐẾM TRÙNG','leftover':'🟡 DƯ THỪA','normal':'⚪ Bình thường'} %}
-          {% set tier = {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'❓ Chỉ khớp tên'} %}
+          {% set sev = {'critical':'🔴 ĐẾM TRÙNG','review':'❔ CẦN XEM TAY','leftover':'🟡 DƯ THỪA','normal':'⚪ Bình thường'} %}
+          {% set tier = {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'❓ Khớp yếu'} %}
           {% for d in dup.pairs %}{% set pk = d.khoa %}{% set pf = d.form %}
           <div class="flex items-start gap-3 border border-slate-200 rounded-lg px-3 py-2">
             <input type="checkbox" class="pickd mt-1" name="row" value="{{ pf.sheet_row }}" title="Chọn xoá dòng Form: STT {{ pf.stt or '—' }} · {{ pf.name }}">
@@ -292,13 +297,14 @@
                 {% if d.severity=='critical' %}<p class="rounded bg-red-50 text-red-800 px-3 py-2">🔴 CẢ 2 dòng đều "Đã khám" — 1 lượt khám đang bị đếm thành 2. Xoá dòng Form để số liệu đúng lại.</p>
                 {% elif d.needs_status_transfer %}<p class="rounded bg-blue-50 text-blue-800 px-3 py-2">🟡 Dòng Form đang "Đã khám" nhưng dòng tái khám chưa — khi xoá, hệ thống <b>tự cập nhật dòng tái khám thành "Đã khám"</b> để không mất dấu lượt khám.</p>
                 {% elif d.severity=='leftover' %}<p class="rounded bg-blue-50 text-blue-800 px-3 py-2">🟡 Dòng tái khám đã "Đã khám", dòng Form còn "chưa khám" — xoá dòng Form để dọn.</p>{% endif %}
-                {% if d.match_tier==3 %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❓ Chỉ khớp được TÊN (không có SĐT/năm sinh xác nhận) — hãy so kỹ 2 bên trước khi xoá.</p>{% endif %}
+                {% if d.severity=='review' %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❔ Cả 2 dòng đều "Đã khám" nhưng mức khớp yếu — có thể là <b>2 người khác nhau</b> hoặc 2 lượt khám thật. Đừng xoá nếu chưa chắc.</p>{% endif %}
+                {% for n in d.notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❓ {{ n }}</p>{% endfor %}
                 <div class="grid md:grid-cols-2 gap-3">
                   <div class="rounded-lg bg-emerald-50 p-3 space-y-0.5"><p class="font-semibold text-emerald-800 mb-1">📋 Dòng tái khám (từ khoa) — GIỮ LẠI</p>
-                    <p>STT: {{ pk.stt or '—' }}</p><p>SĐT: {{ pk.phone or '—' }}</p><p>Năm sinh: {{ pk.birth_year or '—' }}</p><p>Ngày hẹn: {{ pk.exam_date|dmy }}</p>
+                    <p>Họ tên: <b>{{ pk.name }}</b></p><p>STT: {{ pk.stt or '—' }}</p><p>Giới tính: {{ pk.gender or '—' }}</p><p>SĐT: {{ pk.phone or '—' }}</p><p>Năm sinh: {{ pk.birth_year or '—' }}</p><p>Ngày hẹn: {{ pk.exam_date|dmy }}</p>
                     <p>Nguồn: {{ pk.source or '—' }}</p><p>Trạng thái: {{ '✅ Đã khám' if d.khoa_attended else '⏳ Chưa khám' }}</p></div>
                   <div class="rounded-lg bg-red-50 p-3 space-y-0.5"><p class="font-semibold text-red-800 mb-1">📝 Dòng đăng ký Form — NGHI TRÙNG (sẽ xoá)</p>
-                    <p>STT: {{ pf.stt or '—' }}</p><p>SĐT: {{ pf.phone or '—' }}</p><p>Năm sinh: {{ pf.birth_year or '—' }}</p><p>Ngày hẹn: {{ pf.exam_date|dmy }}</p>
+                    <p>Họ tên: <b>{{ pf.name }}</b></p><p>STT: {{ pf.stt or '—' }}</p><p>Giới tính: {{ pf.gender or '—' }}</p><p>SĐT: {{ pf.phone or '—' }}</p><p>Năm sinh: {{ pf.birth_year or '—' }}</p><p>Ngày hẹn: {{ pf.exam_date|dmy }}</p>
                     <p>Nguồn: {{ pf.source or '(trống)' }}</p><p>Trạng thái: {{ '✅ Đã khám' if d.form_attended else '⏳ Chưa khám' }}</p></div>
                 </div>
               </div>
