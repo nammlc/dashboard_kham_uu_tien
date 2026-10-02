@@ -5,11 +5,12 @@ Toàn bộ logic kết nối Google Sheets và xử lý DataFrame.
 Tách riêng khỏi Flask routes để dễ test và maintain.
 """
 
-import os, json, re
+import os, json, re, unicodedata
+from zoneinfo import ZoneInfo
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import current_app
 
 SCOPES = [
@@ -35,6 +36,11 @@ COL_STT         = "STT"
 
 STATUS_ATTENDED     = "BỆNH NHÂN ĐÃ KHÁM"
 STATUS_NOT_ATTENDED = "BỆNH NHÂN CHƯA KHÁM / BỎ KHÁM"
+
+
+def vn_today() -> date:
+    """Ngày hôm nay theo giờ Việt Nam (server Render chạy giờ UTC)."""
+    return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
 
 
 def _get_credentials() -> dict | None:
@@ -97,7 +103,7 @@ def load_dataframe() -> pd.DataFrame:
 
     # ── Chuẩn hoá ngày khám ──────────────────────────────────────────────────
     if COL_EXAM_DATE in df.columns:
-        df["_date"] = pd.to_datetime(df[COL_EXAM_DATE], dayfirst=True, errors="coerce")
+        df["_date"] = pd.to_datetime(df[COL_EXAM_DATE].astype(str).str.strip(), format="%d/%m/%Y", errors="coerce")
 
     # ── Chuẩn hoá timestamp ───────────────────────────────────────────────────
     if COL_TIMESTAMP in df.columns:
@@ -115,7 +121,7 @@ def load_dataframe() -> pd.DataFrame:
 
 def get_dashboard_stats(df: pd.DataFrame) -> dict:
     """Tính các chỉ số tổng quan cho trang Dashboard."""
-    today = date.today()
+    today = vn_today()
     stats = {
         "today_total": 0, "today_attended": 0,
         "today_absent": 0,  "today_rate": 0.0,
@@ -189,6 +195,90 @@ def get_report_stats(df: pd.DataFrame, period: str = "month") -> list[dict]:
             "pct_vang":  round(len(vng)/len(g)*100, 1) if len(g) else 0.0,
         })
     return rows
+
+
+# ── Lọc theo khoảng ngày & lịch khám sắp tới ─────────────────────────────────
+_WEEKDAY_VN = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+
+
+def _norm(text) -> str:
+    """Bỏ dấu + chữ thường để so khớp chuỗi tiếng Việt ổn định."""
+    t = unicodedata.normalize("NFD", str(text or "").replace("đ", "d").replace("Đ", "D"))
+    return "".join(c for c in t if unicodedata.category(c) != "Mn").lower().strip()
+
+
+_KHOA_BLANK = {"", "nan", "n/a", "na", "none", "-", "—", "chưa xác định"}
+
+
+def is_khoa_kham_benh(khoa) -> bool:
+    """Giống classify_khoa_group() của Streamlit:
+    Khoa Khám bệnh + chưa phân khoa (trống/placeholder) → True, khoa khác → False."""
+    s = str(khoa or "").strip().lower()
+    return s in _KHOA_BLANK or "khám bệnh" in s
+
+
+def source_kind(src) -> str:
+    """Giống source_pill_html() của Streamlit: noi | vl | other | none."""
+    s = str(src or "").strip()
+    if s in ("", "nan", "N/A", "—", "None"):
+        return "none"
+    sl = s.lower()
+    if any(k in sl for k in ["khoa", "tái", "nội trú", "xuất viện", "tai"]):
+        return "noi"
+    if any(k in sl for k in ["vãng lai", "vang lai", "ngoài", "ngoai"]):
+        return "vl"
+    return "other"
+
+
+def filter_by_date_range(df: pd.DataFrame, date_from=None, date_to=None) -> pd.DataFrame:
+    """Lọc DataFrame theo NGÀY KHÁM từ date_from đến date_to (gồm cả 2 đầu)."""
+    if df.empty or "_date" not in df.columns:
+        return df
+    if date_from is not None:
+        df = df[df["_date"] >= pd.Timestamp(date_from)]
+    if date_to is not None:
+        df = df[df["_date"] < pd.Timestamp(date_to) + pd.Timedelta(days=1)]
+    return df
+
+
+def get_upcoming_patients(df: pd.DataFrame, days: int = 3) -> dict:
+    """
+    Bệnh nhân hẹn khám trong `days` ngày tới (từ ngày mai), nhóm theo ngày.
+    Mỗi ngày chia 2 nhóm: kb (Khoa Khám bệnh + chưa phân khoa) và khac (nội trú khác).
+    Dùng df ĐẦY ĐỦ (không lọc theo TRẠNG THÁI) như bản Streamlit.
+    """
+    today = vn_today()
+    dates = [today + timedelta(days=i) for i in range(1, days + 1)]
+    out = {"days": [], "total": 0, "start": dates[0], "end": dates[-1]}
+    wd = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
+
+    has_date = (not df.empty) and "_date" in df.columns
+    for d in dates:
+        day = {"label": f"{wd[d.weekday()]} — {d.strftime('%d/%m/%Y')}",
+               "kb": [], "khac": [], "count": 0}
+        if has_date:
+            sub = df[df["_date"].dt.date == d]
+            if COL_EXAM_TIME in sub.columns:
+                sub = sub.sort_values(COL_EXAM_TIME, kind="stable")
+            for _, r in sub.iterrows():
+                khoa = str(r.get(COL_KHOA, "") or "").strip()
+                phone = str(r.get(COL_PHONE, "") or "").strip()
+                etime = str(r.get(COL_EXAM_TIME, "") or "").strip()
+                src = str(r.get(COL_SOURCE, "") or "").strip()
+                rec = {
+                    "name":   str(r.get(COL_NAME, "") or "—"),
+                    "phone":  phone or "N/A",
+                    "tel":    "".join(c for c in phone if c.isdigit() or c == "+"),
+                    "time":   etime[:5] if ":" in etime else (etime or "—"),
+                    "khoa":   khoa if khoa.lower() not in _KHOA_BLANK else "",
+                    "source": src,
+                    "src_kind": source_kind(src),
+                }
+                day["kb" if is_khoa_kham_benh(khoa) else "khac"].append(rec)
+        day["count"] = len(day["kb"]) + len(day["khac"])
+        out["total"] += day["count"]
+        out["days"].append(day)
+    return out
 
 
 def update_status(row_number: int, new_status: str) -> bool:

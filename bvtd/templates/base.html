@@ -100,6 +100,17 @@
         <span class="text-sm">Bệnh Nhân</span>
       </a>
 
+      <a href="{{ url_for('upcoming') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'upcoming' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📅</span>
+        <span class="text-sm">Lịch Khám 3 Ngày</span>
+      </a>
+
       <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Phân Tích</p>
 
       <a href="{{ url_for('report') }}"

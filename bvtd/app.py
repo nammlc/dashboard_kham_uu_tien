@@ -162,17 +162,33 @@ def report_data():
     return render_template("dashboard/_report_rows.html", rows=rows)
 
 
+def _parse_date(value):
+    """'2026-10-05' (từ <input type=date>) → date, sai định dạng → None."""
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date() if value else None
+    except ValueError:
+        return None
+
+
 @app.route("/benh-nhan")
 @login_required
 def patients():
-    df      = _get_df()
-    q       = request.args.get("q", "").strip()
-    status  = request.args.get("status", "")
-    page    = int(request.args.get("page", 1))
+    from services.sheets import COL_STATUS, filter_by_date_range
+    df       = _get_df()
+    q        = request.args.get("q", "").strip()
+    status   = request.args.get("status", "")
+    d_from   = _parse_date(request.args.get("date_from", ""))
+    d_to     = _parse_date(request.args.get("date_to", ""))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
     per_page = 20
 
-    from services.sheets import COL_NAME, COL_STATUS, COL_PHONE
-    filtered = df.copy()
+    if d_from and d_to and d_from > d_to:          # người dùng chọn ngược → tự đổi chỗ
+        d_from, d_to = d_to, d_from
+
+    filtered = filter_by_date_range(df.copy(), d_from, d_to)
     if q:
         mask = filtered.apply(lambda row: q.lower() in " ".join(str(v) for v in row).lower(), axis=1)
         filtered = filtered[mask]
@@ -186,7 +202,18 @@ def patients():
     return render_template("dashboard/patients.html",
                            records=records, total=total,
                            page=page, per_page=per_page,
-                           q=q, status=status)
+                           q=q, status=status,
+                           date_from=d_from.isoformat() if d_from else "",
+                           date_to=d_to.isoformat() if d_to else "")
+
+
+@app.route("/lich-kham")
+@login_required
+def upcoming():
+    """Bệnh nhân sẽ đến khám trong 3 ngày tới, chia tab theo khoa."""
+    from services.sheets import get_upcoming_patients
+    data = get_upcoming_patients(_get_df(), days=3)
+    return render_template("dashboard/upcoming.html", data=data)
 
 
 @app.route("/import", methods=["GET", "POST"])
