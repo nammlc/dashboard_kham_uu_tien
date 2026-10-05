@@ -62,10 +62,26 @@
       </div>
       <div class="mb-5">
         <label class="block text-sm font-semibold text-slate-600 mb-1.5">Mật khẩu</label>
-        <input type="password" name="password" required autocomplete="current-password"
-               placeholder="••••••••"
-               class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm
-                      focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+        <div class="relative">
+          <input type="password" name="password" id="password" required autocomplete="current-password"
+                 placeholder="••••••••"
+                 class="w-full border border-slate-300 rounded-lg pl-3 pr-11 py-2.5 text-sm
+                        focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+          <button type="button" id="pw-toggle" aria-label="Hiện mật khẩu" aria-pressed="false" aria-controls="password"
+                  title="Hiện mật khẩu"
+                  class="absolute inset-y-0 right-0 w-11 flex items-center justify-center text-slate-400
+                         hover:text-slate-600 rounded-r-lg focus:outline-none focus-visible:text-[#2a7ae4]">
+            <!-- mắt mở: đang ẩn mật khẩu → bấm để hiện -->
+            <svg id="pw-eye" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            <!-- mắt gạch chéo: đang hiện mật khẩu → bấm để ẩn -->
+            <svg id="pw-eye-off" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <button type="submit"
               class="w-full bg-[#0f2642] text-white rounded-lg py-2.5 text-sm font-semibold
@@ -76,5 +92,33 @@
 
     <p class="text-center text-xs text-slate-400 mt-6">© 2026 BVĐK Tâm Đức Cầu Quan</p>
   </div>
+
+  <script>
+    (function () {
+      const input = document.getElementById('password'),
+            btn   = document.getElementById('pw-toggle'),
+            eye   = document.getElementById('pw-eye'),
+            off   = document.getElementById('pw-eye-off');
+      if (!input || !btn) return;
+      // Giữ con trỏ trong ô mật khẩu khi bấm nút (không bị mất focus)
+      btn.addEventListener('mousedown', e => e.preventDefault());
+      btn.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        eye.classList.toggle('hidden', show);
+        off.classList.toggle('hidden', !show);
+        const label = show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu';
+        btn.setAttribute('aria-pressed', String(show));
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+        input.focus();
+        const n = input.value.length; try { input.setSelectionRange(n, n); } catch (_) {}
+      });
+      // Gửi form xong thì không để lộ mật khẩu nếu trình duyệt quay lại trang (bfcache)
+      window.addEventListener('pageshow', () => {
+        if (input.type === 'text') btn.click();
+      });
+    })();
+  </script>
 </body>
 </html>
