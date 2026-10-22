@@ -356,7 +356,9 @@ def reconcile_attendance(sheet_patients, visit_records,
         else:
             entry.update(score=0.0, status="not_attended")
             near = None                                # "nghi bị sót": cùng người nhưng ngoài cửa sổ ngày
-            for vd, v, pv in bucket:
+            # Nhóm TÁI KHÁM không dùng "nghi bị sót": lượt khám trước ngày hẹn gần như luôn là lượt điều trị ban đầu
+            # đã sinh ra lịch hẹn (không phải lượt tái khám) → gợi ý sẽ sai. Chỉ giữ cho nhóm vãng lai / form.
+            for vd, v, pv in (() if patient_kind(p.get("source")) == "tai_kham" else bucket):
                 c = compare_person(pp, pv)
                 if c and (near is None or (c["tier"], -c["score"]) < near[:2]):
                     near = (c["tier"], -c["score"], v, vd, c)
@@ -433,18 +435,30 @@ def build_dup_lists(df, today):
     return lst(m_khoa), lst(m_form), legacy
 
 
+def pair_locked(d) -> bool:
+    """Cặp KHỚP YẾU (chỉ tên / tên gần giống) mà dòng Form đang 'Đã khám' còn dòng tái khám chưa.
+    Không thể chuyển trạng thái (có thể là 2 người trùng tên) và xoá dòng Form sẽ làm MẤT 1 lượt khám
+    của người khác → KHOÁ, bắt buộc xử lý tay. Tính lại từ dữ liệu gốc để kết quả quét cũ vẫn được bảo vệ."""
+    return (d.get("match_tier") or 3) >= 3 and bool(d.get("form_attended")) and not d.get("khoa_attended")
+
+
 def classify_dup_pairs(pairs):
-    """Gắn severity + needs_status_transfer cho từng cặp trùng."""
+    """Gắn severity + needs_status_transfer + locked cho từng cặp trùng."""
     for d in pairs:
         k_att, f_att = is_attended(d["khoa"].get("status_now")), is_attended(d["form"].get("status_now"))
         d["khoa_attended"], d["form_attended"] = k_att, f_att
+        weak = d["match_tier"] >= 3
         # Cả 2 đã khám: chỉ kết luận "đếm trùng" khi khớp CHẮC (tier 1/2). Khớp yếu → có thể là 2 người / 2 lượt thật.
         if k_att and f_att:
-            d["severity"] = "critical" if d["match_tier"] <= 2 else "review"
+            d["severity"] = "critical" if not weak else "review"
         else:
             d["severity"] = "leftover" if (k_att or f_att) else "normal"
-        # Dòng Form (sắp xoá) đã khám mà dòng tái khám (giữ lại) chưa → chuyển trạng thái trước khi xoá
-        d["needs_status_transfer"] = f_att and not k_att
+        # Chỉ chuyển "Đã khám" sang dòng tái khám khi khớp CHẮC. Khớp yếu (chỉ tên) tuyệt đối không tự chuyển:
+        # người trùng tên khác đã khám sẽ làm bệnh nhân tái khám (chưa đến) bị đánh dấu "Đã khám" oan.
+        d["needs_status_transfer"] = f_att and not k_att and not weak
+        d["locked"] = pair_locked(d)
+        if d["locked"]:
+            d["severity"] = "review"
     rank = {"critical": 0, "review": 1, "leftover": 2, "normal": 3}
     return sorted(pairs, key=lambda x: (rank[x["severity"]], x["match_tier"]))
 

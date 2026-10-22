@@ -487,6 +487,35 @@ def api_update_status():
 _rec_lock = threading.Lock()
 
 
+class _locked:
+    """Khoá có thời hạn: nếu thao tác ghi khác đang chạy quá lâu thì báo lại ngay thay vì treo request."""
+    def __init__(self, lock, timeout=25):
+        self.lock, self.timeout, self.ok = lock, timeout, False
+
+    def __enter__(self):
+        self.ok = self.lock.acquire(timeout=self.timeout)
+        return self.ok
+
+    def __exit__(self, *exc):
+        if self.ok:
+            self.lock.release()
+
+
+def _wants_json():
+    return request.headers.get("X-Requested-With") == "fetch" or request.accept_mimetypes.best == "application/json"
+
+
+def _rec_reply(ok, message, level=None, tab="tk", anchor="", **extra):
+    """Trả JSON cho trang đối chiếu (fetch) hoặc flash + redirect (form thường / trình duyệt tắt JS)."""
+    level = level or ("success" if ok else "error")
+    if _wants_json():
+        resp = jsonify({"ok": bool(ok), "level": level, "message": message, **extra})
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    flash(message, level)
+    return _rec_back(tab, anchor)
+
+
 def _rec_token(create=False):
     tok = session.get("rec_token", "")
     if not tok and create:
@@ -567,7 +596,8 @@ def reconcile_page():
             "n_sure": len(sure), "n_unsure": len(unsure), "n_not": len(notatt),
             "to_update": [r for r in sure if not r.get("done")],
             "need_review": [r for r in unsure if not r.get("done")],
-            "sot": [r for r in notatt if r.get("near_miss") and not r.get("done")],
+            # Bước 4 (nghi bị sót) CHỈ dành cho nhóm vãng lai
+            "sot": [r for r in notatt if r.get("near_miss") and not r.get("done")] if tab == "vl" else [],
         }
 
     legacy = build_dup_lists(df, today)[2] if df is not None and not df.empty else []
@@ -651,76 +681,113 @@ def reconcile_run():
 @app.route("/doi-chieu/cap-nhat", methods=["POST"])
 @login_required
 def reconcile_apply():
+    """Bước 2: ghi "Đã khám" cho các ca khớp chắc chắn đã chọn. Trả JSON (fetch) hoặc redirect (form thường)."""
     from services.reconcile import store_load, store_save
     tok, tab = _rec_token(), request.form.get("tab", "tk")
-    rec = store_load(tok, "rec")
-    if not rec:
-        flash("Kết quả đối chiếu đã hết hạn — hãy đối chiếu lại.", "info")
-        return _rec_back(tab)
-    if not request.form.get("confirm"):
-        flash("⚠️ Hãy tích ô xác nhận đã xem kỹ danh sách trước khi ghi vào Google Sheet.", "warning")
-        return _rec_back(tab, "buoc2")
-    picked = set()
-    for x in request.form.getlist("row"):
-        try:
-            picked.add(int(x))
-        except ValueError:
-            pass
-    with _rec_lock:
-        entries = [r for r in rec["results"]
-                   if r["sheet_row"] in picked and r["status"] == "attended_sure" and not r.get("done")]
-        if not entries:
-            flash("Không có bệnh nhân nào được chọn để cập nhật.", "warning")
-            return _rec_back(tab, "buoc2")
-        n, err = _mark_attended(entries)
-        if not err:
-            store_save(tok, "rec", rec)
-    if err:
-        flash(f"❌ {err}", "error")
-    else:
-        flash(f"✅ Đã cập nhật \"Đã khám\" cho {n} bệnh nhân.", "success")
-    return _rec_back(tab, "buoc2")
+    try:
+        rec = store_load(tok, "rec")
+        if not rec:
+            return _rec_reply(False, "Kết quả đối chiếu đã hết hạn — hãy đối chiếu lại.", "info", tab, reload_hint=True)
+        if not request.form.get("confirm"):
+            return _rec_reply(False, "Hãy tích ô xác nhận đã xem kỹ danh sách trước khi ghi vào Google Sheet.",
+                              "warning", tab, "buoc2")
+        picked = set()
+        for x in request.form.getlist("row"):
+            try:
+                picked.add(int(x))
+            except ValueError:
+                pass
+        with _locked(_rec_lock) as got:
+            if not got:
+                return _rec_reply(False, "Đang có một thao tác ghi khác chạy — hãy đợi vài giây rồi bấm lại.",
+                                  "warning", tab, "buoc2")
+            rec = store_load(tok, "rec") or rec            # đọc lại sau khi giữ khoá (tránh ghi chồng)
+            mine = [r for r in rec["results"] if r["sheet_row"] in picked and r["status"] == "attended_sure"]
+            entries = [r for r in mine if not r.get("done")]
+            already = len(mine) - len(entries)
+            if not entries:
+                if already:
+                    return _rec_reply(True, f"{already} bệnh nhân đã chọn đã được cập nhật \"Đã khám\" trước đó — "
+                                      "không cần ghi lại.", "success", tab, "buoc2", count=0, already=already)
+                return _rec_reply(False, "Không có bệnh nhân nào được chọn để cập nhật.", "warning", tab, "buoc2")
+            n, err = _mark_attended(entries)
+            if err:
+                return _rec_reply(False, err, "error", tab, "buoc2")
+            try:
+                store_save(tok, "rec", rec)
+            except Exception as e:                         # Sheet đã ghi xong; chỉ mất cờ 'done' trên màn hình
+                app.logger.warning(f"reconcile_apply: store_save lỗi: {e}")
+        names = [r["name"] for r in entries]
+        msg = f"Đã cập nhật \"Đã khám\" cho {n} bệnh nhân và kiểm tra lại trên Google Sheet."
+        if already:
+            msg += f" ({already} bệnh nhân khác đã được cập nhật từ trước.)"
+        return _rec_reply(True, msg, "success", tab, "buoc2", count=n, names=names[:12], more=max(0, len(names) - 12))
+    except Exception as e:
+        app.logger.exception("reconcile_apply")
+        return _rec_reply(False, f"Lỗi máy chủ: {type(e).__name__}: {e}", "error", tab, "buoc2")
 
 
 @app.route("/doi-chieu/xu-ly", methods=["POST"])
 @login_required
 def reconcile_one():
-    """Bước 3 (chỉ khớp tên) & Bước 4 (nghi bị sót): lưu SĐT/năm sinh hoặc xác nhận Đã khám."""
-    from services.reconcile import store_load, store_save
+    """Bước 3 (chỉ khớp tên) & Bước 4 (nghi bị sót — chỉ nhóm vãng lai): lưu SĐT/năm sinh hoặc xác nhận Đã khám."""
+    from services.reconcile import store_load, store_save, patient_kind
     from services.sheets import write_cells, COL_PHONE, COL_BIRTH_YEAR
     tok, tab = _rec_token(), request.form.get("tab", "tk")
-    rec = store_load(tok, "rec")
-    try:
-        row = int(request.form.get("sheet_row", ""))
-    except ValueError:
-        row = -1
-    entry = next((r for r in (rec or {}).get("results", []) if r["sheet_row"] == row), None)
-    if not entry or entry.get("done"):
-        flash("Không tìm thấy bệnh nhân này trong kết quả (có thể đã xử lý) — hãy đối chiếu lại.", "info")
-        return _rec_back(tab)
     anchor = request.form.get("anchor", "buoc3")
-    action = request.form.get("action")
-    with _rec_lock:
-        if action == "save":
-            phone = request.form.get("phone", "").strip()
-            birth = request.form.get("birth", "").strip()
-            n, err = write_cells([{"sheet_row": row, "stt": entry.get("stt"), "name": entry["name"],
-                                   "values": {COL_PHONE: phone, COL_BIRTH_YEAR: birth}}], raw=True)
-            if err:
-                flash(f"❌ {err}", "error")
-            else:
+    try:
+        rec = store_load(tok, "rec")
+        try:
+            row = int(request.form.get("sheet_row", ""))
+        except ValueError:
+            row = -1
+        entry = next((r for r in (rec or {}).get("results", []) if r["sheet_row"] == row), None)
+        if not entry:
+            return _rec_reply(False, "Không tìm thấy bệnh nhân này trong kết quả — hãy đối chiếu lại.", "info", tab,
+                              reload_hint=True)
+        action = request.form.get("action")
+        if entry.get("done") and action == "confirm":
+            return _rec_reply(True, f"{entry['name']} đã được đánh dấu \"Đã khám\" trước đó.", "success", tab, anchor,
+                              count=0, already=1)
+        if entry.get("done"):
+            return _rec_reply(False, "Bệnh nhân này đã được xử lý — hãy tải lại trang.", "info", tab, anchor)
+        with _locked(_rec_lock) as got:
+            if not got:
+                return _rec_reply(False, "Đang có một thao tác ghi khác chạy — hãy đợi vài giây rồi bấm lại.",
+                                  "warning", tab, anchor)
+            if action == "save":
+                phone = request.form.get("phone", "").strip()
+                birth = request.form.get("birth", "").strip()
+                n, err = write_cells([{"sheet_row": row, "stt": entry.get("stt"), "name": entry["name"],
+                                       "values": {COL_PHONE: phone, COL_BIRTH_YEAR: birth}}], raw=True)
+                if err:
+                    return _rec_reply(False, err, "error", tab, anchor)
                 entry["phone"], entry["birth_year"] = phone, birth
-                store_save(tok, "rec", rec)
+                try:
+                    store_save(tok, "rec", rec)
+                except Exception as e:
+                    app.logger.warning(f"reconcile_one: store_save lỗi: {e}")
                 cache.delete("main_df")
-                flash(f"💾 Đã lưu SĐT/Năm sinh cho {entry['name']} — lần đối chiếu sau sẽ tự khớp đúng hơn.", "success")
-        elif action == "confirm" and (entry["status"] == "attended_unsure" or entry.get("near_miss")):
-            n, err = _mark_attended([entry])
-            if err:
-                flash(f"❌ {err}", "error")
-            else:
-                store_save(tok, "rec", rec)
-                flash(f"✅ Đã đánh dấu Đã khám cho {entry['name']}.", "success")
-    return _rec_back(tab, anchor)
+                return _rec_reply(True, f"Đã lưu SĐT/Năm sinh cho {entry['name']} và kiểm tra lại trên Google Sheet — "
+                                  "lần đối chiếu sau sẽ tự khớp đúng hơn.", "success", tab, anchor, count=1,
+                                  names=[entry["name"]])
+            # Bước 3 (khớp yếu) luôn được xác nhận; Bước 4 (nghi bị sót) chỉ cho nhóm vãng lai
+            can_confirm = entry["status"] == "attended_unsure" or (
+                bool(entry.get("near_miss")) and patient_kind(entry.get("source")) != "tai_kham")
+            if action == "confirm" and can_confirm:
+                n, err = _mark_attended([entry])
+                if err:
+                    return _rec_reply(False, err, "error", tab, anchor)
+                try:
+                    store_save(tok, "rec", rec)
+                except Exception as e:
+                    app.logger.warning(f"reconcile_one: store_save lỗi: {e}")
+                return _rec_reply(True, f"Đã đánh dấu \"Đã khám\" cho {entry['name']} và kiểm tra lại trên Google Sheet.",
+                                  "success", tab, anchor, count=1, names=[entry["name"]])
+        return _rec_reply(False, "Ca này không thuộc nhóm có thể xác nhận ở bước này.", "warning", tab, anchor)
+    except Exception as e:
+        app.logger.exception("reconcile_one")
+        return _rec_reply(False, f"Lỗi máy chủ: {type(e).__name__}: {e}", "error", tab, anchor)
 
 
 @app.route("/doi-chieu/csv")
@@ -777,7 +844,7 @@ def dup_scan():
 def dup_delete():
     """Xoá HẲN các dòng Form đã chọn (giữ dòng tái khám). Dòng Form đang 'Đã khám' mà dòng tái khám
     chưa → chuyển trạng thái sang dòng tái khám TRƯỚC khi xoá để không mất dấu lượt khám."""
-    from services.reconcile import store_load, store_delete
+    from services.reconcile import store_load, store_delete, pair_locked
     from services.sheets import write_cells, delete_rows, STATUS_ATTENDED, COL_STATUS
     tok = _rec_token()
     dup = store_load(tok, "dup")
@@ -794,12 +861,20 @@ def dup_delete():
             picked.add(int(x))
         except ValueError:
             pass
-    sel = [d for d in dup["pairs"] if d["form"]["sheet_row"] in picked]
+    chosen = [d for d in dup["pairs"] if d["form"]["sheet_row"] in picked]
+    # Cặp khớp yếu mà dòng Form đã khám: không xoá, không chuyển trạng thái (có thể là 2 người trùng tên)
+    locked = [d for d in chosen if pair_locked(d)]
+    sel = [d for d in chosen if not pair_locked(d)]
+    if locked:
+        flash(f"🔒 Bỏ qua {len(locked)} cặp khớp yếu (chỉ khớp tên, dòng Form đã khám) — có thể là 2 người khác nhau, "
+              "hãy kiểm tra tay trên Sheet.", "warning")
     if not sel:
-        flash("Chưa chọn dòng Form nào để xoá.", "warning")
+        if not locked:
+            flash("Chưa chọn dòng Form nào để xoá.", "warning")
         return back
     with _rec_lock:
-        transfer = [d for d in sel if d.get("needs_status_transfer")]
+        # chỉ chuyển "Đã khám" khi khớp CHẮC (tier 1/2)
+        transfer = [d for d in sel if d.get("needs_status_transfer") and d.get("match_tier", 3) <= 2]
         if transfer:
             _, err = write_cells([{"sheet_row": d["khoa"]["sheet_row"], "stt": d["khoa"].get("stt"),
                                    "name": d["khoa"]["name"], "values": {COL_STATUS: STATUS_ATTENDED}}

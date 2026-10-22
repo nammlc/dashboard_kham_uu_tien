@@ -129,8 +129,7 @@
         <p class="text-xs text-slate-500">Có <b>{{ g.to_update|length }}</b> BN khớp CHẮC CHẮN (Tên+SĐT, hoặc Tên+Năm sinh lệch ≤ 1) đang chưa "Đã khám".
           Ca "cần xác nhận" ({{ g.n_unsure }}) <b>không</b> nằm ở đây — xử lý ở Bước 3. <b>Bỏ tích ca nào nhận diện SAI.</b></p>
         {% if g.to_update %}
-        <form method="POST" action="{{ url_for('reconcile_apply') }}" class="space-y-3"
-              onsubmit="return confirm('Ghi trạng thái ĐÃ KHÁM vào Google Sheet cho các bệnh nhân đã chọn?');">
+        <form method="POST" action="{{ url_for('reconcile_apply') }}" class="space-y-3 js-rec" data-rec="apply" data-anchor="buoc2">
           <input type="hidden" name="tab" value="{{ tab }}">
           <div class="overflow-auto max-h-96 border border-slate-200 rounded-lg">
             <table class="w-full text-xs" style="min-width:760px">
@@ -162,8 +161,10 @@
             <input type="checkbox" name="confirm" value="1" class="mt-0.5">
             Tôi đã xem kỹ danh sách và xác nhận đúng người trước khi ghi vào Google Sheet.
           </label>
-          <button class="bg-emerald-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-emerald-700">
-            ✅ Cập nhật "Đã khám" cho các bệnh nhân đã chọn
+          <p class="hidden text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2" data-inline-err role="alert"></p>
+          <button type="submit" data-apply-btn
+                  class="bg-emerald-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed">
+            ✅ Cập nhật "Đã khám" cho <span data-apply-count>{{ g.to_update|length }}</span> bệnh nhân đã chọn
           </button>
         </form>
         {% else %}
@@ -181,7 +182,7 @@
           <summary class="px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50">
             👤 <b>{{ r.name }}</b> <span class="text-slate-400 text-xs">· STT {{ r.stt or '—' }} · hẹn {{ r.exam_date|dmy }} · giống tên {{ '%.0f'|format(r.score) }}%</span>
           </summary>
-          <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs">
+          <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs js-rec" data-rec="one" data-name="{{ r.name }}" data-anchor="buoc3">
             <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc3">
             {% for n in r.match_notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-1.5">❓ {{ n }}</p>{% endfor %}
             <div class="grid md:grid-cols-2 gap-3">
@@ -197,8 +198,8 @@
               <label class="block">Sửa Năm sinh trên Sheet<input name="birth" value="{{ v.get('NĂM SINH') or r.birth_year or '' }}" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></label>
             </div>
             <div class="flex flex-wrap gap-2">
-              <button name="action" value="save" class="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold">💾 Lưu SĐT/Năm sinh vào Sheet</button>
-              <button name="action" value="confirm" onclick="return confirm('Xác nhận {{ r.name }} đúng là người này và đánh dấu ĐÃ KHÁM?')" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">✅ Xác nhận đúng — đánh dấu Đã khám</button>
+              <button type="submit" name="action" value="save" class="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold">💾 Lưu SĐT/Năm sinh vào Sheet</button>
+              <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">✅ Xác nhận đúng — đánh dấu Đã khám</button>
             </div>
           </form>
         </details>
@@ -206,8 +207,8 @@
       </div>
       {% endif %}
 
-      <!-- BƯỚC 4 -->
-      {% if g.sot %}
+      <!-- BƯỚC 4 — chỉ dành cho nhóm "bệnh nhân vãng lai" -->
+      {% if g.sot and tab == 'vl' %}
       <div id="buoc4" class="space-y-3">
         <h3 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-red-500"></span>⚠️ Bước 4 — Nghi bị sót (tên giống, ngoài cửa sổ ngày) · {{ g.sot|length }} ca</h3>
         <p class="text-xs text-slate-500">Đang là "chưa khám" nhưng log có lượt khám TÊN GIỐNG, chỉ là ngày thực đến nằm NGOÀI cửa sổ [hẹn − {{ WB }}, hẹn + {{ WA }}]. Xem kỹ rồi xác nhận nếu đúng cùng 1 người.</p>
@@ -216,7 +217,7 @@
           <summary class="px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50">
             ⚠️ <b>{{ r.name }}</b> <span class="text-slate-400 text-xs">· STT {{ r.stt or '—' }} · hẹn {{ r.exam_date|dmy }} · thực đến {{ nm.visit_date|dmy }} · giống tên {{ '%.0f'|format(nm.score) }}%</span>
           </summary>
-          <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs">
+          <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs js-rec" data-rec="one" data-name="{{ r.name }}" data-anchor="buoc4">
             <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc4">
             {% for n in nm.notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-1.5">❓ {{ n }}</p>{% endfor %}
             <div class="grid md:grid-cols-2 gap-3">
@@ -226,7 +227,7 @@
                 <p>👤 {{ v.get('HỌ TÊN','') }}</p><p>📅 Ngày thực đến: {{ nm.visit_date|dmy }}</p><p>📞 SĐT lúc khám: {{ v.get('SỐ ĐIỆN THOẠI') or '—' }}</p>
                 <p>🎂 Năm sinh lúc khám: {{ v.get('NĂM SINH') or '—' }}</p><p>🏥 Khoa: {{ v.get('KHOA ĐK') or '—' }}</p></div>
             </div>
-            <button name="action" value="confirm" onclick="return confirm('Xác nhận {{ r.name }} đúng là người này và đánh dấu ĐÃ KHÁM?')" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">✅ Đúng là người này — đánh dấu Đã khám</button>
+            <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">✅ Đúng là người này — đánh dấu Đã khám</button>
           </form>
         </details>
         {% endfor %}
@@ -282,22 +283,23 @@
 
         <form method="POST" action="{{ url_for('dup_delete') }}" class="space-y-3"
               onsubmit="var n=document.querySelectorAll('.pickd:checked').length; if(!n){alert('Chưa chọn dòng Form nào.');return false;} return confirm('Xoá HẲN '+n+' dòng Form khỏi Google Sheet — KHÔNG THỂ HOÀN TÁC. Chắc chắn?');">
-          <label class="flex items-center gap-2 text-sm"><input type="checkbox" onclick="document.querySelectorAll('.pickd').forEach(c=>c.checked=this.checked)"> ☑️ Chọn tất cả</label>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" onclick="document.querySelectorAll('.pickd:not(:disabled)').forEach(c=>c.checked=this.checked)"> ☑️ Chọn tất cả (trừ cặp 🔒 bị khoá)</label>
           {% set sev = {'critical':'🔴 ĐẾM TRÙNG','review':'❔ CẦN XEM TAY','leftover':'🟡 DƯ THỪA','normal':'⚪ Bình thường'} %}
           {% set tier = {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'❓ Khớp yếu'} %}
           {% for d in dup.pairs %}{% set pk = d.khoa %}{% set pf = d.form %}
           <div class="flex items-start gap-3 border border-slate-200 rounded-lg px-3 py-2">
-            <input type="checkbox" class="pickd mt-1" name="row" value="{{ pf.sheet_row }}" title="Chọn xoá dòng Form: STT {{ pf.stt or '—' }} · {{ pf.name }}">
+            <input type="checkbox" class="pickd mt-1" name="row" value="{{ pf.sheet_row }}" {% if d.locked %}disabled{% endif %} title="{% if d.locked %}Bị khoá: khớp yếu, có thể là 2 người khác nhau{% else %}Chọn xoá dòng Form: STT {{ pf.stt or '—' }} · {{ pf.name }}{% endif %}">
             <details class="flex-1">
               <summary class="text-sm cursor-pointer">
-                {{ sev[d.severity] }} · <b>{{ pk.name }}</b> · khớp {{ tier[d.match_tier] }} ·
+                {% if d.locked %}🔒 {% endif %}{{ sev[d.severity] }} · <b>{{ pk.name }}</b> · khớp {{ tier[d.match_tier] }} ·
                 lệch ngày hẹn {% if d.day_diff is not none %}{{ '%+d'|format(d.day_diff) }}{% else %}—{% endif %} · giống tên {{ '%.0f'|format(d.score) }}%
               </summary>
               <div class="mt-3 space-y-3 text-xs">
-                {% if d.severity=='critical' %}<p class="rounded bg-red-50 text-red-800 px-3 py-2">🔴 CẢ 2 dòng đều "Đã khám" — 1 lượt khám đang bị đếm thành 2. Xoá dòng Form để số liệu đúng lại.</p>
+                {% if d.locked %}<p class="rounded bg-red-50 text-red-800 px-3 py-2">🔒 <b>KHỚP YẾU — đã khoá.</b> Hai dòng chỉ giống nhau về tên (thiếu SĐT/năm sinh để xác nhận). Dòng Form đang "Đã khám" nhưng nhiều khả năng là <b>người khác trùng tên</b>: hệ thống <b>không</b> chuyển "Đã khám" sang dòng tái khám và không cho xoá. Hãy đối chiếu tay (SĐT, năm sinh, địa chỉ) rồi sửa trực tiếp trên Sheet nếu đúng là cùng người.</p>
+                {% elif d.severity=='critical' %}<p class="rounded bg-red-50 text-red-800 px-3 py-2">🔴 CẢ 2 dòng đều "Đã khám" — 1 lượt khám đang bị đếm thành 2. Xoá dòng Form để số liệu đúng lại.</p>
                 {% elif d.needs_status_transfer %}<p class="rounded bg-blue-50 text-blue-800 px-3 py-2">🟡 Dòng Form đang "Đã khám" nhưng dòng tái khám chưa — khi xoá, hệ thống <b>tự cập nhật dòng tái khám thành "Đã khám"</b> để không mất dấu lượt khám.</p>
                 {% elif d.severity=='leftover' %}<p class="rounded bg-blue-50 text-blue-800 px-3 py-2">🟡 Dòng tái khám đã "Đã khám", dòng Form còn "chưa khám" — xoá dòng Form để dọn.</p>{% endif %}
-                {% if d.severity=='review' %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❔ Cả 2 dòng đều "Đã khám" nhưng mức khớp yếu — có thể là <b>2 người khác nhau</b> hoặc 2 lượt khám thật. Đừng xoá nếu chưa chắc.</p>{% endif %}
+                {% if d.severity=='review' and not d.locked %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❔ Cả 2 dòng đều "Đã khám" nhưng mức khớp yếu — có thể là <b>2 người khác nhau</b> hoặc 2 lượt khám thật. Đừng xoá nếu chưa chắc.</p>{% endif %}
                 {% for n in d.notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2">❓ {{ n }}</p>{% endfor %}
                 <div class="grid md:grid-cols-2 gap-3">
                   <div class="rounded-lg bg-emerald-50 p-3 space-y-0.5"><p class="font-semibold text-emerald-800 mb-1">📋 Dòng tái khám (từ khoa) — GIỮ LẠI</p>
@@ -319,5 +321,253 @@
       {% endif %}
     {% endif %}
   </section>
+  <!-- ═════════ POP-UP TRẠNG THÁI (xác nhận · đang ghi · thành công · lỗi) ═════════ -->
+  <div id="rec-modal" class="hidden fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-900/60"
+       role="dialog" aria-modal="true" aria-labelledby="rec-m-title" aria-live="polite">
+    <div class="modal-pop w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 text-center">
+      <div id="rec-m-icon" class="mx-auto mb-4 flex items-center justify-center min-h-[3.5rem]"></div>
+      <h2 id="rec-m-title" class="text-base font-bold text-slate-800"></h2>
+      <p id="rec-m-text" class="text-sm text-slate-500 mt-1.5 whitespace-pre-line break-words"></p>
+      <ul id="rec-m-list" class="hidden mt-3 text-left text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 max-h-40 overflow-auto space-y-0.5"></ul>
+      <p id="rec-m-sub" class="hidden mt-3 text-xs text-slate-400"></p>
+      <div id="rec-m-actions" class="mt-6 flex flex-wrap gap-3 justify-center"></div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% raw %}
+<script>
+/* ════════════════════════════════════════════════════════════════════════════
+   Gửi các nút "Xác nhận / Cập nhật Đã khám" ở nền (fetch) + pop-up trạng thái.
+   Luồng: [hỏi xác nhận] → [đang ghi vào Sheet…] → [thành công ✓ → tự tải lại] | [lỗi → thử lại / tải lại]
+   Máy chủ không phản hồi (timeout / mất mạng / hết phiên đăng nhập) đều hiện thông báo rõ ràng, không đứng im.
+   ════════════════════════════════════════════════════════════════════════════ */
+// <core>
+const REC = {
+  TIMEOUT_MS: 80000,
+
+  async post(url, fd, deps) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), deps.timeoutMs || REC.TIMEOUT_MS);
+    try {
+      const r = await deps.fetchFn(url, {
+        method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal,
+        headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+      });
+      const ct = (r.headers && r.headers.get('content-type')) || '';
+      if (!ct.includes('application/json')) return { kind: 'badresp', status: r.status, redirected: !!r.redirected };
+      return { kind: 'ok', status: r.status, data: await r.json() };
+    } catch (e) {
+      return { kind: (e && e.name === 'AbortError') ? 'timeout' : 'network', error: e };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  describeFailure(res) {
+    if (res.kind === 'ok') {
+      const d = res.data || {}, lv = d.level || 'error';
+      return {
+        tone: lv === 'info' ? 'info' : (lv === 'warning' ? 'warning' : 'error'),
+        title: lv === 'error' ? 'Chưa cập nhật được' : (lv === 'warning' ? 'Chưa thực hiện được' : 'Thông báo'),
+        text: d.message || 'Có lỗi xảy ra.', canRetry: lv !== 'info', reloadFirst: !!d.reload_hint,
+      };
+    }
+    if (res.kind === 'timeout') return {
+      tone: 'warning', title: 'Máy chủ chưa phản hồi',
+      text: 'Đã chờ quá lâu mà máy chủ chưa trả lời. Dữ liệu CÓ THỂ đã được ghi vào Google Sheet. ' +
+            'Hãy tải lại trang để xem trạng thái thực tế trước khi thử lại.',
+      canRetry: true, reloadFirst: true };
+    if (res.kind === 'network') return {
+      tone: 'warning', title: 'Mất kết nối tới máy chủ',
+      text: 'Không gửi được yêu cầu (mạng yếu hoặc máy chủ đang khởi động lại). Dữ liệu CÓ THỂ chưa được ghi — ' +
+            'hãy tải lại trang để kiểm tra rồi thử lại.', canRetry: true, reloadFirst: true };
+    if (res.status === 200 && res.redirected) return {
+      tone: 'warning', title: 'Phiên đăng nhập đã hết hạn',
+      text: 'Hãy tải lại trang và đăng nhập lại. Chưa có dữ liệu nào được ghi.', canRetry: false, reloadFirst: true };
+    return {
+      tone: 'error', title: 'Máy chủ trả về lỗi' + (res.status ? ' (HTTP ' + res.status + ')' : ''),
+      text: 'Máy chủ gặp sự cố khi xử lý. Dữ liệu CÓ THỂ chưa được ghi — hãy tải lại trang để kiểm tra rồi thử lại.',
+      canRetry: true, reloadFirst: true };
+  },
+
+  /* opts: {url, fd, anchor, confirm?:{title,text,okLabel}}   deps: {fetchFn, ui, reload, state, timeoutMs?} */
+  async run(opts, deps) {
+    const ui = deps.ui, state = deps.state;
+    if (state.busy) return 'busy';
+    if (opts.confirm && !(await ui.confirm(opts.confirm))) return 'cancelled';
+    state.busy = true;
+    try {
+      for (;;) {
+        ui.loading();
+        const slow = setTimeout(() => ui.slow && ui.slow(), 8000);
+        let res;
+        try { res = await REC.post(opts.url, opts.fd, deps); } finally { clearTimeout(slow); }
+        if (res.kind === 'ok' && res.data && res.data.ok) {
+          await ui.success(res.data);
+          deps.reload(opts.anchor);
+          return 'success';
+        }
+        const choice = await ui.failure(REC.describeFailure(res));
+        if (choice === 'retry') continue;
+        if (choice === 'reload') deps.reload(opts.anchor);
+        return 'failed';
+      }
+    } finally {
+      state.busy = false;
+    }
+  },
+};
+// </core>
+
+(function () {
+  const $ = id => document.getElementById(id);
+  const modal = $('rec-modal');
+  if (!modal) return;
+  const iconEl = $('rec-m-icon'), titleEl = $('rec-m-title'), textEl = $('rec-m-text'),
+        listEl = $('rec-m-list'), subEl = $('rec-m-sub'), actEl = $('rec-m-actions');
+
+  const ICON = {
+    spin: '<div class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-emerald-500 animate-spin"></div>',
+    ok: '<div class="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center"><svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>',
+    error: '<div class="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center"><svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>',
+    warning: '<div class="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center"><svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>',
+    info: '<div class="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></div>',
+    ask: '<div class="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center"><svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>',
+  };
+  const BTN = {
+    primary: 'px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
+    secondary: 'px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+  };
+  let closer = null;                               // hàm chạy khi bấm Esc / nền tối (null = đang bận, không cho đóng)
+
+  function open() { modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.classList.add('overflow-hidden'); }
+  function close() { modal.classList.add('hidden'); modal.classList.remove('flex'); document.body.classList.remove('overflow-hidden'); closer = null; }
+
+  function render(o) {
+    iconEl.innerHTML = ICON[o.tone] || '';
+    titleEl.textContent = o.title || '';
+    textEl.textContent = o.text || '';
+    textEl.classList.toggle('hidden', !o.text);
+    listEl.innerHTML = '';
+    const names = o.names || [];
+    names.forEach(n => { const li = document.createElement('li'); li.textContent = '• ' + n; listEl.appendChild(li); });
+    if (o.more) { const li = document.createElement('li'); li.className = 'text-slate-400'; li.textContent = '… và ' + o.more + ' bệnh nhân khác'; listEl.appendChild(li); }
+    listEl.classList.toggle('hidden', !names.length);
+    subEl.textContent = o.sub || '';
+    subEl.classList.toggle('hidden', !o.sub);
+    actEl.innerHTML = '';
+    (o.buttons || []).forEach(b => {
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = BTN[b.kind || 'secondary']; el.textContent = b.label;
+      if (b.kind === 'primary') el.setAttribute('data-primary', '1');
+      el.addEventListener('click', b.onClick);
+      actEl.appendChild(el);
+    });
+    open();
+    const f = actEl.querySelector('[data-primary]') || actEl.querySelector('button');
+    if (f) f.focus();
+  }
+
+  const ui = {
+    confirm({ title, text, okLabel }) {
+      return new Promise(resolve => {
+        closer = () => { close(); resolve(false); };
+        render({ tone: 'ask', title, text, buttons: [
+          { label: 'Hủy', kind: 'secondary', onClick: () => { close(); resolve(false); } },
+          { label: okLabel || 'Xác nhận', kind: 'primary', onClick: () => resolve(true) },   // modal giữ nguyên, chuyển sang "đang ghi"
+        ] });
+      });
+    },
+    loading() {
+      closer = null;
+      render({ tone: 'spin', title: 'Đang cập nhật vào Google Sheet…',
+               text: 'Vui lòng không đóng hoặc tải lại trang trong lúc chờ.', buttons: [] });
+    },
+    slow() { subEl.textContent = 'Google Sheets đang phản hồi chậm hơn bình thường — vui lòng chờ thêm…'; subEl.classList.remove('hidden'); },
+    success(d) {
+      return new Promise(resolve => {
+        let done = false, timer;
+        const go = () => { if (done) return; done = true; clearTimeout(timer); resolve(); };
+        closer = null;
+        render({ tone: 'ok', title: d.count > 0 ? 'Cập nhật thành công' : 'Đã được cập nhật trước đó',
+                 text: d.message, names: d.names, more: d.more, sub: 'Đang tải lại trang…',
+                 buttons: [{ label: 'Tải lại ngay', kind: 'primary', onClick: go }] });
+        timer = setTimeout(go, 2200);
+      });
+    },
+    failure(info) {
+      return new Promise(resolve => {
+        const btns = [];
+        const fin = v => () => { close(); resolve(v); };
+        if (info.canRetry) btns.push({ label: 'Thử lại', kind: info.reloadFirst ? 'secondary' : 'primary', onClick: () => resolve('retry') });
+        btns.push({ label: 'Tải lại trang', kind: (info.reloadFirst || !info.canRetry) ? 'primary' : 'secondary', onClick: fin('reload') });
+        btns.push({ label: 'Đóng', kind: 'secondary', onClick: fin('close') });
+        closer = fin('close');
+        render({ tone: info.tone, title: info.title, text: info.text, buttons: btns });
+      });
+    },
+  };
+
+  const state = { busy: false };
+  const reload = anchor => { if (anchor) location.hash = anchor; location.reload(); };
+  const deps = { fetchFn: (u, o) => fetch(u, o), ui, reload, state };
+
+  // Esc / bấm nền tối / giữ Tab trong pop-up
+  document.addEventListener('keydown', e => {
+    if (modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { if (closer) closer(); return; }
+    if (e.key !== 'Tab') return;
+    const b = [...actEl.querySelectorAll('button')];
+    if (!b.length) { e.preventDefault(); return; }
+    const first = b[0], last = b[b.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  modal.addEventListener('mousedown', e => { if (e.target === modal && closer) closer(); });
+
+  // Bước 2: đếm số bệnh nhân đã chọn
+  const f2 = document.querySelector('form[data-rec="apply"]');
+  if (f2) {
+    const btn = f2.querySelector('[data-apply-btn]'), cnt = f2.querySelector('[data-apply-count]'), err = f2.querySelector('[data-inline-err]');
+    const upd = () => {
+      const n = f2.querySelectorAll('.pick2:checked').length;
+      cnt.textContent = n; btn.disabled = n === 0;
+      if (n > 0 && err) err.classList.add('hidden');
+    };
+    f2.addEventListener('change', upd); upd();
+  }
+
+  // Gắn cho mọi form (Bước 2 / 3 / 4)
+  document.querySelectorAll('form.js-rec').forEach(form => {
+    let lastBtn = null;
+    form.addEventListener('click', e => { const b = e.target.closest('button[name="action"]'); if (b) lastBtn = b; });
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const kind = form.dataset.rec, fd = new FormData(form), anchor = form.dataset.anchor || '';
+      let confirmCfg = null, loadingNote = null;
+      if (kind === 'apply') {
+        const n = form.querySelectorAll('.pick2:checked').length, err = form.querySelector('[data-inline-err]');
+        const showErr = m => { if (err) { err.textContent = m; err.classList.remove('hidden'); } };
+        if (!n) { showErr('Chưa chọn bệnh nhân nào để cập nhật.'); return; }
+        if (!form.elements['confirm'].checked) { showErr('Hãy tích ô "Tôi đã xem kỹ danh sách…" trước khi cập nhật.'); form.elements['confirm'].focus(); return; }
+        if (err) err.classList.add('hidden');
+        confirmCfg = { title: 'Cập nhật "Đã khám" cho ' + n + ' bệnh nhân?',
+                       text: 'Hệ thống sẽ ghi trực tiếp vào Google Sheet và đọc lại để kiểm tra.', okLabel: 'Xác nhận cập nhật' };
+      } else {
+        const action = ((e.submitter || lastBtn) || {}).value || 'confirm';
+        fd.set('action', action);
+        if (action === 'confirm') {
+          confirmCfg = { title: 'Xác nhận ' + (form.dataset.name || 'bệnh nhân này') + ' đã khám?',
+                         text: 'Đánh dấu "ĐÃ KHÁM" trực tiếp trên Google Sheet.', okLabel: 'Đúng, đánh dấu Đã khám' };
+        }
+      }
+      await REC.run({ url: form.action, fd, anchor, confirm: confirmCfg }, deps);
+    });
+  });
+})();
+</script>
+{% endraw %}
 {% endblock %}

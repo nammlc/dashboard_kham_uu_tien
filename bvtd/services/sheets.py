@@ -5,7 +5,7 @@ Toàn bộ logic kết nối Google Sheets và xử lý DataFrame.
 Tách riêng khỏi Flask routes để dễ test và maintain.
 """
 
-import os, json, re, unicodedata
+import os, json, re, time, threading, unicodedata
 from zoneinfo import ZoneInfo
 import pandas as pd
 import gspread
@@ -58,13 +58,37 @@ def _get_credentials() -> dict | None:
     return None
 
 
+_client_lock = threading.Lock()
+_CLIENT = {"obj": None, "t": 0.0}
+_CLIENT_TTL = 45 * 60            # tạo lại client mỗi 45 phút
+_HTTP_TIMEOUT = (8, 25)          # (kết nối, chờ phản hồi) — không để request treo vô hạn
+
+
+def reset_client() -> None:
+    """Bỏ client + worksheet đang cache (gọi khi nghi kết nối hỏng)."""
+    with _client_lock:
+        _CLIENT["obj"] = None
+        _WS_CACHE["ws"] = None
+
+
 def _get_client() -> gspread.Client:
-    """Tạo gspread client với service account."""
-    creds_data = _get_credentials()
-    if not creds_data:
-        raise RuntimeError("Không tìm thấy GCP credentials. Kiểm tra biến môi trường GCP_SERVICE_ACCOUNT.")
-    creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
-    return gspread.authorize(creds)
+    """gspread client dùng lại giữa các lần gọi (đỡ đăng nhập OAuth lại mỗi request), có timeout."""
+    now = time.time()
+    with _client_lock:
+        if _CLIENT["obj"] is not None and now - _CLIENT["t"] < _CLIENT_TTL:
+            return _CLIENT["obj"]
+        creds_data = _get_credentials()
+        if not creds_data:
+            raise RuntimeError("Không tìm thấy GCP credentials. Kiểm tra biến môi trường GCP_SERVICE_ACCOUNT.")
+        creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
+        client = gspread.authorize(creds)
+        if hasattr(client, "set_timeout"):
+            try:
+                client.set_timeout(_HTTP_TIMEOUT)
+            except Exception:
+                pass
+        _CLIENT["obj"], _CLIENT["t"] = client, now
+        return client
 
 
 def load_dataframe() -> pd.DataFrame:
@@ -578,19 +602,69 @@ def append_patients(records: list[dict]) -> tuple[int, str | None]:
 # ĐỐI CHIẾU LẠI TÊN ở dòng đó — nếu Sheet vừa bị thêm/xoá/sắp xếp lại và dòng không
 # còn đúng bệnh nhân thì DỪNG, không ghi nhầm người.
 # ══════════════════════════════════════════════════════════════════════════════
-def _open_ws():
-    return _get_client().open_by_key(current_app.config["SHEET_ID"]) \
-                        .worksheet(current_app.config["SHEET_NAME"])
+_WS_CACHE = {"ws": None, "key": None, "t": 0.0}
+_WS_TTL = 10 * 60
+_TRANSIENT = {"ConnectionError", "Timeout", "ReadTimeout", "ConnectTimeout", "ChunkedEncodingError",
+              "SSLError", "ProxyError", "RemoteDisconnected", "TransportError", "ReadTimeoutError",
+              "ConnectionResetError", "BrokenPipeError"}
+
+
+def _http_status(e):
+    return getattr(getattr(e, "response", None), "status_code", None)
+
+
+def _is_transient(e) -> bool:
+    return _http_status(e) in (429, 500, 502, 503, 504) or any(c.__name__ in _TRANSIENT for c in type(e).__mro__)
+
+
+def _retry(fn, attempts=3, budget=45.0):
+    """Gọi fn(); lỗi tạm thời (429/5xx/mất kết nối/timeout) thì thử lại với backoff, tổng thời gian ≤ budget giây.
+    CHỈ dùng cho thao tác ĐỌC hoặc GHI-ĐÈ (idempotent) — tuyệt đối không dùng cho xoá dòng."""
+    t0 = time.time()
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:
+            if i == attempts - 1 or not _is_transient(e) or time.time() - t0 > budget:
+                raise
+            if _http_status(e) is None:      # lỗi kết nối → bỏ client cũ, lần sau tạo lại
+                reset_client()
+            time.sleep(min(1.5 * (i + 1), 4))
+
+
+def friendly_error(e, action="ghi Sheet") -> str:
+    code = _http_status(e)
+    if code == 429:
+        return "Google Sheets đang giới hạn số lần gọi (quá nhanh). Hãy đợi khoảng 1 phút rồi thử lại."
+    if code in (401, 403):
+        return "Không có quyền ghi vào Google Sheet — vào Share và đổi Service Account thành Editor."
+    if code == 404:
+        return "Không tìm thấy Google Sheet / tab (kiểm tra SHEET_ID và SHEET_NAME)."
+    if code in (500, 502, 503, 504) or any(c.__name__ in _TRANSIENT for c in type(e).__mro__):
+        return (f"Google Sheets phản hồi quá chậm hoặc mất kết nối khi {action}. Dữ liệu CÓ THỂ chưa được ghi — "
+                "hãy tải lại trang để xem trạng thái thực tế rồi thử lại.")
+    return f"Lỗi {action}: {type(e).__name__}: {e}"
+
+
+def _open_ws(fresh=False):
+    """Worksheet dùng lại 10 phút (đỡ 2 lần gọi API mỗi thao tác)."""
+    key = (current_app.config["SHEET_ID"], current_app.config["SHEET_NAME"])
+    now = time.time()
+    if (not fresh and _WS_CACHE["ws"] is not None and _WS_CACHE["key"] == key and now - _WS_CACHE["t"] < _WS_TTL):
+        return _WS_CACHE["ws"]
+    ws = _retry(lambda: _get_client().open_by_key(key[0]).worksheet(key[1]))
+    _WS_CACHE.update(ws=ws, key=key, t=now)
+    return ws
 
 
 def _resolve_rows(ws, headers, items):
     """items: list dict {sheet_row, stt, name} → (list số dòng thực tế, lỗi | None)."""
     stt_map = {}
     if COL_STT in headers:
-        for i, v in enumerate(ws.col_values(headers.index(COL_STT) + 1)):
+        for i, v in enumerate(_retry(lambda: ws.col_values(headers.index(COL_STT) + 1))):
             if i and str(v).strip():
                 stt_map.setdefault(str(v).strip(), i + 1)
-    names = ws.col_values(headers.index(COL_NAME) + 1) if COL_NAME in headers else []
+    names = _retry(lambda: ws.col_values(headers.index(COL_NAME) + 1)) if COL_NAME in headers else []
 
     rows = []
     for it in items:
@@ -612,29 +686,57 @@ def _resolve_rows(ws, headers, items):
     return rows, None
 
 
-def write_cells(updates, raw=False):
+def _verify_written(ws, expected):
+    """Đọc lại các cột vừa ghi và so với giá trị mong muốn.
+    expected: {(row, col): giá_trị}. Trả về số ô KHÔNG khớp (0 = đã ghi đúng hết)."""
+    bad = 0
+    for col in sorted({c for _, c in expected}):
+        vals = _retry(lambda col=col: ws.col_values(col))
+        for (row, c), want in expected.items():
+            if c != col:
+                continue
+            got = vals[row - 1] if 0 < row <= len(vals) else ""
+            if str(got).strip() != str(want).strip():
+                bad += 1
+    return bad
+
+
+def write_cells(updates, raw=False, verify=True):
     """updates: list dict {sheet_row, stt, name, values: {tên_cột: giá_trị}}.
-    Trả về (số dòng đã ghi, lỗi | None). Ghi bằng 1 lần batch_update."""
+    Trả về (số dòng đã ghi, lỗi | None). Ghi bằng 1 lần batch_update, rồi ĐỌC LẠI để chắc chắn Sheet đã đổi
+    (verify=True) — nên 'thành công' ở đây nghĩa là Sheet thật sự đang chứa giá trị mới."""
     if not updates:
         return 0, None
     try:
         ws = _open_ws()
-        headers = [h.strip() for h in ws.row_values(1)]
+        headers = [h.strip() for h in _retry(lambda: ws.row_values(1))]
         rows, err = _resolve_rows(ws, headers, updates)
         if err:
             return 0, err
-        body = []
+        body, expected = [], {}
         for u, row in zip(updates, rows):
             for col, val in u["values"].items():
                 if col in headers:
-                    body.append({"range": gspread.utils.rowcol_to_a1(row, headers.index(col) + 1),
-                                 "values": [[val]]})
+                    ci = headers.index(col) + 1
+                    body.append({"range": gspread.utils.rowcol_to_a1(row, ci), "values": [[val]]})
+                    expected[(row, ci)] = val
         if not body:
             return 0, "Không tìm thấy cột nào khớp trên Google Sheet."
-        ws.batch_update(body, value_input_option="RAW" if raw else "USER_ENTERED")
+        # Ghi đè giá trị (idempotent) nên an toàn khi thử lại nếu lần trước bị timeout giữa chừng
+        _retry(lambda: ws.batch_update(body, value_input_option="RAW" if raw else "USER_ENTERED"))
+        if verify:
+            try:
+                bad = _verify_written(ws, expected)
+            except Exception as e:       # ghi xong nhưng chưa đọc lại được → không báo lỗi oan
+                current_app.logger.warning(f"write_cells: không đọc lại để kiểm tra được: {e}")
+                bad = 0
+            if bad:
+                return 0, (f"Đã gửi lệnh ghi nhưng đọc lại thấy {bad} ô chưa đúng trên Sheet "
+                           "(có thể Sheet đang bị khoá hoặc đang có người sửa). Hãy tải lại trang để kiểm tra rồi thử lại.")
         return len(updates), None
     except Exception as e:
-        return 0, f"Lỗi ghi Sheet: {type(e).__name__}: {e}"
+        _WS_CACHE["ws"] = None
+        return 0, friendly_error(e)
 
 
 def delete_rows(items):
