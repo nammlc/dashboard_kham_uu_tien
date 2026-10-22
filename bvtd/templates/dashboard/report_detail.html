@@ -14,14 +14,23 @@
     <span class="ml-auto text-xs text-slate-400">{{ total }} bệnh nhân</span>
   </div>
 
+  {% if not has_actual_col %}
+  <div class="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+    ⚠️ Google Sheet chưa có cột <b>NGÀY THỰC KHÁM</b> nên cột "Ngày thực khám" chưa có dữ liệu.
+    Thêm cột này (đúng tên, ở cuối hàng tiêu đề) — từ lần xác nhận "Đã khám" tiếp theo hệ thống sẽ tự điền.
+  </div>
+  {% endif %}
+
   <div class="overflow-x-auto">
-    <table class="w-full text-sm" style="min-width:820px">
+    <table class="w-full text-sm" style="min-width:1080px">
       <thead>
         <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
           <th class="px-4 py-3 text-left">STT</th>
           <th class="px-4 py-3 text-left">Họ tên</th>
+          <th class="px-3 py-3 text-left">Năm sinh</th>
           <th class="px-3 py-3 text-left">SĐT</th>
-          <th class="px-3 py-3 text-left">Ngày khám</th>
+          <th class="px-3 py-3 text-left" title="Ngày hẹn / ngày đăng ký khám (cột NGÀY KHÁM trên Sheet)">Ngày hẹn</th>
+          <th class="px-3 py-3 text-left" title="Ngày bệnh nhân thực sự đến khám (từ file nhật ký HIS lúc đối chiếu)">Ngày thực khám</th>
           <th class="px-3 py-3 text-left">Khoa</th>
           <th class="px-3 py-3 text-left">Nguồn</th>
           <th class="px-3 py-3 text-left">Trạng thái</th>
@@ -32,8 +41,14 @@
         <tr class="hover:bg-slate-50">
           <td class="px-4 py-3 mono text-xs text-slate-400">{{ r.stt }}</td>
           <td class="px-4 py-3 font-medium text-slate-800">{{ r.name }}</td>
+          <td class="px-3 py-3 mono text-xs text-slate-600">{{ r.birth }}</td>
           <td class="px-3 py-3 mono text-xs text-slate-600">{{ r.phone }}</td>
           <td class="px-3 py-3 mono text-xs text-slate-600 whitespace-nowrap">{{ r.date }}</td>
+          <td class="px-3 py-3 mono text-xs whitespace-nowrap {% if r.actual == '—' %}text-slate-300{% else %}text-slate-700 font-semibold{% endif %}"
+              {% if r.actual == '—' and r.att %}title="Chưa có dữ liệu (đã khám trước khi có cột này, hoặc xác nhận thủ công)"{% endif %}>
+            {{ r.actual }}
+            {% if r.delta %}<span class="block text-[10px] font-medium {% if r.delta == 'đúng hẹn' %}text-emerald-600{% else %}text-amber-600{% endif %}">{{ r.delta }}</span>{% endif %}
+          </td>
           <td class="px-3 py-3 text-xs text-slate-600">{{ r.khoa }}</td>
           <td class="px-3 py-3 text-xs text-slate-500 max-w-xs truncate" title="{{ r.source }}">{{ r.source }}</td>
           <td class="px-3 py-3">
@@ -42,7 +57,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="px-5 py-10 text-center text-slate-400">Không có bệnh nhân nào khớp mục này.</td></tr>
+        <tr><td colspan="9" class="px-5 py-10 text-center text-slate-400">Không có bệnh nhân nào khớp mục này.</td></tr>
         {% endfor %}
       </tbody>
     </table>

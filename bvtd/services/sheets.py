@@ -33,6 +33,7 @@ COL_EXAM_TIME   = "GIỜ KHÁM DỰ KIẾN"
 COL_KHOA        = "KHOA KHÁM CHỮA BỆNH"
 COL_ADDRESS     = "ĐỊA CHỈ"
 COL_STT         = "STT"
+COL_ACTUAL_DATE = "NGÀY THỰC KHÁM"   # cột MỚI (thêm tay trên Sheet): ngày bệnh nhân thực sự đến khám
 
 STATUS_ATTENDED     = "BỆNH NHÂN ĐÃ KHÁM"
 STATUS_NOT_ATTENDED = "BỆNH NHÂN CHƯA KHÁM / BỎ KHÁM"
@@ -200,6 +201,25 @@ REPORT_KINDS = {                               # bấm số trong bảng → l�
     "ut_att": "Khám ưu tiên · Đã khám",
     "ut_abs": "Khám ưu tiên · Không đến",
 }
+
+
+def to_dmy(v) -> str:
+    """date / datetime / 'YYYY-MM-DD' / 'dd/mm/yyyy [giờ]' → 'dd/mm/YYYY' (chuỗi, 2 chữ số); không hiểu → ''."""
+    if v is None:
+        return ""
+    if hasattr(v, "strftime"):
+        try:
+            return v.strftime("%d/%m/%Y")
+        except Exception:
+            return ""
+    t = str(v).strip()
+    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    if m:
+        return f"{int(m.group(3)):02d}/{int(m.group(2)):02d}/{m.group(1)}"
+    m = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", t)
+    if m:
+        return f"{int(m.group(1)):02d}/{int(m.group(2)):02d}/{m.group(3)}"
+    return ""
 
 
 def _pct(a, b) -> float:

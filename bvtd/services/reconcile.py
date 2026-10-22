@@ -347,11 +347,11 @@ def reconcile_attendance(sheet_patients, visit_records,
                     continue
                 c = compare_person(pp, pv)
                 if c and (best is None or (c["tier"], -c["score"]) < best[:2]):
-                    best = (c["tier"], -c["score"], v, c)
+                    best = (c["tier"], -c["score"], v, c, vd)
 
         if best:
             c = best[3]
-            entry.update(visit=best[2], score=c["score"], match_tier=c["tier"], match_notes=c["notes"],
+            entry.update(visit=best[2], visit_date=best[4], score=c["score"], match_tier=c["tier"], match_notes=c["notes"],
                          status="attended_sure" if c["tier"] <= 2 else "attended_unsure")
         else:
             entry.update(score=0.0, status="not_attended")
@@ -389,6 +389,7 @@ def _row_to_patient(idx, row):
         "gender": row.get(COL_GENDER, "") if COL_GENDER in row.index else "",
         "exam_date": d, "source": row.get(COL_SOURCE, ""),
         "status_now": row.get(COL_STATUS, ""),
+        "actual_date": row.get("NGÀY THỰC KHÁM", "") if "NGÀY THỰC KHÁM" in row.index else "",
     }
 
 

@@ -186,15 +186,38 @@ def report_detail():
     d = report_drilldown(_get_df(), period, key, kind, d_from, d_to)
     total = len(d)
     page_df = d.iloc[(page - 1) * per_page: page * per_page] if total else d
-    records = [{
-        "stt":    str(r.get(COL_STT, "") or "—"),
-        "name":   str(r.get(COL_NAME, "") or "—"),
-        "phone":  str(r.get(COL_PHONE, "") or "—"),
-        "date":   r["_date"].strftime("%d/%m/%Y"),
-        "khoa":   str(r.get(COL_KHOA, "") or "—"),
-        "source": str(r.get(COL_SOURCE, "") or "—"),
-        "att":    bool(r["_att"]),
-    } for _, r in page_df.iterrows()]
+    from services.sheets import COL_BIRTH_YEAR, COL_ACTUAL_DATE, to_dmy
+    has_actual_col = COL_ACTUAL_DATE in d.columns
+
+    def _birth(v):
+        t = str(v or "").strip()
+        return t if t and t.upper() not in ("N/A", "NAN", "NONE") else "—"
+
+    def _actual(r):
+        """→ (chuỗi dd/mm/YYYY | '—', nhãn lệch so với ngày hẹn | '')"""
+        a = to_dmy(r.get(COL_ACTUAL_DATE, "")) if has_actual_col else ""
+        if not a:
+            return "—", ""
+        try:
+            diff = (datetime.strptime(a, "%d/%m/%Y") - r["_date"].to_pydatetime().replace(tzinfo=None)).days
+        except Exception:
+            return a, ""
+        return a, ("đúng hẹn" if diff == 0 else (f"sớm {-diff} ngày" if diff < 0 else f"muộn {diff} ngày"))
+
+    records = []
+    for _, r in page_df.iterrows():
+        actual, delta = _actual(r)
+        records.append({
+            "stt":    str(r.get(COL_STT, "") or "—"),
+            "name":   str(r.get(COL_NAME, "") or "—"),
+            "birth":  _birth(r.get(COL_BIRTH_YEAR, "")),
+            "phone":  str(r.get(COL_PHONE, "") or "—"),
+            "date":   r["_date"].strftime("%d/%m/%Y"),          # ngày hẹn (cột NGÀY KHÁM trên Sheet)
+            "actual": actual, "delta": delta,
+            "khoa":   str(r.get(COL_KHOA, "") or "—"),
+            "source": str(r.get(COL_SOURCE, "") or "—"),
+            "att":    bool(r["_att"]),
+        })
 
     ky = "Toàn bộ"
     if key != "all" and total:
@@ -204,6 +227,7 @@ def report_detail():
     return render_template("dashboard/report_detail.html",
                            records=records, total=total, page=page, per_page=per_page,
                            kind=kind, kind_label=REPORT_KINDS[kind], key=key, ky=ky,
+                           has_actual_col=has_actual_col,
                            period=period, period_name=PERIODS[period],
                            date_from=d_from.isoformat() if d_from else "",
                            date_to=d_to.isoformat() if d_to else "")
@@ -537,17 +561,33 @@ def _rec_back(tab="tk", anchor=""):
     return redirect(url_for("reconcile_page", tab=tab, _anchor=anchor or None))
 
 
+def _actual_date_of(entry) -> str:
+    """Ngày THỰC KHÁM (dd/mm/YYYY) của lượt khám đã khớp trong file nhật ký HIS; không có → ''."""
+    from services.sheets import to_dmy
+    nm = entry.get("near_miss") if entry.get("status") == "not_attended" else None
+    nm = nm or {}
+    for cand in (entry.get("visit_date"), nm.get("visit_date"),
+                 (entry.get("visit") or {}).get("NGÀY ĐK"), (nm.get("visit") or {}).get("NGÀY ĐK")):
+        d = to_dmy(cand)
+        if d:
+            return d
+    return ""
+
+
 def _mark_attended(entries):
-    """Ghi 'Đã khám' (và gán nguồn vãng lai nếu nguồn đang trống). Trả (n, err)."""
-    from services.sheets import write_cells, STATUS_ATTENDED, COL_STATUS, COL_SOURCE
+    """Ghi 'Đã khám' + NGÀY THỰC KHÁM (nếu Sheet có cột này) và gán nguồn vãng lai nếu nguồn đang trống. Trả (n, err)."""
+    from services.sheets import write_cells, STATUS_ATTENDED, COL_STATUS, COL_SOURCE, COL_ACTUAL_DATE
     from services.reconcile import blank_source, SOURCE_VANG_LAI
     ups = []
     for r in entries:
         vals = {COL_STATUS: STATUS_ATTENDED}
+        actual = _actual_date_of(r)
+        if actual:
+            vals[COL_ACTUAL_DATE] = actual          # cột chưa có trên Sheet thì write_cells tự bỏ qua
         if blank_source(r.get("source")):
             vals[COL_SOURCE] = SOURCE_VANG_LAI
         ups.append({"sheet_row": r["sheet_row"], "stt": r.get("stt"), "name": r.get("name"), "values": vals})
-    n, err = write_cells(ups)
+    n, err = write_cells(ups, raw=True)             # RAW: ngày ghi dạng chữ dd/mm/yyyy, không bị Sheets hiểu nhầm tháng/ngày
     if not err:
         for r in entries:
             r["done"] = True
@@ -876,9 +916,16 @@ def dup_delete():
         # chỉ chuyển "Đã khám" khi khớp CHẮC (tier 1/2)
         transfer = [d for d in sel if d.get("needs_status_transfer") and d.get("match_tier", 3) <= 2]
         if transfer:
+            from services.sheets import COL_ACTUAL_DATE, to_dmy
+            def _vals(d):
+                v = {COL_STATUS: STATUS_ATTENDED}
+                act = to_dmy(d["form"].get("actual_date")) or to_dmy(d["form"].get("exam_date"))
+                if act:
+                    v[COL_ACTUAL_DATE] = act
+                return v
             _, err = write_cells([{"sheet_row": d["khoa"]["sheet_row"], "stt": d["khoa"].get("stt"),
-                                   "name": d["khoa"]["name"], "values": {COL_STATUS: STATUS_ATTENDED}}
-                                  for d in transfer])
+                                   "name": d["khoa"]["name"], "values": _vals(d)}
+                                  for d in transfer], raw=True)
             if err:
                 flash(f"❌ Lỗi khi chuyển trạng thái sang dòng tái khám (chưa xoá gì): {err}", "error")
                 return back
