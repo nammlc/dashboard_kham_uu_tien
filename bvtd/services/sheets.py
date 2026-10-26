@@ -49,6 +49,14 @@ def status_key(v) -> str:
     return re.sub(r"\s*/\s*", "/", t)
 
 
+def canon_header(h) -> str:
+    """Tên cột trên Sheet → tên chuẩn dùng trong code. Riêng cột NGÀY TẠO LỊCH HẸN KHÁM nhận mọi kiểu gõ:
+    hoa/thường, có/không dấu, thừa khoảng trắng ('ngày tạo lịch hẹn khám', 'Ngay tao lich hen kham ')."""
+    t = str(h or "").strip()
+    k = re.sub(r"\s+", " ", _norm(t))
+    return COL_CREATED if k.startswith("ngay tao lich hen") else t
+
+
 def vn_today() -> date:
     """Ngày hôm nay theo giờ Việt Nam (server Render chạy giờ UTC)."""
     return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
@@ -135,7 +143,7 @@ def load_dataframe() -> pd.DataFrame:
         return pd.DataFrame()
 
     # Làm sạch tiêu đề: bỏ cột không tên, đánh số lại cột trùng tên
-    raw_headers = [h.strip() for h in values[0]]
+    raw_headers = [canon_header(h) for h in values[0]]
     seen, keep_idx, headers = {}, [], []
     for i, h in enumerate(raw_headers):
         if not h:
@@ -727,7 +735,7 @@ def append_patients(records: list[dict]) -> tuple[int, str | None]:
         return 0, "Không có dữ liệu để ghi."
     try:
         ws = _open_ws()
-        headers = [h.strip() for h in _retry(lambda: ws.row_values(1))]
+        headers = [canon_header(h) for h in _retry(lambda: ws.row_values(1))]
         if not headers:
             return 0, "Sheet đang trống, không có dòng tiêu đề."
 
@@ -964,7 +972,7 @@ def write_cells_ex(updates, raw=False, verify=True, fill_only=False):
     try:
         ws = _open_ws()
         grid = _retry(ws.get_all_values, deadline=deadline)
-        headers = [h.strip() for h in (grid[0] if grid else [])]
+        headers = [canon_header(h) for h in (grid[0] if grid else [])]
         if not headers:
             return set(), {}, "Sheet đang trống, không có dòng tiêu đề."
         _check_deadline(deadline)

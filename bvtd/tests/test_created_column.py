@@ -64,6 +64,22 @@ class ImportWritesCreatedDate(_Base):
         self.assertNotIn(CREATED, self.sheet.grid[0])
 
 
+class HeaderSpelling(_Base):
+    def test_any_spelling_of_the_new_header_is_understood(self):
+        for spelled in ("ngày tạo lịch hẹn khám", "Ngày Tạo Lịch Hẹn Khám ", "NGAY TAO LICH HEN KHAM"):
+            headers = [spelled if h == CREATED else h for h in HEADERS]
+            self.install_sheet(FakeSheet([sheet_row(1, "ĐỖ THỊ NGA", phone="0372984602", hen="09/11/2026", created=LAP_TODAY)],
+                                         headers=headers))
+            self.upload()
+            t = self.preview(LAP_TODAY)
+            self.assertNotIn("chưa có cột", t, spelled)
+            self.assertIn("1 bệnh nhân đã có sẵn", t, spelled)          # khớp theo ngày tạo dù ngày hẹn khác
+            res = self.confirm(LAP_TODAY)
+            self.assertEqual(res["count"], 2, spelled)
+            col = headers.index(spelled)
+            self.assertEqual(self.sheet.grid[-1][col], LAP_TODAY, spelled)
+
+
 class DuplicateByCreatedDate(_Base):
     def test_already_imported_lap_detected_even_if_exam_date_was_edited(self):
         """Lịch hẹn đã nhập (ngày tạo = 21/10) nhưng nhân viên đã sửa NGÀY KHÁM trên Sheet → vẫn phải báo 'đã có'."""
