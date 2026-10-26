@@ -34,9 +34,19 @@ COL_KHOA        = "KHOA KHÁM CHỮA BỆNH"
 COL_ADDRESS     = "ĐỊA CHỈ"
 COL_STT         = "STT"
 COL_ACTUAL_DATE = "NGÀY THỰC KHÁM"   # cột MỚI (thêm tay trên Sheet): ngày bệnh nhân thực sự đến khám
+COL_CREATED     = "NGÀY TẠO LỊCH HẸN KHÁM"   # cột MỚI (thêm tay trên Sheet): ngày Minh Lộ tạo lịch hẹn (= "Ngày lập" của file 04-4)
 
 STATUS_ATTENDED     = "BỆNH NHÂN ĐÃ KHÁM"
-STATUS_NOT_ATTENDED = "BỆNH NHÂN CHƯA KHÁM / BỎ KHÁM"
+# Giữ ĐÚNG chuỗi mà import vẫn ghi từ trước tới nay (không có khoảng trắng quanh dấu "/"). Bản cũ có chỗ ghi
+# "CHƯA KHÁM / BỎ KHÁM" (có khoảng trắng) → trên Sheet lẫn 2 kiểu, bộ lọc không bắt được hết. Khi ĐỌC luôn so sánh bằng
+# status_key() nên cả 2 kiểu đều được nhận ra.
+STATUS_NOT_ATTENDED = "BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM"
+
+
+def status_key(v) -> str:
+    """Chuẩn hoá TRẠNG THÁI để so sánh: IN HOA, gộp khoảng trắng, bỏ khoảng trắng quanh dấu '/'."""
+    t = re.sub(r"\s+", " ", str(v or "").replace("\u200b", "").strip().upper())
+    return re.sub(r"\s*/\s*", "/", t)
 
 
 def vn_today() -> date:
@@ -62,7 +72,7 @@ def _get_credentials() -> dict | None:
 _client_lock = threading.Lock()
 _CLIENT = {"obj": None, "t": 0.0}
 _CLIENT_TTL = 45 * 60            # tạo lại client mỗi 45 phút
-_HTTP_TIMEOUT = (8, 25)          # (kết nối, chờ phản hồi) — không để request treo vô hạn
+_HTTP_TIMEOUT = (8, 20)          # (kết nối, chờ phản hồi) — không để request treo vô hạn
 
 
 def reset_client() -> None:
@@ -92,17 +102,35 @@ def _get_client() -> gspread.Client:
         return client
 
 
+def parse_sheet_dates(series: pd.Series) -> pd.Series:
+    """Cột ngày trên Sheet → datetime64. Ưu tiên 'dd/mm/yyyy' (đúng như trước đây); những ô còn lại thử thêm:
+    'dd/mm/yyyy hh:mm', 'yyyy-mm-dd' và số serial của Excel/Sheets (khi ô bị hiện dạng số). Không hiểu → NaT."""
+    txt = series.astype(str).str.strip()
+    out = pd.to_datetime(txt, format="%d/%m/%Y", errors="coerce")
+    miss = out.isna() & txt.ne("")
+    if not miss.any():
+        return out
+    for idx in out.index[miss]:
+        d = to_dmy(txt.at[idx])
+        if d:
+            out.at[idx] = pd.Timestamp(datetime.strptime(d, "%d/%m/%Y"))
+            continue
+        try:
+            n = float(txt.at[idx])
+        except ValueError:
+            continue
+        if 40000 < n < 60000:                       # serial: ngày 0 của Sheets là 30/12/1899
+            out.at[idx] = pd.Timestamp("1899-12-30") + pd.Timedelta(days=int(n))
+    return out
+
+
 def load_dataframe() -> pd.DataFrame:
     """
     Đọc toàn bộ dữ liệu từ Google Sheet → DataFrame đã clean.
     Gọi hàm này trong route, kết quả được cache bởi Flask-Caching.
     """
-    sheet_id   = current_app.config["SHEET_ID"]
-    sheet_name = current_app.config["SHEET_NAME"]
-
-    client = _get_client()
-    ws     = client.open_by_key(sheet_id).worksheet(sheet_name)
-    values = ws.get_all_values()
+    ws     = _open_ws()
+    values = _retry(ws.get_all_values, deadline=time.time() + READ_BUDGET_S)
     if not values:
         return pd.DataFrame()
 
@@ -128,7 +156,11 @@ def load_dataframe() -> pd.DataFrame:
 
     # ── Chuẩn hoá ngày khám ──────────────────────────────────────────────────
     if COL_EXAM_DATE in df.columns:
-        df["_date"] = pd.to_datetime(df[COL_EXAM_DATE].astype(str).str.strip(), format="%d/%m/%Y", errors="coerce")
+        df["_date"] = parse_sheet_dates(df[COL_EXAM_DATE])
+
+    # ── Chuẩn hoá NGÀY TẠO LỊCH HẸN KHÁM (cột mới; dòng cũ có thể để trống → NaT) ──
+    if COL_CREATED in df.columns:
+        df["_created"] = parse_sheet_dates(df[COL_CREATED])
 
     # ── Chuẩn hoá timestamp ───────────────────────────────────────────────────
     if COL_TIMESTAMP in df.columns:
@@ -216,9 +248,12 @@ def to_dmy(v) -> str:
     m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", t)
     if m:
         return f"{int(m.group(3)):02d}/{int(m.group(2)):02d}/{m.group(1)}"
-    m = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", t)
+    m = re.search(r"(?<!\d)(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})(?!\d)", t)      # d/m/yyyy · d-m-yyyy · d.m.yyyy
     if m:
         return f"{int(m.group(1)):02d}/{int(m.group(2)):02d}/{m.group(3)}"
+    m = re.search(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2})(?!\d)", t)                  # d/m/yy (Sheet hiển thị năm 2 số)
+    if m:
+        return f"{int(m.group(1)):02d}/{int(m.group(2)):02d}/20{m.group(3)}"
     return ""
 
 
@@ -459,17 +494,15 @@ def get_upcoming_patients(df: pd.DataFrame, days: int = 3) -> dict:
 
 
 def update_status(row_number: int, new_status: str) -> bool:
-    """Cập nhật TRẠNG THÁI 1 dòng trong Google Sheet."""
+    """Cập nhật TRẠNG THÁI 1 dòng trong Google Sheet (row_number = chỉ số dòng dữ liệu, dòng đầu tiên = 1)."""
     try:
-        sheet_id   = current_app.config["SHEET_ID"]
-        sheet_name = current_app.config["SHEET_NAME"]
-        client = _get_client()
-        ws     = client.open_by_key(sheet_id).worksheet(sheet_name)
-        headers = ws.row_values(1)
+        ws = _open_ws()
+        headers = [h.strip() for h in _retry(lambda: ws.row_values(1))]
         col_idx = headers.index(COL_STATUS) + 1   # gspread 1-indexed
-        ws.update_cell(row_number + 1, col_idx, new_status)   # +1 vì header chiếm hàng 1
+        _retry(lambda: ws.update_cell(row_number + 1, col_idx, new_status))   # +1 vì header chiếm hàng 1 (ghi đè → thử lại an toàn)
         return True
     except Exception as e:
+        _WS_CACHE["ws"] = None
         current_app.logger.error(f"update_status error: {e}")
         return False
 
@@ -494,6 +527,11 @@ def norm_phone_key(s) -> str:
     return digits if len(digits) >= 9 and set(digits) != {"0"} else ""
 
 
+def fmt_vn_time(ts) -> str:
+    """Epoch giây → 'HH:MM:SS' giờ Việt Nam ('' nếu không có)."""
+    return datetime.fromtimestamp(ts, ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%H:%M:%S") if ts else ""
+
+
 def vn_now() -> datetime:
     return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
 
@@ -506,11 +544,15 @@ def build_sheet_field_map(record: dict, import_time_str: str) -> dict:
     """Bản ghi Minh Lộ → {tên cột trên Sheet: giá trị}. Ghép theo TÊN cột nên
     không phụ thuộc thứ tự cột trên Sheet thực tế."""
     khoa_hen = str(record.get("KHOA HẸN", "N/A") or "N/A").upper()   # KHOA/NGUỒN/TRẠNG THÁI luôn IN HOA
+    lap = to_dmy(record.get("NGÀY LẬP", ""))
     return {
         "Dấu thời gian":              import_time_str,
         COL_SOURCE:                   "BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM",
-        COL_STATUS:                   "BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM",
+        COL_STATUS:                   STATUS_NOT_ATTENDED,
         COL_EXAM_DATE:                record.get("NGÀY HẸN", "N/A") or "N/A",
+        # Dấu ' đứng đầu = ép Sheets lưu thành CHỮ "dd/mm/yyyy" (không bị hiểu nhầm tháng/ngày theo ngôn ngữ của Sheet,
+        # không bị hiện thành số serial). Khi đọc lại, Sheets không trả về dấu ' này.
+        COL_CREATED:                  ("'" + lap) if lap else "",
         COL_NAME:                     record.get("HỌ TÊN", "N/A"),
         COL_BIRTH_YEAR:               record.get("NĂM SINH (ước tính)") or "N/A",
         _COL_AGE:                     record.get("TUỔI") or "N/A",
@@ -528,64 +570,164 @@ def build_sheet_field_map(record: dict, import_time_str: str) -> dict:
     }
 
 
+def _date_key(v) -> str:
+    """Ô ngày (Timestamp / NaT / chuỗi) → 'dd/mm/YYYY' hoặc '' nếu không có ngày hợp lệ."""
+    if v is None:
+        return ""
+    try:
+        if pd.isna(v):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return to_dmy(v)
+
+
+def _index_sheet(df: pd.DataFrame) -> dict:
+    """Dựng chỉ mục các dòng ĐÃ CÓ trên Sheet để tra trùng nhanh.
+      lap  : (tên, ngày tạo lịch hẹn)          — khoá CHÍNH, dùng cột NGÀY TẠO LỊCH HẸN KHÁM
+      full : (tên, SĐT, ngày hẹn)              — khoá cũ cho các dòng chưa có ngày tạo
+      nd   : (tên, ngày hẹn)                   — khoá cũ khi thiếu SĐT
+    Mỗi khoá → danh sách tham chiếu {stt, row, phone, has_lap, hen, lap}."""
+    idx = {"lap": {}, "full": {}, "nd": {}}
+    if df is None or len(df) == 0 or COL_NAME not in df.columns:
+        return idx
+    n = len(df)
+    blank = [None] * n
+    names = df[COL_NAME].tolist()
+    hens = df["_date"].tolist() if "_date" in df.columns else blank
+    laps = df["_created"].tolist() if "_created" in df.columns else blank
+    phones = df[COL_PHONE].tolist() if COL_PHONE in df.columns else blank
+    stts = df[COL_STT].tolist() if COL_STT in df.columns else blank
+    for i, (name, h, l, phone, stt) in enumerate(zip(names, hens, laps, phones, stts)):
+        nk = norm_name(name)
+        if not nk:
+            continue
+        hk, lk, pk = _date_key(h), _date_key(l), norm_phone_key(phone)
+        ref = {"stt": "" if stt is None else str(stt).strip(), "row": i + 2, "phone": pk,
+               "has_lap": bool(lk), "hen": hk, "lap": lk}
+        if lk:
+            idx["lap"].setdefault((nk, lk), []).append(ref)
+        if hk:
+            idx["nd"].setdefault((nk, hk), []).append(ref)
+            if pk:
+                idx["full"].setdefault((nk, pk, hk), []).append(ref)
+    return idx
+
+
+def _phones_conflict(a: str, b: str) -> bool:
+    """2 SĐT đều hợp lệ mà khác nhau → rất có thể là 2 NGƯỜI khác nhau trùng tên."""
+    return bool(a and b and a != b)
+
+
 def check_sheet_duplicates(df: pd.DataFrame, candidates: list[dict]):
     """
     So khớp BN sắp import với dữ liệu ĐÃ CÓ trên Sheet (df đầy đủ, không lọc trạng thái).
-    Khoá trùng: Tên chuẩn hoá + SĐT chuẩn hoá + NGÀY KHÁM; nếu thiếu SĐT → Tên + NGÀY KHÁM.
-    Trả về (new_records, dup_records); dup có thêm khoá "_existing_stt".
+    Mỗi bản ghi được xét ĐỘC LẬP (kết quả không phụ thuộc thứ tự trong file). Thứ tự ưu tiên của khoá:
+      1) Tên + NGÀY TẠO LỊCH HẸN KHÁM (cột mới) — cùng Họ tên, cùng ngày lập, SĐT không mâu thuẫn
+      2) Tên + SĐT + NGÀY KHÁM                  — cho các dòng nhập từ trước khi có cột mới
+      3) Tên + NGÀY KHÁM (khi thiếu SĐT)        — SĐT không được mâu thuẫn
+    Trả về (new_records, dup_records). Mỗi dup có thêm: _existing_stt, _existing_row, _match ('lap' | 'hen'),
+    _existing_hen (ngày hẹn đang có trên Sheet) và _backfill (True = dòng cũ còn trống NGÀY TẠO LỊCH HẸN KHÁM
+    và khớp DUY NHẤT 1 dòng → có thể điền bổ sung).
     """
-    existing_full: dict = {}       # (tên, sđt, ngày) → stt
-    existing_namedate: dict = {}   # (tên, ngày) → stt
-
-    if df is not None and len(df) > 0 and "_date" in df.columns and COL_NAME in df.columns:
-        n = len(df)
-        names  = df[COL_NAME].tolist()
-        dates  = df["_date"].tolist()
-        phones = df[COL_PHONE].tolist() if COL_PHONE in df.columns else [""] * n
-        stts   = df[COL_STT].tolist()   if COL_STT   in df.columns else [""] * n
-        for name, d, phone, stt in zip(names, dates, phones, stts):
-            name_k = norm_name(name)
-            date_k = d.strftime("%d/%m/%Y") if pd.notna(d) else ""
-            if not name_k or not date_k:
-                continue
-            phone_k = norm_phone_key(phone)
-            if phone_k:
-                existing_full.setdefault((name_k, phone_k, date_k), stt)
-            existing_namedate.setdefault((name_k, date_k), stt)
-
+    idx = _index_sheet(df)
     new_records, dup_records = [], []
     for r in candidates:
-        name_k  = norm_name(r.get("HỌ TÊN", ""))
-        date_k  = (r.get("NGÀY HẸN", "") or "").strip()
-        phone_k = norm_phone_key(r.get("SỐ ĐIỆN THOẠI", ""))
+        nk = norm_name(r.get("HỌ TÊN", ""))
+        hk = to_dmy(r.get("NGÀY HẸN", ""))          # '5/10/2026' và '05/10/2026' phải là MỘT khoá
+        lk = to_dmy(r.get("NGÀY LẬP", ""))
+        pk = norm_phone_key(r.get("SỐ ĐIỆN THOẠI", ""))
 
-        matched = None
-        if phone_k and (name_k, phone_k, date_k) in existing_full:
-            matched = existing_full[(name_k, phone_k, date_k)]
-        elif (name_k, date_k) in existing_namedate:
-            matched = existing_namedate[(name_k, date_k)]
+        found, how = [], None
+        if nk and lk:
+            found = [x for x in idx["lap"].get((nk, lk), ()) if not _phones_conflict(pk, x["phone"])]
+            how = "lap" if found else None
+        if not found and nk and hk and pk:
+            found = [x for x in idx["full"].get((nk, pk, hk), ())]
+            how = "hen" if found else None
+        if not found and nk and hk:
+            found = [x for x in idx["nd"].get((nk, hk), ()) if not _phones_conflict(pk, x["phone"])]
+            how = "hen" if found else None
 
-        if matched is not None:
+        if found:
+            ref = found[0]
             r2 = dict(r)
-            r2["_existing_stt"] = matched
+            r2.update({"_existing_stt": ref["stt"], "_existing_row": ref["row"], "_match": how,
+                       "_existing_hen": ref["hen"],
+                       "_backfill": bool(lk) and len(found) == 1 and not ref["has_lap"]})
             dup_records.append(r2)
         else:
             new_records.append(r)
     return new_records, dup_records
 
 
+def drop_file_duplicates(records: list[dict]):
+    """Loại các dòng TRÙNG NGAY TRONG FILE đã chọn (cùng Tên + Ngày hẹn + Ngày lập, SĐT không mâu thuẫn) — chỉ giữ dòng
+    đầu tiên. Trả về (kept, dropped). Gọi SAU khi đã lọc theo ngày lập đã chọn."""
+    kept, dropped, seen = [], [], {}
+    for r in records:
+        key = (norm_name(r.get("HỌ TÊN", "")), to_dmy(r.get("NGÀY HẸN", "")), to_dmy(r.get("NGÀY LẬP", "")))
+        pk = norm_phone_key(r.get("SỐ ĐIỆN THOẠI", ""))
+        if key[0] and any(not _phones_conflict(pk, other) for other in seen.get(key, ())):
+            r2 = dict(r)
+            r2["_existing_stt"] = "(trùng ngay trong file)"
+            dropped.append(r2)
+            continue
+        if key[0]:
+            seen.setdefault(key, []).append(pk)
+        kept.append(r)
+    return kept, dropped
+
+
+def sheet_snapshot_stats(df) -> dict:
+    """Để người dùng thấy việc kiểm tra trùng có thật sự đọc được Sheet không: tổng số dòng / số dòng đủ tên + ngày hợp lệ."""
+    if df is None or len(df) == 0:
+        return {"rows": 0, "valid": 0}
+    if "_date" not in df.columns or COL_NAME not in df.columns:
+        return {"rows": len(df), "valid": 0}
+    ok = df["_date"].notna() & df[COL_NAME].astype(str).str.strip().ne("")
+    return {"rows": len(df), "valid": int(ok.sum())}
+
+
+def sheet_import_diagnostics(df) -> dict:
+    """Thông tin giúp người dùng hiểu vì sao kiểm tra trùng có thể chưa đầy đủ:
+      has_created_col : Sheet đã có cột NGÀY TẠO LỊCH HẸN KHÁM chưa (chưa có → không ghi được ngày tạo)
+      created_filled  : số dòng đã có ngày tạo hợp lệ
+      bad_dates       : số dòng có NGÀY KHÁM nhưng KHÔNG đọc được (không dùng để tra trùng được)
+      bad_samples     : vài giá trị mẫu của các ô đó"""
+    out = {"has_created_col": False, "created_filled": 0, "bad_dates": 0, "bad_samples": []}
+    if df is None:
+        return out
+    cols = list(getattr(df, "columns", []))
+    out["has_created_col"] = COL_CREATED in cols
+    if len(df) == 0:
+        return out
+    if "_created" in cols:
+        out["created_filled"] = int(df["_created"].notna().sum())
+    if COL_EXAM_DATE in cols and "_date" in cols and COL_NAME in cols:
+        raw = df[COL_EXAM_DATE].astype(str).str.strip()
+        named = df[COL_NAME].astype(str).str.strip().ne("")
+        bad = df["_date"].isna() & raw.ne("") & ~raw.str.upper().isin({"N/A", "NAN"}) & named
+        out["bad_dates"] = int(bad.sum())
+        out["bad_samples"] = list(dict.fromkeys(raw[bad].tolist()))[:3]
+    return out
+
+
 def append_patients(records: list[dict]) -> tuple[int, str | None]:
     """
     Ghi BN (từ file 04-4) vào Sheet chính, ghép đúng cột theo TÊN tiêu đề dòng 1.
     NGÀY KHÁM ghi dạng số serial + USER_ENTERED để Sheet tự hiểu là Date;
+    NGÀY TẠO LỊCH HẸN KHÁM ghi dạng chữ dd/mm/yyyy (xem build_sheet_field_map);
     TRẠNG THÁI khớp list dropdown. Trả về (số dòng đã ghi, lỗi hoặc None).
+
+    Thêm dòng KHÔNG idempotent nên KHÔNG tự thử lại: nếu mất kết nối giữa chừng, người dùng bấm lại thì
+    bước kiểm tra trùng (đọc Sheet mới) sẽ loại những dòng đã được ghi — không bao giờ nhập 2 lần.
     """
     if not records:
         return 0, "Không có dữ liệu để ghi."
     try:
-        ws = _get_client().open_by_key(current_app.config["SHEET_ID"]) \
-                          .worksheet(current_app.config["SHEET_NAME"])
-        headers = [h.strip() for h in ws.row_values(1)]
+        ws = _open_ws()
+        headers = [h.strip() for h in _retry(lambda: ws.row_values(1))]
         if not headers:
             return 0, "Sheet đang trống, không có dòng tiêu đề."
 
@@ -609,11 +751,17 @@ def append_patients(records: list[dict]) -> tuple[int, str | None]:
                 row[date_idx] = to_serial(row[date_idx])
             rows.append(row)
 
-        ws.append_rows(rows, value_input_option="USER_ENTERED",
-                       insert_data_option="INSERT_ROWS", table_range="A1")
+        resp = ws.append_rows(rows, value_input_option="USER_ENTERED",
+                              insert_data_option="INSERT_ROWS", table_range="A1")
+        # Google trả về số dòng đã ghi — đối chiếu để không báo thành công giả
+        updated = ((resp or {}).get("updates") or {}).get("updatedRows") if isinstance(resp, dict) else None
+        if updated is not None and int(updated) != len(rows):
+            return 0, (f"Google chỉ xác nhận ghi {updated}/{len(rows)} dòng. Hãy tải lại trang để xem phần đã ghi, "
+                       "rồi import lại — hệ thống sẽ tự bỏ qua những bệnh nhân đã có.")
         return len(rows), None
     except Exception as e:
-        return 0, f"Lỗi ghi Sheet: {type(e).__name__}: {e}"
+        _WS_CACHE["ws"] = None
+        return 0, friendly_error(e, "ghi Sheet")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -624,9 +772,11 @@ def append_patients(records: list[dict]) -> tuple[int, str | None]:
 # ══════════════════════════════════════════════════════════════════════════════
 _WS_CACHE = {"ws": None, "key": None, "t": 0.0}
 _WS_TTL = 10 * 60
+WRITE_BUDGET_S = 70      # tổng thời gian tối đa cho 1 lần ghi (< timeout trình duyệt 80s < gunicorn 120s)
+READ_BUDGET_S = 40       # đọc toàn bộ Sheet: tối đa ~2 lần thử (import = đọc + ghi vẫn < 120s)
 _TRANSIENT = {"ConnectionError", "Timeout", "ReadTimeout", "ConnectTimeout", "ChunkedEncodingError",
               "SSLError", "ProxyError", "RemoteDisconnected", "TransportError", "ReadTimeoutError",
-              "ConnectionResetError", "BrokenPipeError"}
+              "ConnectionResetError", "BrokenPipeError", "TimeoutError"}
 
 
 def _http_status(e):
@@ -637,19 +787,30 @@ def _is_transient(e) -> bool:
     return _http_status(e) in (429, 500, 502, 503, 504) or any(c.__name__ in _TRANSIENT for c in type(e).__mro__)
 
 
-def _retry(fn, attempts=3, budget=45.0):
-    """Gọi fn(); lỗi tạm thời (429/5xx/mất kết nối/timeout) thì thử lại với backoff, tổng thời gian ≤ budget giây.
-    CHỈ dùng cho thao tác ĐỌC hoặc GHI-ĐÈ (idempotent) — tuyệt đối không dùng cho xoá dòng."""
-    t0 = time.time()
+def _retry(fn, attempts=3, deadline=None):
+    """Gọi fn(); lỗi tạm thời (429/5xx/mất kết nối/timeout) thì thử lại với backoff.
+    Lỗi 429 (vượt hạn mức đọc/phút của Google) chờ LÂU hơn các lỗi khác — thử lại sau 1,5 giây gần như chắc chắn lại
+    bị 429 tiếp. `deadline` (time.time() tuyệt đối): quá hạn là thôi, không thử lại nữa — để tổng thời gian của 1 thao tác
+    luôn nhỏ hơn timeout của gunicorn/trình duyệt.
+    CHỈ dùng cho thao tác ĐỌC hoặc GHI-ĐÈ (idempotent) — tuyệt đối không dùng cho xoá dòng hay thêm dòng."""
     for i in range(attempts):
         try:
             return fn()
         except Exception as e:
-            if i == attempts - 1 or not _is_transient(e) or time.time() - t0 > budget:
+            late = deadline is not None and time.time() > deadline
+            if i == attempts - 1 or late or not _is_transient(e):
                 raise
             if _http_status(e) is None:      # lỗi kết nối → bỏ client cũ, lần sau tạo lại
                 reset_client()
-            time.sleep(min(1.5 * (i + 1), 4))
+            delay = 5.0 * (i + 1) if _http_status(e) == 429 else 1.5 * (i + 1)
+            if deadline is not None:
+                delay = min(delay, max(0.0, deadline - time.time()))
+            time.sleep(delay)
+
+
+def _check_deadline(deadline):
+    if deadline is not None and time.time() > deadline:
+        raise TimeoutError("quá thời gian chờ Google Sheets")
 
 
 def friendly_error(e, action="ghi Sheet") -> str:
@@ -677,100 +838,211 @@ def _open_ws(fresh=False):
     return ws
 
 
-def _resolve_rows(ws, headers, items):
-    """items: list dict {sheet_row, stt, name} → (list số dòng thực tế, lỗi | None)."""
-    stt_map = {}
-    if COL_STT in headers:
-        for i, v in enumerate(_retry(lambda: ws.col_values(headers.index(COL_STT) + 1))):
-            if i and str(v).strip():
-                stt_map.setdefault(str(v).strip(), i + 1)
-    names = _retry(lambda: ws.col_values(headers.index(COL_NAME) + 1)) if COL_NAME in headers else []
+def _cell(grid, row, ci):
+    """Giá trị ô (row 1-based, ci 0-based) từ ảnh chụp Sheet; ô ngoài vùng dữ liệu → ''."""
+    if ci is None or not (0 < row <= len(grid)):
+        return ""
+    r = grid[row - 1]
+    return r[ci] if ci < len(r) else ""
 
-    rows = []
-    for it in items:
+
+def _resolve_items(grid, headers, items):
+    """items: list dict {sheet_row, stt, name} → ({chỉ_số_item: số dòng thực tế}, {chỉ_số_item: lỗi}).
+    Chỉ ghi vào dòng ĐÚNG bệnh nhân (đối chiếu lại TÊN ngay trên ảnh chụp Sheet vừa đọc). Thứ tự thử:
+      1) STT (nếu có) — xét MỌI dòng mang STT đó (STT trên Sheet có thể bị trùng), lấy dòng đúng tên;
+      2) số dòng đã ghi nhớ — chỉ khi tên khớp và STT ở dòng đó không mâu thuẫn.
+    Lỗi của 1 người KHÔNG làm hỏng cả lô: các người còn lại vẫn được xử lý."""
+    name_ci = headers.index(COL_NAME) if COL_NAME in headers else None
+    stt_ci = headers.index(COL_STT) if COL_STT in headers else None
+    stt_rows = {}
+    if stt_ci is not None:
+        for r in range(2, len(grid) + 1):
+            v = str(_cell(grid, r, stt_ci)).strip()
+            if v:
+                stt_rows.setdefault(v, []).append(r)
+
+    rows, errs = {}, {}
+    for i, it in enumerate(items):
         stt = str(it.get("stt") or "").strip()
-        if stt:
-            row = stt_map.get(stt)
-            if row is None:
-                return [], f"Không tìm thấy STT {stt} trên Google Sheet (dòng có thể đã bị xoá). Bấm Làm mới rồi thử lại."
-        else:
-            row = int(it["sheet_row"])
         expect = norm_name(it.get("name", ""))
-        if names and expect:
-            cell = names[row - 1] if 0 < row <= len(names) else ""
-            if norm_name(cell) != expect:
-                return [], (f"Dòng {row} trên Sheet không còn là bệnh nhân «{it.get('name', '')}» "
-                            f"(Sheet vừa bị sửa/sắp xếp lại?). Đã dừng để không ghi nhầm — "
-                            f"bấm Làm mới rồi đối chiếu lại.")
-        rows.append(row)
-    return rows, None
+        try:
+            hint = int(it["sheet_row"])
+        except (KeyError, TypeError, ValueError):
+            hint = -1
+
+        def name_ok(r):
+            return not expect or name_ci is None or norm_name(_cell(grid, r, name_ci)) == expect
+
+        picked = None
+        if stt and stt in stt_rows:
+            cands = [r for r in stt_rows[stt] if name_ok(r)]
+            if len(cands) == 1:
+                picked = cands[0]
+            elif len(cands) > 1:
+                picked = hint if hint in cands else None
+                if picked is None:
+                    errs[i] = (f"Có {len(cands)} dòng trùng STT {stt} và trùng tên «{it.get('name', '')}» "
+                               "— hãy xử lý tay trên Sheet.")
+                    continue
+        if picked is None and hint > 1 and name_ok(hint):
+            cell_stt = str(_cell(grid, hint, stt_ci)).strip() if stt_ci is not None else ""
+            if not stt or not cell_stt or cell_stt == stt:
+                picked = hint
+        if picked is None:
+            if stt and stt not in stt_rows and not (hint > 1 and name_ok(hint)):
+                errs[i] = (f"Không tìm thấy STT {stt} («{it.get('name', '')}») trên Google Sheet — dòng có thể đã bị xoá "
+                           "hoặc đánh số lại. Bấm Làm mới rồi đối chiếu lại.")
+            else:
+                errs[i] = (f"Dòng {hint} trên Sheet không còn là bệnh nhân «{it.get('name', '')}» "
+                           f"(Sheet vừa bị sửa/sắp xếp lại?). Đã dừng để không ghi nhầm — "
+                           f"bấm Làm mới rồi đối chiếu lại.")
+            continue
+        rows[i] = picked
+    return rows, errs
 
 
-def _verify_written(ws, expected):
-    """Đọc lại các cột vừa ghi và so với giá trị mong muốn.
-    expected: {(row, col): giá_trị}. Trả về số ô KHÔNG khớp (0 = đã ghi đúng hết)."""
-    bad = 0
-    for col in sorted({c for _, c in expected}):
-        vals = _retry(lambda col=col: ws.col_values(col))
-        for (row, c), want in expected.items():
-            if c != col:
-                continue
-            got = vals[row - 1] if 0 < row <= len(vals) else ""
-            if str(got).strip() != str(want).strip():
-                bad += 1
+def _norm_cmp(v) -> str:
+    return re.sub(r"\s+", " ", str(v if v is not None else "").strip()).casefold()
+
+
+def _same_cell(got, want) -> bool:
+    """So ô đọc lại với giá trị đã ghi: bỏ qua khác biệt hoa/thường, khoảng trắng, dấu ' đứng đầu, và ngày viết khác kiểu."""
+    g, w = _norm_cmp(got), _norm_cmp(str(want).lstrip("'"))
+    if g == w:
+        return True
+    gd, wd = to_dmy(g), to_dmy(w)
+    return bool(gd and gd == wd and re.fullmatch(r"[\d/.\-: ]+", w) is not None)
+
+
+def _col_letter(ci: int) -> str:
+    """Số cột 1-based → chữ cái (1→A, 27→AA)."""
+    out = ""
+    while ci:
+        ci, rem = divmod(ci - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+
+def _read_columns(ws, cols, deadline=None):
+    """Đọc nhiều cột (số cột 1-based) trong CÙNG 1 lần gọi API → {cột: danh sách giá trị từ dòng 1}."""
+    cols = sorted(set(cols))
+    _check_deadline(deadline)
+    res = _retry(lambda: ws.batch_get([f"{_col_letter(c)}:{_col_letter(c)}" for c in cols]), deadline=deadline)
+    out = {}
+    for c, vr in zip(cols, res):
+        out[c] = [(row[0] if row else "") for row in vr]
+    return out
+
+
+def _verify_written(ws, expected, deadline=None):
+    """Đọc lại các cột vừa ghi và so với giá trị mong muốn (1 lần gọi API cho tất cả các cột).
+    expected: {(row, col): giá_trị}. Trả về tập {(row, col)} KHÔNG khớp (rỗng = đã ghi đúng hết)."""
+    if not expected:
+        return set()
+    vals = _read_columns(ws, [c for _, c in expected], deadline)
+    bad = set()
+    for (row, c), want in expected.items():
+        col_vals = vals.get(c, [])
+        got = col_vals[row - 1] if 0 < row <= len(col_vals) else ""
+        if not _same_cell(got, want):
+            bad.add((row, c))
     return bad
 
 
-def write_cells(updates, raw=False, verify=True):
+def write_cells_ex(updates, raw=False, verify=True, fill_only=False):
     """updates: list dict {sheet_row, stt, name, values: {tên_cột: giá_trị}}.
-    Trả về (số dòng đã ghi, lỗi | None). Ghi bằng 1 lần batch_update, rồi ĐỌC LẠI để chắc chắn Sheet đã đổi
-    (verify=True) — nên 'thành công' ở đây nghĩa là Sheet thật sự đang chứa giá trị mới."""
+    Trả về (done, errors, fatal):
+      done   — tập chỉ số (trong `updates`) đã ghi VÀ đọc lại xác nhận đúng
+      errors — {chỉ số: lý do} cho từng người không ghi được (các người khác vẫn được ghi)
+      fatal  — thông báo lỗi chung (mất kết nối, hết quyền, quá thời gian…) hoặc None
+    Số lần gọi Google API cố định, KHÔNG phụ thuộc số người: 1 (đọc Sheet) + 1 (ghi) + 1 (đọc lại) — bản cũ tốn
+    6–7 lần/thao tác nên dễ vượt hạn mức 60 lần đọc/phút và báo lỗi 429 (phải bấm đi bấm lại).
+    fill_only=True: chỉ ghi vào ô đang TRỐNG (không đè dữ liệu đã có)."""
     if not updates:
-        return 0, None
+        return set(), {}, None
+    deadline = time.time() + WRITE_BUDGET_S
     try:
         ws = _open_ws()
-        headers = [h.strip() for h in _retry(lambda: ws.row_values(1))]
-        rows, err = _resolve_rows(ws, headers, updates)
-        if err:
-            return 0, err
-        body, expected = [], {}
-        for u, row in zip(updates, rows):
-            for col, val in u["values"].items():
-                if col in headers:
-                    ci = headers.index(col) + 1
-                    body.append({"range": gspread.utils.rowcol_to_a1(row, ci), "values": [[val]]})
-                    expected[(row, ci)] = val
-        if not body:
-            return 0, "Không tìm thấy cột nào khớp trên Google Sheet."
+        grid = _retry(ws.get_all_values, deadline=deadline)
+        headers = [h.strip() for h in (grid[0] if grid else [])]
+        if not headers:
+            return set(), {}, "Sheet đang trống, không có dòng tiêu đề."
+        _check_deadline(deadline)
+        rows, errors = _resolve_items(grid, headers, updates)
+
+        cells, owners = {}, {}                          # (row, col) → giá trị · (row, col) → [chỉ số item]
+        done = set()
+        for i, row in rows.items():
+            touched = 0
+            for col, val in updates[i]["values"].items():
+                if col not in headers:
+                    continue
+                ci = headers.index(col) + 1
+                touched += 1
+                if fill_only and str(_cell(grid, row, ci - 1)).strip():
+                    continue                            # ô đã có dữ liệu → giữ nguyên
+                cells[(row, ci)] = val
+                owners.setdefault((row, ci), []).append(i)
+            if not touched:
+                errors[i] = "Không tìm thấy cột nào khớp trên Google Sheet."
+            elif not any(i in o for o in owners.values()):
+                done.add(i)                             # fill_only: mọi ô đã có sẵn → coi như xong
+        if not cells:
+            return done, errors, None
+
         # Ghi đè giá trị (idempotent) nên an toàn khi thử lại nếu lần trước bị timeout giữa chừng
-        _retry(lambda: ws.batch_update(body, value_input_option="RAW" if raw else "USER_ENTERED"))
+        body = [{"range": gspread.utils.rowcol_to_a1(r, c), "values": [[v]]} for (r, c), v in cells.items()]
+        _check_deadline(deadline)
+        _retry(lambda: ws.batch_update(body, value_input_option="RAW" if raw else "USER_ENTERED"), deadline=deadline)
+
+        bad = set()
         if verify:
             try:
-                bad = _verify_written(ws, expected)
+                bad = _verify_written(ws, cells, deadline)
             except Exception as e:       # ghi xong nhưng chưa đọc lại được → không báo lỗi oan
                 current_app.logger.warning(f"write_cells: không đọc lại để kiểm tra được: {e}")
-                bad = 0
-            if bad:
-                return 0, (f"Đã gửi lệnh ghi nhưng đọc lại thấy {bad} ô chưa đúng trên Sheet "
-                           "(có thể Sheet đang bị khoá hoặc đang có người sửa). Hãy tải lại trang để kiểm tra rồi thử lại.")
-        return len(updates), None
+        bad_items = {i for key in bad for i in owners[key]}
+        for i in rows:
+            if i in errors or i in done:
+                continue
+            if i in bad_items:
+                n_bad = sum(1 for key in bad if i in owners[key])
+                errors[i] = (f"Đã gửi lệnh ghi nhưng đọc lại thấy {n_bad} ô chưa đúng trên Sheet "
+                             "(có thể Sheet đang bị khoá hoặc đang có người sửa). Hãy tải lại trang để kiểm tra rồi thử lại.")
+            else:
+                done.add(i)
+        return done, errors, None
     except Exception as e:
         _WS_CACHE["ws"] = None
-        return 0, friendly_error(e)
+        return set(), {}, friendly_error(e)
+
+
+def write_cells(updates, raw=False, verify=True):
+    """Bản gọn của write_cells_ex cho nơi chỉ cần (số dòng đã ghi, lỗi | None). Có người lỗi → `lỗi` khác None
+    (số dòng đã ghi vẫn là số thật đã ghi được)."""
+    done, errors, fatal = write_cells_ex(updates, raw=raw, verify=verify)
+    if fatal:
+        return 0, fatal
+    if errors:
+        first = errors[min(errors)]
+        return len(done), first + (f" (và {len(errors) - 1} ca khác cũng lỗi)" if len(errors) > 1 else "")
+    return len(done), None
 
 
 def delete_rows(items):
-    """XOÁ HẲN các dòng khỏi Sheet (không hoàn tác được). items như _resolve_rows.
-    Xoá từ dòng LỚN → NHỎ trong 1 lần gọi API để không lệch số dòng. Trả về (số dòng, lỗi)."""
+    """XOÁ HẲN các dòng khỏi Sheet (không hoàn tác được). items như _resolve_items.
+    Xoá từ dòng LỚN → NHỎ trong 1 lần gọi API để không lệch số dòng. Trả về (số dòng, lỗi).
+    Chỉ cần 1 người không xác định được đúng dòng là DỪNG CẢ LÔ (xoá nhầm không có đường lùi)."""
     if not items:
         return 0, None
     try:
         ws = _open_ws()
-        headers = [h.strip() for h in ws.row_values(1)]
-        rows, err = _resolve_rows(ws, headers, items)
-        if err:
-            return 0, err
-        uniq = sorted(set(rows), reverse=True)
+        grid = _retry(ws.get_all_values)
+        headers = [h.strip() for h in (grid[0] if grid else [])]
+        rows, errors = _resolve_items(grid, headers, items)
+        if errors:
+            return 0, errors[min(errors)]
+        uniq = sorted(set(rows.values()), reverse=True)
         ws.spreadsheet.batch_update({"requests": [
             {"deleteDimension": {"range": {"sheetId": ws.id, "dimension": "ROWS",
                                            "startIndex": r - 1, "endIndex": r}}}
@@ -778,3 +1050,17 @@ def delete_rows(items):
         return len(uniq), None
     except Exception as e:
         return 0, f"Lỗi xoá dòng: {type(e).__name__}: {e}"
+
+
+def backfill_created(items):
+    """Điền NGÀY TẠO LỊCH HẸN KHÁM cho các dòng ĐÃ import từ trước khi có cột này (chỉ ô đang trống, không đè).
+    items: list {sheet_row, stt, name, lap('dd/mm/yyyy')}. Trả về (số dòng đã điền, lỗi | None)."""
+    ups = [{"sheet_row": it["sheet_row"], "stt": it.get("stt"), "name": it["name"],
+            "values": {COL_CREATED: to_dmy(it["lap"])}} for it in items if to_dmy(it.get("lap"))]
+    done, errors, fatal = write_cells_ex(ups, raw=True, fill_only=True)
+    if fatal:
+        return 0, fatal
+    if errors:
+        first = errors[min(errors)]
+        return len(done), first + (f" (và {len(errors) - 1} ca khác cũng lỗi)" if len(errors) > 1 else "")
+    return len(done), None

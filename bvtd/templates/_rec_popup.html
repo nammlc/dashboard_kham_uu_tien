@@ -1,0 +1,275 @@
+{#
+  Pop-up trạng thái dùng chung cho mọi thao tác GHI vào Google Sheet bằng form (gửi nền bằng fetch):
+    hỏi xác nhận → "đang ghi…" → thành công (tự tải lại / chuyển trang) | lỗi (Thử lại · Tải lại trang · Đóng)
+
+  Cách dùng — trong {% block scripts %} của trang:
+      {% include "_rec_popup.html" %}
+      <script> RecPopup.bindForm(formEl, (form, submitter) => ({ confirm: {...}, anchor: '...' })); </script>
+
+  Máy chủ trả JSON: {ok, level, message, count?, names?, more?, already?, redirect?, reload_hint?}.
+  Không có JS / JS lỗi → form vẫn gửi bình thường (server flash + redirect).
+#}
+<!-- ═════════ POP-UP TRẠNG THÁI (xác nhận · đang ghi · thành công · lỗi) ═════════ -->
+<div id="rec-modal" class="hidden fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-900/60"
+     role="dialog" aria-modal="true" aria-labelledby="rec-m-title" aria-live="polite">
+  <div class="modal-pop w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 text-center">
+    <div id="rec-m-icon" class="mx-auto mb-4 flex items-center justify-center min-h-[3.5rem]"></div>
+    <h2 id="rec-m-title" class="text-base font-bold text-slate-800"></h2>
+    <p id="rec-m-text" class="text-sm text-slate-500 mt-1.5 whitespace-pre-line break-words"></p>
+    <ul id="rec-m-list" class="hidden mt-3 text-left text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 max-h-40 overflow-auto space-y-0.5"></ul>
+    <p id="rec-m-sub" class="hidden mt-3 text-xs text-slate-400 break-words"></p>
+    <div id="rec-m-actions" class="mt-6 flex flex-wrap gap-3 justify-center"></div>
+  </div>
+</div>
+
+{% raw %}
+<script>
+// <core>
+const REC = {
+  TIMEOUT_MS: 80000,           // < gunicorn --timeout 120; máy chủ tự dừng ở ~70s nên thường báo lỗi trước mốc này
+
+  /* Gửi POST; luôn trả về một đối tượng mô tả kết quả (không ném lỗi). */
+  async post(url, fd, deps) {
+    const ctrl = new AbortController();
+    const timeoutMs = deps.timeoutMs || REC.TIMEOUT_MS;
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await deps.fetchFn(url, {
+        method: 'POST', body: fd, credentials: 'same-origin', signal: ctrl.signal,
+        headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+      });
+      const ct = (r.headers && r.headers.get('content-type')) || '';
+      if (!ct.includes('application/json')) return { kind: 'badresp', url, status: r.status, redirected: !!r.redirected };
+      return { kind: 'ok', url, status: r.status, data: await r.json() };
+    } catch (e) {
+      return { kind: (e && e.name === 'AbortError') ? 'timeout' : 'network', url, timeoutMs, error: e };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /* Kết quả thất bại → nội dung pop-up. `detail` là dòng kỹ thuật nhỏ để dễ báo lỗi / truy vết. */
+  describeFailure(res) {
+    if (res.kind === 'ok') {
+      const d = res.data || {}, lv = d.level || 'error';
+      const probs = (d.problems || []).slice(0, 5).map(p => '• ' + p).join('\n');
+      return {
+        tone: lv === 'info' ? 'info' : (lv === 'warning' ? 'warning' : 'error'),
+        title: lv === 'error' ? 'Chưa cập nhật được' : (lv === 'warning' ? 'Chưa thực hiện được' : 'Thông báo'),
+        text: (d.message || 'Có lỗi xảy ra.') + (probs ? '\n' + probs : ''),
+        canRetry: lv !== 'info', reloadFirst: !!d.reload_hint, detail: '',
+      };
+    }
+    const where = res.url || '';
+    if (res.kind === 'timeout') return {
+      tone: 'warning', title: 'Máy chủ chưa phản hồi',
+      text: 'Đã chờ quá lâu mà máy chủ chưa trả lời. Dữ liệu CÓ THỂ đã được ghi vào Google Sheet. ' +
+            'Hãy tải lại trang để xem trạng thái thực tế trước khi thử lại.',
+      canRetry: true, reloadFirst: true,
+      detail: 'Hết thời gian chờ ' + Math.round((res.timeoutMs || REC.TIMEOUT_MS) / 1000) + 's · ' + where };
+    if (res.kind === 'network') return {
+      tone: 'warning', title: 'Mất kết nối tới máy chủ',
+      text: 'Không gửi được yêu cầu (mạng yếu hoặc máy chủ đang khởi động lại). Dữ liệu CÓ THỂ chưa được ghi — ' +
+            'hãy tải lại trang để kiểm tra rồi thử lại.', canRetry: true, reloadFirst: true,
+      detail: ((res.error && (res.error.name + ': ' + res.error.message)) || 'lỗi mạng') + ' · ' + where };
+    if (res.status === 200 && res.redirected) return {
+      tone: 'warning', title: 'Phiên đăng nhập đã hết hạn',
+      text: 'Hãy tải lại trang và đăng nhập lại. Chưa có dữ liệu nào được ghi.', canRetry: false, reloadFirst: true,
+      detail: 'Bị chuyển hướng (đăng nhập) · ' + where };
+    if (res.status === 404) return {
+      tone: 'error', title: 'Không tìm thấy trang xử lý (HTTP 404)',
+      text: 'Có thể máy chủ đang chạy phiên bản cũ hoặc đang khởi động lại. Hãy chờ 1 phút, tải lại trang (Ctrl+F5) ' +
+            'rồi thử lại. Chưa có dữ liệu nào được ghi.', canRetry: false, reloadFirst: true,
+      detail: 'HTTP 404 · ' + where };
+    return {
+      tone: 'error', title: 'Máy chủ trả về lỗi' + (res.status ? ' (HTTP ' + res.status + ')' : ''),
+      text: 'Máy chủ gặp sự cố khi xử lý. Dữ liệu CÓ THỂ chưa được ghi — hãy tải lại trang để kiểm tra rồi thử lại.',
+      canRetry: true, reloadFirst: true, detail: 'HTTP ' + res.status + ' · ' + where };
+  },
+
+  /* opts: {url, fd, anchor, confirm?:{title,text,okLabel}}   deps: {fetchFn, ui, reload(anchor, data), state, timeoutMs?} */
+  async run(opts, deps) {
+    const ui = deps.ui, state = deps.state;
+    if (state.busy) return 'busy';
+    if (typeof opts.url !== 'string' || !opts.url) {            // lỗi lập trình: không bao giờ được gửi tới "[object …]"
+      await ui.failure({ tone: 'error', title: 'Lỗi giao diện', canRetry: false, reloadFirst: true,
+        text: 'Không xác định được đường dẫn xử lý. Hãy tải lại trang (Ctrl+F5) rồi thử lại.', detail: 'url=' + String(opts.url) });
+      return 'failed';
+    }
+    if (opts.confirm && !(await ui.confirm(opts.confirm))) return 'cancelled';
+    state.busy = true;
+    try {
+      for (;;) {
+        ui.loading();
+        const slow = setTimeout(() => ui.slow && ui.slow(), 8000);
+        let res;
+        try { res = await REC.post(opts.url, opts.fd, deps); } finally { clearTimeout(slow); }
+        if (res.kind === 'ok' && res.data && res.data.ok) {
+          await ui.success(res.data);
+          deps.reload(opts.anchor, res.data);
+          return 'success';
+        }
+        const choice = await ui.failure(REC.describeFailure(res));
+        if (choice === 'retry') continue;
+        if (choice === 'reload') deps.reload(opts.anchor, null);
+        return 'failed';
+      }
+    } finally {
+      state.busy = false;
+    }
+  },
+};
+// </core>
+
+window.RecPopup = (function () {
+  const $ = id => document.getElementById(id);
+  const modal = $('rec-modal'), iconEl = $('rec-m-icon'), titleEl = $('rec-m-title'), textEl = $('rec-m-text'),
+        listEl = $('rec-m-list'), subEl = $('rec-m-sub'), actEl = $('rec-m-actions');
+
+  const svg = (cls, body, w) => '<div class="w-14 h-14 rounded-full ' + cls + ' flex items-center justify-center">' +
+    '<svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (w || 2.5) +
+    '" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg></div>';
+  const ICON = {
+    spin: '<div class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-emerald-500 animate-spin"></div>',
+    ok: svg('bg-emerald-50 text-emerald-600', '<polyline points="20 6 9 17 4 12"/>'),
+    error: svg('bg-red-50 text-red-600', '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'),
+    warning: svg('bg-amber-50 text-amber-600', '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>', 2.2),
+    info: svg('bg-blue-50 text-blue-600', '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>', 2.2),
+    ask: svg('bg-emerald-50 text-emerald-600', '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>', 2.2),
+  };
+  const BTN = {
+    primary: 'px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
+    secondary: 'px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+  };
+  let closer = null;                               // chạy khi bấm Esc / nền tối (null = đang bận, không cho đóng)
+
+  function open() { modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.classList.add('overflow-hidden'); }
+  function close() { modal.classList.add('hidden'); modal.classList.remove('flex'); document.body.classList.remove('overflow-hidden'); closer = null; }
+
+  function render(o) {
+    iconEl.innerHTML = ICON[o.tone] || '';
+    titleEl.textContent = o.title || '';
+    textEl.textContent = o.text || '';
+    textEl.classList.toggle('hidden', !o.text);
+    listEl.innerHTML = '';
+    const names = o.names || [];
+    names.forEach(n => { const li = document.createElement('li'); li.textContent = '• ' + n; listEl.appendChild(li); });
+    if (o.more) { const li = document.createElement('li'); li.className = 'text-slate-400'; li.textContent = '… và ' + o.more + ' mục khác'; listEl.appendChild(li); }
+    listEl.classList.toggle('hidden', !names.length);
+    subEl.textContent = o.sub || '';
+    subEl.classList.toggle('hidden', !o.sub);
+    actEl.innerHTML = '';
+    (o.buttons || []).forEach(b => {
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = BTN[b.kind || 'secondary']; el.textContent = b.label;
+      if (b.kind === 'primary') el.setAttribute('data-primary', '1');
+      el.addEventListener('click', b.onClick);
+      actEl.appendChild(el);
+    });
+    open();
+    const f = actEl.querySelector('[data-primary]') || actEl.querySelector('button');
+    if (f) f.focus();
+  }
+
+  const ui = {
+    confirm({ title, text, okLabel }) {
+      return new Promise(resolve => {
+        closer = () => { close(); resolve(false); };
+        render({ tone: 'ask', title, text, buttons: [
+          { label: 'Hủy', kind: 'secondary', onClick: () => { close(); resolve(false); } },
+          { label: okLabel || 'Xác nhận', kind: 'primary', onClick: () => resolve(true) },   // giữ pop-up, chuyển sang "đang ghi"
+        ] });
+      });
+    },
+    loading() {
+      closer = null;
+      render({ tone: 'spin', title: 'Đang cập nhật vào Google Sheet…',
+               text: 'Vui lòng không đóng hoặc tải lại trang trong lúc chờ.', buttons: [] });
+    },
+    slow() { subEl.textContent = 'Google Sheets đang phản hồi chậm hơn bình thường — vui lòng chờ thêm…'; subEl.classList.remove('hidden'); },
+    success(d) {
+      return new Promise(resolve => {
+        let done = false, timer;
+        const go = () => { if (done) return; done = true; clearTimeout(timer); resolve(); };
+        closer = null;
+        // Thành công MỘT PHẦN (có ca lỗi): giữ pop-up cho tới khi người dùng đọc xong lý do và bấm tiếp tục, không tự chuyển trang
+        const probs = d.problems || [], partial = probs.length > 0;
+        render({ tone: partial ? 'warning' : 'ok',
+                 title: partial ? 'Cập nhật một phần' : (d.count > 0 ? 'Cập nhật thành công' : 'Đã được cập nhật trước đó'),
+                 text: d.message, names: partial ? probs : d.names, more: partial ? d.more_problems : d.more,
+                 sub: partial ? '' : 'Đang chuyển trang…',
+                 buttons: [{ label: partial ? 'Đã hiểu — tải lại trang' : 'Tiếp tục ngay', kind: 'primary', onClick: go }] });
+        if (!partial) timer = setTimeout(go, 2200);
+      });
+    },
+    failure(info) {
+      return new Promise(resolve => {
+        const btns = [];
+        const fin = v => () => { close(); resolve(v); };
+        if (info.canRetry) btns.push({ label: 'Thử lại', kind: info.reloadFirst ? 'secondary' : 'primary', onClick: () => resolve('retry') });
+        btns.push({ label: 'Tải lại trang', kind: (info.reloadFirst || !info.canRetry) ? 'primary' : 'secondary', onClick: fin('reload') });
+        btns.push({ label: 'Đóng', kind: 'secondary', onClick: fin('close') });
+        closer = fin('close');
+        render({ tone: info.tone, title: info.title, text: info.text, buttons: btns,
+                 sub: info.detail ? 'Chi tiết kỹ thuật: ' + info.detail : '' });
+      });
+    },
+  };
+
+  const state = { busy: false };
+  // Sau khi thành công: nếu server chỉ định trang đích (redirect) thì chuyển tới đó, ngược lại tải lại trang hiện tại.
+  const reload = (anchor, data) => {
+    if (data && data.redirect) { location.href = data.redirect; return; }
+    if (anchor) location.hash = anchor;
+    location.reload();
+  };
+  const deps = { fetchFn: (u, o) => fetch(u, o), ui, reload, state };
+
+  // Esc / bấm nền tối / giữ Tab trong pop-up
+  document.addEventListener('keydown', e => {
+    if (modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { if (closer) closer(); return; }
+    if (e.key !== 'Tab') return;
+    const b = [...actEl.querySelectorAll('button')];
+    if (!b.length) { e.preventDefault(); return; }
+    const first = b[0], last = b[b.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  modal.addEventListener('mousedown', e => { if (e.target === modal && closer) closer(); });
+
+  /* Gắn 1 form vào luồng pop-up.
+     buildOpts(form, submitter) → {confirm?, anchor?} để tiếp tục, hoặc null/false nếu chưa hợp lệ (tự báo lỗi tại chỗ).
+     LƯU Ý: lấy URL bằng getAttribute('action') — KHÔNG dùng form.action: form có nút/ô tên "action" sẽ làm
+     form.action trả về chính phần tử đó (URL thành "/…/[object HTMLButtonElement]" → HTTP 404). */
+  function bindForm(form, buildOpts, env) {
+    const mkFd = (env && env.makeFormData) || (f => new FormData(f));
+    let lastBtn = null;
+    form.addEventListener('click', e => {
+      const b = e.target && e.target.closest && e.target.closest('button[name]');
+      if (b) lastBtn = b;
+    });
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        const submitter = e.submitter || lastBtn || null;
+        const opts = buildOpts(form, submitter);
+        if (!opts) return;
+        const fd = mkFd(form);
+        if (submitter && submitter.name) fd.set(submitter.name, submitter.value);
+        await REC.run({ url: form.getAttribute('action'), fd, anchor: opts.anchor || form.dataset.anchor || '',
+                        confirm: opts.confirm || null }, deps);
+      } catch (err) {
+        state.busy = false;
+        const choice = await ui.failure({ tone: 'error', title: 'Lỗi giao diện', canRetry: false, reloadFirst: true,
+          text: 'Trang gặp lỗi khi gửi yêu cầu. Hãy tải lại trang (Ctrl+F5) rồi thử lại.',
+          detail: String((err && (err.stack || err.message)) || err).slice(0, 300) });
+        if (choice === 'reload') location.reload();
+      }
+    });
+  }
+
+  return { REC, ui, deps, state, bindForm, run: o => REC.run(o, deps) };
+})();
+</script>
+{% endraw %}

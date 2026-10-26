@@ -8,7 +8,7 @@ import json, os, re, tempfile, time
 from collections import Counter
 from datetime import datetime
 
-IMPORT_VERSION = "import-04-4 · v2 · 02/10/2026"
+IMPORT_VERSION = "import-04-4 · v4 · 24/10/2026"
 _DIR = os.path.join(tempfile.gettempdir(), "bvtd_import")
 _TTL = 3600                                    # giữ file đã upload 1 giờ
 _TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -37,6 +37,15 @@ def group_by_lap(records: list[dict]):
 
 def filter_by_lap(records: list[dict], selected: set[str]) -> list[dict]:
     return [r for r in records if lap_key(r) in selected] if selected else []
+
+
+def lap_progress(records: list[dict], dup_records: list[dict]) -> dict:
+    """Tình trạng từng ngày lập so với Sheet: {ngày lập: {"total": số BN trong file, "have": số BN ĐÃ CÓ trên Sheet,
+    "fresh": số BN chưa có}}. `dup_records` là kết quả check_sheet_duplicates() chạy trên TOÀN BỘ file."""
+    total = Counter(lap_key(r) for r in records)
+    have = Counter(lap_key(r) for r in dup_records)
+    return {lap: {"total": n, "have": min(have.get(lap, 0), n), "fresh": n - min(have.get(lap, 0), n)}
+            for lap, n in total.items()}
 
 
 # ── Lưu tạm file đã đọc (theo token trong session) ───────────────────────────

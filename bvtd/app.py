@@ -6,7 +6,7 @@ Chạy local:   flask run  (hoặc python app.py)
 Deploy Render: gunicorn app:app
 """
 
-import os, json, uuid, threading
+import os, json, time, uuid, threading
 from datetime import datetime, timedelta
 
 from flask import (Flask, render_template, redirect, url_for,
@@ -121,14 +121,16 @@ def logout():
 # DASHBOARD ROUTES
 # ════════════════════════════════════════════════════════════════════════════════
 
-def _get_df():
-    """Lấy DataFrame từ cache (hoặc gọi Sheets nếu hết hạn)."""
+def _get_df(fresh=False, max_age=None):
+    """DataFrame của Sheet, có cache. `fresh=True`: luôn đọc lại Sheet. `max_age`: chỉ dùng bản cache nếu
+    chưa quá N giây tuổi (dùng cho kiểm tra trùng khi import — không để dữ liệu cũ hàng phút)."""
     from services.sheets import load_dataframe
-    key = "main_df"
-    df  = cache.get(key)
-    if df is None:
+    df = cache.get("main_df")
+    age = time.time() - (cache.get("main_df_ts") or 0)
+    if fresh or df is None or (max_age is not None and age > max_age):
         df = load_dataframe()
-        cache.set(key, df)
+        cache.set("main_df", df)
+        cache.set("main_df_ts", time.time())
     return df
 
 
@@ -266,7 +268,7 @@ def _parse_date(value):
 @app.route("/benh-nhan")
 @login_required
 def patients():
-    from services.sheets import COL_STATUS, DASH_SCOPES, filter_by_date_range, filter_by_scope
+    from services.sheets import COL_STATUS, DASH_SCOPES, filter_by_date_range, filter_by_scope, status_key
     df       = _get_df()
     scope    = request.args.get("scope", "")
     if scope not in DASH_SCOPES:
@@ -288,8 +290,9 @@ def patients():
     if q:
         mask = filtered.apply(lambda row: q.lower() in " ".join(str(v) for v in row).lower(), axis=1)
         filtered = filtered[mask]
-    if status:
-        filtered = filtered[filtered.get(COL_STATUS, "") == status]
+    if status and COL_STATUS in filtered.columns:        # so sánh theo status_key: "CHƯA KHÁM/BỎ KHÁM" và "CHƯA KHÁM / BỎ KHÁM" là MỘT
+        want = status_key(status)
+        filtered = filtered[filtered[COL_STATUS].map(status_key) == want]
 
     total   = len(filtered)
     start   = (page - 1) * per_page
@@ -330,10 +333,18 @@ def _import_data():
     return load_import(session.get("import_token", ""))
 
 
+_IMPORT_SNAPSHOT_MAX_AGE = 20     # giây: bản Sheet dùng để kiểm tra trùng ở trang xem trước không được cũ hơn mức này
+
+
 def _import_context(selected_arg: list[str] | None, has_sel: bool, fresh: bool = False):
-    """Tính toàn bộ số liệu cho trang preview / confirm / csv. Trả None nếu phiên hết hạn."""
-    from services.importer import group_by_lap, filter_by_lap, UNKNOWN_LAP
-    from services.sheets import check_sheet_duplicates, vn_today
+    """Tính toàn bộ số liệu cho trang preview / confirm / csv. Trả None nếu phiên hết hạn.
+    `fresh=True` (lúc ghi): đọc lại Sheet ngay, không dùng cache.
+
+    Kiểm tra trùng chạy trên TOÀN BỘ file (mỗi bản ghi xét độc lập) rồi mới cắt theo ngày lập đã chọn, nhờ vậy mỗi ngày lập
+    đều có số liệu "đã nhập X/Y" để hiện ngay trên nút chọn — kể cả khi chưa tích chọn."""
+    from services.importer import group_by_lap, filter_by_lap, lap_key, lap_progress, UNKNOWN_LAP
+    from services.sheets import (check_sheet_duplicates, drop_file_duplicates, sheet_snapshot_stats,
+                                 sheet_import_diagnostics, vn_today, fmt_vn_time)
 
     data = _import_data()
     if not data:
@@ -349,15 +360,30 @@ def _import_context(selected_arg: list[str] | None, has_sel: bool, fresh: bool =
 
     filtered = filter_by_lap(records, selected)
 
-    if fresh:                                       # lúc ghi: luôn đọc lại Sheet mới nhất
-        cache.delete("main_df")
-    new_records, dup_records = check_sheet_duplicates(_get_df(), filtered)
+    df = _get_df(fresh=True) if fresh else _get_df(max_age=_IMPORT_SNAPSHOT_MAX_AGE)
+    all_new, all_dup = check_sheet_duplicates(df, records)
+    progress = lap_progress(records, all_dup)
+    new_sel = [r for r in all_new if lap_key(r) in selected]
+    dup_records = [r for r in all_dup if lap_key(r) in selected]
+    new_records, file_dups = drop_file_duplicates(new_sel)
+    stats = sheet_snapshot_stats(df)
+    diag = sheet_import_diagnostics(df)
+
+    # Dòng cũ (nhập từ trước khi có cột NGÀY TẠO LỊCH HẸN KHÁM) khớp DUY NHẤT 1 BN trong file → có thể điền bổ sung ngày tạo
+    backfill = [{"sheet_row": r["_existing_row"], "stt": r.get("_existing_stt", ""), "name": r.get("HỌ TÊN", ""),
+                 "lap": r.get("NGÀY LẬP", "")}
+                for r in dup_records if r.get("_backfill") and r.get("_existing_row")] if diag["has_created_col"] else []
 
     return {
         "filename": data["filename"], "records": records, "total": len(records),
-        "order": order, "counts": counts, "selected": selected,
+        "order": order, "counts": counts, "selected": selected, "progress": progress,
         "today_str": today_str, "UNKNOWN_LAP": UNKNOWN_LAP,
-        "filtered": filtered, "new": new_records, "dup": dup_records,
+        "filtered": filtered, "new": new_records, "dup": dup_records, "file_dup": file_dups,
+        "backfill": backfill, "diag": diag,
+        "sheet_rows": stats["rows"], "sheet_valid": stats["valid"],
+        "sheet_read_at": fmt_vn_time(cache.get("main_df_ts")),
+        # Sheet có dữ liệu nhưng không dòng nào đọc được tên+ngày → không thể kiểm tra trùng → KHÔNG cho ghi
+        "blind": stats["rows"] > 0 and stats["valid"] == 0,
     }
 
 
@@ -447,41 +473,90 @@ def import_csv():
 @app.route("/import/confirm", methods=["POST"])
 @login_required
 def import_confirm():
+    """Ghi các BN mới vào Google Sheet. Trả JSON (gửi nền, có pop-up) hoặc redirect (form thường)."""
     from services.sheets import append_patients
+    from services.importer import delete_import
     laps = request.form.getlist("lap")
     back = url_for("import_preview_page", sel=1, lap=laps)
+    home = url_for("import_excel")
+    try:
+        with _locked(_import_lock) as got:
+            if not got:
+                return _json_or_flash(False, "Đang có một lần import khác chạy — hãy đợi vài giây rồi bấm lại.",
+                                      "warning", back)
+            # Đọc lại Sheet MỚI NHẤT rồi kiểm tra trùng lần nữa ngay trước khi ghi: chặn bấm 2 lần / refresh /
+            # người khác vừa nhập cùng lịch / bấm lại sau khi lần trước bị timeout nhưng thực ra đã ghi xong.
+            ctx = _import_context(laps, True, fresh=True)
+            if ctx is None:
+                return _json_or_flash(False, "Phiên import đã hết hạn — hãy upload lại file.", "info", home,
+                                      redirect=home)
+            new, dup = ctx["new"], ctx["dup"]
+            if not ctx["selected"]:
+                return _json_or_flash(False, "Chưa chọn ngày lập nào — hãy tích chọn ít nhất 1 ngày.", "warning", back)
+            if ctx["blind"]:
+                return _json_or_flash(False, f"Không kiểm tra được trùng: đọc được {ctx['sheet_rows']} dòng trên Sheet "
+                                      "nhưng không dòng nào có Họ tên + Ngày khám hợp lệ. Để tránh nhập trùng, hệ thống "
+                                      "không ghi. Hãy kiểm tra tên cột NGÀY KHÁM / HỌ VÀ TÊN trên Sheet.", "error", back)
+            if not new:
+                return _json_or_flash(True, f"{len(dup)} bệnh nhân trong các ngày lập đã chọn đã có sẵn trên Google Sheet "
+                                      "— không ghi lại. (Nếu lần bấm trước bị gián đoạn thì dữ liệu đã được ghi.)",
+                                      "success", back, count=0, already=len(dup))
+            n, err = append_patients(new)
+        cache.delete("main_df")
+        if err:
+            return _json_or_flash(False, err, "error", back)
+        delete_import(session.pop("import_token", ""))      # xong → bỏ file, tránh import lại
+        msg = f"Đã thêm {n} dòng mới vào Google Sheet (theo {len(ctx['selected'])} ngày lập đã chọn)."
+        if dup:
+            msg += f" Đã tự động bỏ qua {len(dup)} bệnh nhân đã có sẵn."
+        if ctx["file_dup"]:
+            msg += f" Bỏ qua {len(ctx['file_dup'])} dòng trùng ngay trong file."
+        if not ctx["diag"]["has_created_col"]:
+            msg += (" ⚠️ Sheet chưa có cột \"NGÀY TẠO LỊCH HẸN KHÁM\" nên chưa ghi được ngày tạo lịch hẹn — "
+                    "hãy thêm cột này (đúng tên) vào dòng tiêu đề.")
+        names = [r["HỌ TÊN"] for r in new]
+        return _json_or_flash(True, msg, "success", home, count=n, already=len(dup),
+                              names=names[:12], more=max(0, len(names) - 12), redirect=home)
+    except Exception as e:
+        app.logger.exception("import_confirm")
+        return _json_or_flash(False, f"Lỗi máy chủ: {type(e).__name__}: {e}", "error", back)
 
-    with _import_lock:
-        # Đọc lại Sheet mới nhất rồi kiểm tra trùng LẦN NỮA ngay trước khi ghi:
-        # chặn bấm 2 lần / refresh / người khác vừa nhập cùng lịch.
-        ctx = _import_context(laps, True, fresh=True)
-        if ctx is None:
-            flash("Phiên import đã hết hạn — vui lòng upload lại file.", "info")
-            return redirect(url_for("import_excel"))
-        new, dup = ctx["new"], ctx["dup"]
 
-        if not ctx["selected"]:
-            flash("⚠️ Chưa chọn ngày lập nào — hãy tích chọn ít nhất 1 ngày.", "warning")
-            return redirect(back)
-        if not new:
-            flash(f"⚠️ Không có bệnh nhân mới để import — {len(dup)} bệnh nhân đã được nhập trước đó, "
-                  "hệ thống không ghi lại.", "warning")
-            return redirect(back)
-
-        n, err = append_patients(new)
-
-    cache.delete("main_df")
-    if err:
-        flash(f"❌ {err}", "error")
-        flash("💡 Nếu lỗi Permission: vào Google Sheet → Share → đổi Service Account từ Viewer thành Editor.", "info")
-        return redirect(back)
-
-    from services.importer import delete_import
-    delete_import(session.pop("import_token", ""))   # xong → bỏ file, tránh import lại
-    flash(f"✅ Đã thêm thành công {n} dòng mới vào Google Sheet "
-          f"(theo {len(ctx['selected'])} ngày lập đã chọn"
-          + (f" · đã tự động bỏ qua {len(dup)} bệnh nhân trùng" if dup else "") + ").", "success")
-    return redirect(url_for("import_excel"))
+@app.route("/import/backfill", methods=["POST"])
+@login_required
+def import_backfill():
+    """Điền NGÀY TẠO LỊCH HẸN KHÁM cho các dòng đã import từ trước khi có cột này (chỉ ô trống, không đè dữ liệu)."""
+    from services.sheets import backfill_created
+    laps = request.form.getlist("lap")
+    back = url_for("import_preview_page", sel=1, lap=laps)
+    try:
+        with _locked(_import_lock) as got:
+            if not got:
+                return _json_or_flash(False, "Đang có một lần import khác chạy — hãy đợi vài giây rồi bấm lại.",
+                                      "warning", back)
+            ctx = _import_context(laps, True, fresh=True)          # đọc lại Sheet mới nhất rồi mới quyết định điền dòng nào
+            if ctx is None:
+                return _json_or_flash(False, "Phiên import đã hết hạn — hãy upload lại file.", "info",
+                                      url_for("import_excel"), redirect=url_for("import_excel"))
+            if not ctx["diag"]["has_created_col"]:
+                return _json_or_flash(False, "Sheet chưa có cột \"NGÀY TẠO LỊCH HẸN KHÁM\" — hãy thêm cột này (đúng tên) "
+                                      "vào dòng tiêu đề rồi thử lại.", "warning", back)
+            items = ctx["backfill"]
+            if not items:
+                return _json_or_flash(True, "Không còn dòng cũ nào cần điền ngày tạo lịch hẹn.", "success", back,
+                                      count=0, already=0)
+            n, err = backfill_created(items)
+        cache.delete("main_df")
+        if err and not n:
+            return _json_or_flash(False, err, "error", back)
+        msg = f"Đã điền NGÀY TẠO LỊCH HẸN KHÁM cho {n} dòng đã có sẵn trên Sheet."
+        if err:
+            msg += f" ⚠️ {err}"
+        return _json_or_flash(True, msg, "warning" if err else "success", back, count=n,
+                              names=[i["name"] for i in items[:12]], more=max(0, len(items) - 12))
+    except Exception as e:
+        app.logger.exception("import_backfill")
+        return _json_or_flash(False, f"Lỗi máy chủ: {type(e).__name__}: {e}", "error", back)
 
 
 # ── API: cập nhật trạng thái bệnh nhân (từ bảng danh sách) ──────────────────
@@ -489,9 +564,14 @@ def import_confirm():
 @login_required
 def api_update_status():
     from services.sheets import update_status
-    data       = request.get_json()
-    row_number = data.get("row")
-    new_status = data.get("status")
+    data = request.get_json(silent=True) or {}
+    try:
+        row_number = int(data.get("row"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "Thiếu hoặc sai số dòng."}), 400
+    new_status = str(data.get("status") or "").strip()
+    if not new_status:
+        return jsonify({"ok": False, "message": "Thiếu trạng thái."}), 400
     ok = update_status(row_number, new_status)
     cache.delete("main_df")
     return jsonify({"ok": ok})
@@ -529,15 +609,20 @@ def _wants_json():
     return request.headers.get("X-Requested-With") == "fetch" or request.accept_mimetypes.best == "application/json"
 
 
-def _rec_reply(ok, message, level=None, tab="tk", anchor="", **extra):
-    """Trả JSON cho trang đối chiếu (fetch) hoặc flash + redirect (form thường / trình duyệt tắt JS)."""
+def _json_or_flash(ok, message, level, fallback_url, **extra):
+    """Trả JSON cho thao tác gửi nền (fetch) hoặc flash + redirect cho form thường / trình duyệt tắt JS."""
     level = level or ("success" if ok else "error")
     if _wants_json():
         resp = jsonify({"ok": bool(ok), "level": level, "message": message, **extra})
         resp.headers["Cache-Control"] = "no-store"
         return resp
-    flash(message, level)
-    return _rec_back(tab, anchor)
+    probs = extra.get("problems") or []
+    flash(message + ("  " + " · ".join(probs[:5]) if probs else ""), level)
+    return redirect(fallback_url)
+
+
+def _rec_reply(ok, message, level=None, tab="tk", anchor="", **extra):
+    return _json_or_flash(ok, message, level, url_for("reconcile_page", tab=tab, _anchor=anchor or None), **extra)
 
 
 def _rec_token(create=False):
@@ -575,8 +660,10 @@ def _actual_date_of(entry) -> str:
 
 
 def _mark_attended(entries):
-    """Ghi 'Đã khám' + NGÀY THỰC KHÁM (nếu Sheet có cột này) và gán nguồn vãng lai nếu nguồn đang trống. Trả (n, err)."""
-    from services.sheets import write_cells, STATUS_ATTENDED, COL_STATUS, COL_SOURCE, COL_ACTUAL_DATE
+    """Ghi 'Đã khám' + NGÀY THỰC KHÁM (nếu Sheet có cột này) và gán nguồn vãng lai nếu nguồn đang trống.
+    Từng người được xử lý ĐỘC LẬP: 1 người lỗi (dòng đã đổi chỗ, đọc lại chưa đúng…) KHÔNG làm hỏng cả lô.
+    Trả (số người đã ghi, danh sách lỗi từng người ['Tên: lý do'], lỗi chung | None)."""
+    from services.sheets import write_cells_ex, STATUS_ATTENDED, COL_STATUS, COL_SOURCE, COL_ACTUAL_DATE
     from services.reconcile import blank_source, SOURCE_VANG_LAI
     ups = []
     for r in entries:
@@ -587,15 +674,38 @@ def _mark_attended(entries):
         if blank_source(r.get("source")):
             vals[COL_SOURCE] = SOURCE_VANG_LAI
         ups.append({"sheet_row": r["sheet_row"], "stt": r.get("stt"), "name": r.get("name"), "values": vals})
-    n, err = write_cells(ups, raw=True)             # RAW: ngày ghi dạng chữ dd/mm/yyyy, không bị Sheets hiểu nhầm tháng/ngày
-    if not err:
-        for r in entries:
-            r["done"] = True
-            r["status_now"] = STATUS_ATTENDED
-            if blank_source(r.get("source")):
-                r["source"] = SOURCE_VANG_LAI
+    # RAW: ngày ghi dạng chữ dd/mm/yyyy, không bị Sheets hiểu nhầm tháng/ngày
+    done, errors, fatal = write_cells_ex(ups, raw=True)
+    if fatal:
+        return 0, [], fatal
+    for i in done:
+        r = entries[i]
+        r["done"] = True
+        r["status_now"] = STATUS_ATTENDED
+        if blank_source(r.get("source")):
+            r["source"] = SOURCE_VANG_LAI
+    if done:
         cache.delete("main_df")
-    return n, err
+    problems = [f"{entries[i].get('name', '?')}: {errors[i]}" for i in sorted(errors)]
+    return len(done), problems, None
+
+
+def _mark_result(n, problems, fatal, names_done, tab, anchor, already=0):
+    """Gom kết quả _mark_attended thành 1 phản hồi: lỗi chung · một phần · thành công."""
+    if fatal:
+        return _rec_reply(False, fatal, "error", tab, anchor)
+    if not n and problems:
+        return _rec_reply(False, "Không cập nhật được ca nào. " + problems[0] +
+                          (f" (và {len(problems) - 1} ca khác cũng lỗi)" if len(problems) > 1 else ""),
+                          "error", tab, anchor, problems=problems[:12], more=max(0, len(problems) - 12))
+    msg = f"Đã cập nhật \"Đã khám\" cho {n} bệnh nhân và kiểm tra lại trên Google Sheet."
+    if already:
+        msg += f" ({already} bệnh nhân khác đã được cập nhật từ trước.)"
+    if problems:
+        msg += f" ⚠️ {len(problems)} ca CHƯA cập nhật được — xem lý do bên dưới, bấm Làm mới rồi xử lý lại các ca đó."
+    return _rec_reply(True, msg, "warning" if problems else "success", tab, anchor, count=n,
+                      names=names_done[:12], more=max(0, len(names_done) - 12),
+                      problems=problems[:12], more_problems=max(0, len(problems) - 12))
 
 
 @app.route("/doi-chieu")
@@ -686,7 +796,7 @@ def reconcile_upload():
 def reconcile_run():
     from services.reconcile import (store_load, store_save, build_reconcile_scope, reconcile_attendance,
                                     blank_source, SOURCE_VANG_LAI)
-    from services.sheets import vn_today, vn_now, write_cells, STATUS_NOT_ATTENDED, COL_STATUS, COL_SOURCE
+    from services.sheets import vn_today, vn_now, write_cells_ex, STATUS_NOT_ATTENDED, COL_STATUS, COL_SOURCE
     tok = _rec_token()
     visit = store_load(tok, "visit")
     if not visit:
@@ -703,13 +813,18 @@ def reconcile_run():
         auto = [r for r in results if r["status"] == "not_attended" and blank_source(r.get("source"))]
         n_auto, err_auto = 0, None
         if auto:
-            n_auto, err_auto = write_cells([
+            done, errs, fatal = write_cells_ex([
                 {"sheet_row": r["sheet_row"], "stt": r.get("stt"), "name": r.get("name"),
                  "values": {COL_STATUS: STATUS_NOT_ATTENDED, COL_SOURCE: SOURCE_VANG_LAI}} for r in auto])
-            if not err_auto:
-                for r in auto:
-                    r["source"] = SOURCE_VANG_LAI
+            n_auto = len(done)
+            for i in done:                                  # từng người độc lập: ai ghi được thì cập nhật, ai lỗi thì báo
+                auto[i]["source"] = SOURCE_VANG_LAI
+            if done:
                 cache.delete("main_df")
+            if fatal:
+                err_auto = fatal
+            elif errs:
+                err_auto = f"{len(errs)}/{len(auto)} ca lỗi — {errs[min(errs)]}"
         store_save(tok, "rec", {"results": results, "ran_at": vn_now().strftime("%H:%M %d/%m/%Y"),
                                 "n_auto": n_auto})
     if err_auto:
@@ -750,18 +865,14 @@ def reconcile_apply():
                     return _rec_reply(True, f"{already} bệnh nhân đã chọn đã được cập nhật \"Đã khám\" trước đó — "
                                       "không cần ghi lại.", "success", tab, "buoc2", count=0, already=already)
                 return _rec_reply(False, "Không có bệnh nhân nào được chọn để cập nhật.", "warning", tab, "buoc2")
-            n, err = _mark_attended(entries)
-            if err:
-                return _rec_reply(False, err, "error", tab, "buoc2")
-            try:
-                store_save(tok, "rec", rec)
-            except Exception as e:                         # Sheet đã ghi xong; chỉ mất cờ 'done' trên màn hình
-                app.logger.warning(f"reconcile_apply: store_save lỗi: {e}")
-        names = [r["name"] for r in entries]
-        msg = f"Đã cập nhật \"Đã khám\" cho {n} bệnh nhân và kiểm tra lại trên Google Sheet."
-        if already:
-            msg += f" ({already} bệnh nhân khác đã được cập nhật từ trước.)"
-        return _rec_reply(True, msg, "success", tab, "buoc2", count=n, names=names[:12], more=max(0, len(names) - 12))
+            n, problems, fatal = _mark_attended(entries)
+            if n:
+                try:
+                    store_save(tok, "rec", rec)
+                except Exception as e:                     # Sheet đã ghi xong; chỉ mất cờ 'done' trên màn hình
+                    app.logger.warning(f"reconcile_apply: store_save lỗi: {e}")
+            names = [r["name"] for r in entries if r.get("done")]
+        return _mark_result(n, problems, fatal, names, tab, "buoc2", already)
     except Exception as e:
         app.logger.exception("reconcile_apply")
         return _rec_reply(False, f"Lỗi máy chủ: {type(e).__name__}: {e}", "error", tab, "buoc2")
@@ -815,9 +926,9 @@ def reconcile_one():
             can_confirm = entry["status"] == "attended_unsure" or (
                 bool(entry.get("near_miss")) and patient_kind(entry.get("source")) != "tai_kham")
             if action == "confirm" and can_confirm:
-                n, err = _mark_attended([entry])
-                if err:
-                    return _rec_reply(False, err, "error", tab, anchor)
+                n, problems, fatal = _mark_attended([entry])
+                if fatal or not n:
+                    return _rec_reply(False, fatal or (problems[0] if problems else "Không ghi được."), "error", tab, anchor)
                 try:
                     store_save(tok, "rec", rec)
                 except Exception as e:

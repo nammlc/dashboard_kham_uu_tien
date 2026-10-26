@@ -30,7 +30,7 @@
             class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white">
       <option value="">Tất cả trạng thái</option>
       <option value="BỆNH NHÂN ĐÃ KHÁM"       {% if status=='BỆNH NHÂN ĐÃ KHÁM' %}selected{% endif %}>Đã khám</option>
-      <option value="BỆNH NHÂN CHƯA KHÁM / BỎ KHÁM" {% if status=='BỆNH NHÂN CHƯA KHÁM / BỎ KHÁM' %}selected{% endif %}>Chưa khám / Vắng</option>
+      <option value="BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM" {% if status|replace(' / ','/') == 'BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM' %}selected{% endif %}>Chưa khám / Vắng</option>
     </select>
     <button type="submit"
             class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">
@@ -50,6 +50,7 @@
           <th class="px-4 py-3 text-left">STT</th>
           <th class="px-4 py-3 text-left">Họ tên</th>
           <th class="px-3 py-3 text-left">Ngày khám</th>
+          <th class="px-3 py-3 text-left">Ngày tạo hẹn</th>
           <th class="px-3 py-3 text-left">Chuyên khoa</th>
           <th class="px-3 py-3 text-left">SĐT</th>
           <th class="px-3 py-3 text-left">Địa chỉ</th>
@@ -64,6 +65,7 @@
           <td class="px-4 py-3 mono text-xs text-slate-400">{{ r.get('STT','') }}</td>
           <td class="px-4 py-3 font-medium text-slate-800">{{ r.get('1. HỌ VÀ TÊN BỆNH NHÂN','—') }}</td>
           <td class="px-3 py-3 mono text-xs text-slate-600" style="white-space:nowrap">{{ r.get('NGÀY KHÁM','—') }}</td>
+          <td class="px-3 py-3 mono text-xs text-slate-500" style="white-space:nowrap">{{ r.get('NGÀY TẠO LỊCH HẸN KHÁM') or '—' }}</td>
           <td class="px-3 py-3 text-xs text-slate-600">{{ r.get('CHUYÊN KHOA MONG MUỐN KHÁM','—') }}</td>
           <td class="px-3 py-3 mono text-xs text-slate-600">{{ r.get('5. SỐ ĐIÊN THOẠI','N/A') }}</td>
           <td class="px-3 py-3 text-xs text-slate-500 max-w-xs truncate">{{ r.get('ĐỊA CHỈ','—') }}</td>
@@ -86,7 +88,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="px-5 py-10 text-center text-slate-400">Không tìm thấy bệnh nhân.</td></tr>
+        <tr><td colspan="9" class="px-5 py-10 text-center text-slate-400">Không tìm thấy bệnh nhân.</td></tr>
         {% endfor %}
       </tbody>
     </table>
