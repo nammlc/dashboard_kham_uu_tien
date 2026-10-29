@@ -59,8 +59,7 @@ class PageTests(RegisterBase):
         self.assertIn("07:00", html); self.assertIn("16:30", html); self.assertNotIn(">12:00<", html)
         self.assertIn("Khám Nội tiết", html)
         self.assertIn("BS Lê Đức Linh", html)
-        self.assertIn('aria-label="Phóng to chữ"', html)               # nút + / − chỉnh cỡ chữ
-        self.assertIn('aria-label="Thu nhỏ chữ"', html)
+        self.assertNotIn("sz-plus", html)                               # không có nút chỉnh cỡ chữ
         self.assertNotIn("Điền lần lượt từng bước", html)
         self.assertNotIn("Bác sĩ nào cũng được", html)
 

@@ -15,12 +15,8 @@
   header.top{background:var(--blue);color:#fff;padding:16px 14px;text-align:center}
   header.top .hos{font-size:.85rem;letter-spacing:.03em;opacity:.95}
   header.top h1{margin:.2rem 0 0;font-size:1.45rem;line-height:1.25}
-  .tools{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:12px 0 4px}
   button,.btn{font:inherit;cursor:pointer}
   .btn-size{border:2px solid var(--blue);background:#fff;color:var(--blue);border-radius:12px;padding:8px 14px;font-weight:700;min-height:48px}
-  .btn-sz{width:56px;height:56px;border-radius:50%;border:3px solid var(--blue);background:#fff;color:var(--blue);font-size:2rem;font-weight:800;line-height:1;padding:0}
-  .btn-sz:active{background:var(--sel)}
-  .btn-sz[disabled]{opacity:.35}
   .progress{margin:10px 0 14px}
   .progress .txt{font-weight:800;font-size:1.05rem;color:var(--blue-d)}
   .bar{height:12px;background:#d6e3ee;border-radius:99px;overflow:hidden;margin-top:6px}
@@ -95,11 +91,6 @@
 </header>
 
 <div class="wrap">
-  <div class="tools">
-    <button type="button" class="btn-sz" id="sz-minus" aria-label="Thu nhỏ chữ" title="Thu nhỏ chữ">−</button>
-    <button type="button" class="btn-sz" id="sz-plus" aria-label="Phóng to chữ" title="Phóng to chữ">+</button>
-  </div>
-
   <div class="progress" id="progress" aria-live="polite">
     <div class="txt" id="progress-txt">Bước 1 / 5</div>
     <div class="bar"><i id="progress-bar"></i></div>
@@ -295,18 +286,6 @@
     var f = p.closest('.field'); if (f) f.classList.toggle('has-err', !!msg);
   }
   function clearErrs(n) { [].forEach.call(steps[n - 1].querySelectorAll('.err'), function (p) { p.textContent = ''; p.classList.remove('show'); var f = p.closest('.field'); if (f) f.classList.remove('has-err'); }); }
-
-  /* ── Cỡ chữ: nút − và + (4 mức, nhớ lại cho lần sau) ── */
-  var SIZES = [20, 23, 26, 29], lvl = 0, minus = $('sz-minus'), plus = $('sz-plus');
-  function applySize() {
-    document.documentElement.style.fontSize = SIZES[lvl] + 'px';
-    minus.disabled = lvl === 0; plus.disabled = lvl === SIZES.length - 1;
-    try { localStorage.setItem('reg_size', String(lvl)); } catch (e) {}
-  }
-  try { var sv = parseInt(localStorage.getItem('reg_size'), 10); if (sv >= 0 && sv < SIZES.length) lvl = sv; } catch (e) {}
-  minus.addEventListener('click', function () { if (lvl > 0) { lvl--; applySize(); } });
-  plus.addEventListener('click', function () { if (lvl < SIZES.length - 1) { lvl++; applySize(); } });
-  applySize();
 
   /* ── Kiểm tra từng bước (gợi ý nhanh; máy chủ vẫn kiểm tra lại) ── */
   function normPhone(s) { s = s.replace(/[\s.\-()]/g, ''); if (s.indexOf('+84') === 0) s = '0' + s.slice(3); else if (/^84\d{9}$/.test(s)) s = '0' + s.slice(2); return s; }
