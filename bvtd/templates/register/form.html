@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Đăng ký khám bệnh online – BVĐK Tâm Đức Cầu Quan</title>
+<title>Đăng ký lịch hẹn khám online – BVĐK Tâm Đức Cầu Quan</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 <script>document.documentElement.classList.add('js');</script>
 <style>
   :root{--bg:#f2f7fb;--card:#fff;--ink:#12263a;--muted:#4a5f73;--line:#b9c8d6;--blue:#0b5ea8;--blue-d:#08457d;--green:#157a37;--green-d:#0f5c29;--red:#b3261e;--red-bg:#fdecea;--sel:#e3f1ff}
@@ -13,6 +14,7 @@
   body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
   .wrap{max-width:720px;margin:0 auto;padding:14px 14px 120px}
   header.top{background:var(--blue);color:#fff;padding:16px 14px;text-align:center}
+  header.top .logo{display:block;margin:0 auto 8px;width:96px;height:96px;border-radius:50%;background:#fff}
   header.top .hos{font-size:.85rem;letter-spacing:.03em;opacity:.95}
   header.top h1{margin:.2rem 0 0;font-size:1.45rem;line-height:1.25}
   button,.btn{font:inherit;cursor:pointer}
@@ -42,7 +44,8 @@
   .choice input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
   .choice span{display:flex;align-items:center;justify-content:center;text-align:center;min-height:58px;padding:10px 12px;border:2.5px solid var(--line);border-radius:14px;background:#fff;font-weight:700;font-size:1.02rem}
   .choices.list .choice span{justify-content:flex-start;text-align:left}
-  .choices.list .choice span.two{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}
+  .choice span.two{flex-direction:column;gap:2px}
+  .choices.list .choice span.two{align-items:flex-start;justify-content:center}
   .choice small{display:block;font-weight:400;color:var(--muted);font-size:.85rem}
   .choice input:checked+span{border-color:var(--blue);background:var(--sel);box-shadow:inset 0 0 0 2px var(--blue)}
   .choice input:focus-visible+span{outline:4px solid #9cc8ee}
@@ -86,8 +89,9 @@
 </head>
 <body>
 <header class="top">
+  <img class="logo" src="{{ url_for('static', filename='logo.png') }}" width="96" height="96" alt="Logo Bệnh viện Đa khoa Tâm Đức Cầu Quan">
   <div class="hos">BỆNH VIỆN ĐA KHOA TÂM ĐỨC CẦU QUAN</div>
-  <h1>ĐĂNG KÝ KHÁM BỆNH ONLINE</h1>
+  <h1>ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE</h1>
 </header>
 
 <div class="wrap">
@@ -412,7 +416,7 @@
     labels.forEach(function (lb, k) {
       var iso = addDays(TODAY, k), l = document.createElement('label'); l.className = 'choice';
       var i = document.createElement('input'); i.type = 'radio'; i.name = 'quick_date'; i.value = iso; i.checked = (cur === iso);
-      var s = document.createElement('span'); s.innerHTML = '<b></b><small></small>'; s.firstChild.textContent = lb; s.lastChild.textContent = short(iso);
+      var s = document.createElement('span'); s.className = 'two'; s.innerHTML = '<b></b><small></small>'; s.firstChild.textContent = lb; s.lastChild.textContent = short(iso);
       l.appendChild(i); l.appendChild(s); box.appendChild(l);
       i.addEventListener('change', function () { fld('exam_date').value = iso; setErr('exam_date', ''); disablePastSlots(); });
     });

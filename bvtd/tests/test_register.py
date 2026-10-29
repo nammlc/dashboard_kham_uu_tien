@@ -60,6 +60,9 @@ class PageTests(RegisterBase):
         self.assertIn("Khám Nội tiết", html)
         self.assertIn("BS Lê Đức Linh", html)
         self.assertNotIn("sz-plus", html)                               # không có nút chỉnh cỡ chữ
+        self.assertIn("ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE", html)
+        self.assertIn('src="/static/logo.png"', html)
+        self.assertEqual(self.client.get("/static/logo.png").status_code, 200)     # logo công khai, không cần đăng nhập
         self.assertNotIn("Điền lần lượt từng bước", html)
         self.assertNotIn("Bác sĩ nào cũng được", html)
 
