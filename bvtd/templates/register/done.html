@@ -9,7 +9,11 @@
   *{box-sizing:border-box}
   html{font-size:20px}
   body{margin:0;background:#f2f7fb;color:#12263a;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.5}
-  header{background:#0b5ea8;color:#fff;padding:16px 14px;text-align:center;font-size:.85rem;letter-spacing:.03em}
+  header{background:#0b3a6e;color:#fff;padding:12px 14px}
+  header .in{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:12px}
+  header img{flex:none;width:60px;height:60px;border-radius:50%;background:#fff}
+  header b{display:block;font-size:1.2rem;line-height:1.2}
+  header small{font-size:.9rem;opacity:.95}
   .wrap{max-width:720px;margin:0 auto;padding:18px 14px 40px}
   .ok{background:#fff;border:3px solid #157a37;border-radius:20px;padding:22px 18px;text-align:center}
   .ok .tick{width:78px;height:78px;border-radius:50%;background:#157a37;color:#fff;font-size:3rem;line-height:78px;margin:0 auto 10px}
@@ -26,7 +30,10 @@
 </style>
 </head>
 <body>
-<header><img src="{{ url_for('static', filename='logo.png') }}" width="72" height="72" alt="Logo bệnh viện" style="display:block;margin:0 auto 6px;border-radius:50%;background:#fff">BỆNH VIỆN ĐA KHOA TÂM ĐỨC CẦU QUAN</header>
+<header><div class="in">
+  <img src="{{ url_for('static', filename='logo.png') }}" width="60" height="60" alt="Logo bệnh viện">
+  <div><b>ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE</b><small>BVĐK Tâm Đức Cầu Quan</small></div>
+</div></header>
 <div class="wrap">
   <div class="ok {{ 'already' if s.already }}" role="status">
     <div class="tick" aria-hidden="true">✓</div>

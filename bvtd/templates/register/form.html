@@ -13,10 +13,11 @@
   html{font-size:20px;-webkit-text-size-adjust:100%;scroll-padding-bottom:150px}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
   .wrap{max-width:720px;margin:0 auto;padding:14px 14px 120px}
-  header.top{background:var(--blue);color:#fff;padding:16px 14px;text-align:center}
-  header.top .logo{display:block;margin:0 auto 8px;width:96px;height:96px;border-radius:50%;background:#fff}
-  header.top .hos{font-size:.85rem;letter-spacing:.03em;opacity:.95}
-  header.top h1{margin:.2rem 0 0;font-size:1.45rem;line-height:1.25}
+  header.top{background:#0b3a6e;color:#fff;padding:12px 14px}
+  header.top .in{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:12px}
+  header.top .logo{flex:none;width:60px;height:60px;border-radius:50%;background:#fff;display:block}
+  header.top .hos{font-size:.9rem;opacity:.95;margin-top:2px}
+  header.top h1{margin:0;font-size:1.2rem;line-height:1.2;font-weight:800}
   button,.btn{font:inherit;cursor:pointer}
   .btn-size{border:2px solid var(--blue);background:#fff;color:var(--blue);border-radius:12px;padding:8px 14px;font-weight:700;min-height:48px}
   .progress{margin:10px 0 14px}
@@ -89,9 +90,13 @@
 </head>
 <body>
 <header class="top">
-  <img class="logo" src="{{ url_for('static', filename='logo.png') }}" width="96" height="96" alt="Logo Bệnh viện Đa khoa Tâm Đức Cầu Quan">
-  <div class="hos">BỆNH VIỆN ĐA KHOA TÂM ĐỨC CẦU QUAN</div>
-  <h1>ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE</h1>
+  <div class="in">
+    <img class="logo" src="{{ url_for('static', filename='logo.png') }}" width="60" height="60" alt="Logo Bệnh viện Đa khoa Tâm Đức Cầu Quan">
+    <div>
+      <h1>ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE</h1>
+      <div class="hos">BVĐK Tâm Đức Cầu Quan</div>
+    </div>
+  </div>
 </header>
 
 <div class="wrap">
