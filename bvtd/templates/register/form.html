@@ -10,16 +10,17 @@
   :root{--bg:#f2f7fb;--card:#fff;--ink:#12263a;--muted:#4a5f73;--line:#b9c8d6;--blue:#0b5ea8;--blue-d:#08457d;--green:#157a37;--green-d:#0f5c29;--red:#b3261e;--red-bg:#fdecea;--sel:#e3f1ff}
   *{box-sizing:border-box}
   html{font-size:20px;-webkit-text-size-adjust:100%;scroll-padding-bottom:150px}
-  html.big{font-size:25px}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
   .wrap{max-width:720px;margin:0 auto;padding:14px 14px 120px}
   header.top{background:var(--blue);color:#fff;padding:16px 14px;text-align:center}
   header.top .hos{font-size:.85rem;letter-spacing:.03em;opacity:.95}
   header.top h1{margin:.2rem 0 0;font-size:1.45rem;line-height:1.25}
-  .tools{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:12px 0 4px;flex-wrap:wrap}
-  .tools p{margin:0;color:var(--muted);font-size:.85rem;flex:1;min-width:200px}
+  .tools{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:12px 0 4px}
   button,.btn{font:inherit;cursor:pointer}
   .btn-size{border:2px solid var(--blue);background:#fff;color:var(--blue);border-radius:12px;padding:8px 14px;font-weight:700;min-height:48px}
+  .btn-sz{width:56px;height:56px;border-radius:50%;border:3px solid var(--blue);background:#fff;color:var(--blue);font-size:2rem;font-weight:800;line-height:1;padding:0}
+  .btn-sz:active{background:var(--sel)}
+  .btn-sz[disabled]{opacity:.35}
   .progress{margin:10px 0 14px}
   .progress .txt{font-weight:800;font-size:1.05rem;color:var(--blue-d)}
   .bar{height:12px;background:#d6e3ee;border-radius:99px;overflow:hidden;margin-top:6px}
@@ -45,7 +46,8 @@
   .choice input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
   .choice span{display:flex;align-items:center;justify-content:center;text-align:center;min-height:58px;padding:10px 12px;border:2.5px solid var(--line);border-radius:14px;background:#fff;font-weight:700;font-size:1.02rem}
   .choices.list .choice span{justify-content:flex-start;text-align:left}
-  .choice small{display:block;font-weight:400;color:var(--muted);font-size:.8rem}
+  .choices.list .choice span.two{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}
+  .choice small{display:block;font-weight:400;color:var(--muted);font-size:.85rem}
   .choice input:checked+span{border-color:var(--blue);background:var(--sel);box-shadow:inset 0 0 0 2px var(--blue)}
   .choice input:focus-visible+span{outline:4px solid #9cc8ee}
   .choice input:disabled+span{opacity:.35;text-decoration:line-through;cursor:not-allowed}
@@ -94,8 +96,8 @@
 
 <div class="wrap">
   <div class="tools">
-    <p>Điền lần lượt từng bước, mất khoảng 3 phút. Cần giúp đỡ, hãy nhờ người thân hoặc nhân viên bệnh viện.</p>
-    <button type="button" class="btn-size" id="btn-size" aria-pressed="false">🔍 Chữ to hơn</button>
+    <button type="button" class="btn-sz" id="sz-minus" aria-label="Thu nhỏ chữ" title="Thu nhỏ chữ">−</button>
+    <button type="button" class="btn-sz" id="sz-plus" aria-label="Phóng to chữ" title="Phóng to chữ">+</button>
   </div>
 
   <div class="progress" id="progress" aria-live="polite">
@@ -192,12 +194,12 @@
       <div class="field {{ 'has-err' if errors.doctor }}" id="doctor-box">
         <div class="q" id="q-doc">Bác sĩ muốn khám <span class="hint">Không bắt buộc.</span></div>
         <div class="choices list" role="radiogroup" aria-labelledby="q-doc">
-          <label class="choice" data-always="1"><input type="radio" name="doctor" value="" {{ 'checked' if not v.doctor }}><span>Bác sĩ nào cũng được</span></label>
           {% for val, name, detail, tag in doctors %}
-          <label class="choice" data-tag="{{ tag }}"><input type="radio" name="doctor" value="{{ val }}" {{ 'checked' if v.doctor == val }}><span><b>{{ name }}</b><small>{{ detail }}</small></span></label>
+          <label class="choice" data-tag="{{ tag }}"><input type="radio" name="doctor" value="{{ val }}" {{ 'checked' if v.doctor == val }}><span class="two"><b>{{ name }}</b><small>{{ detail }}</small></span></label>
           {% endfor %}
         </div>
         <p class="err {{ 'show' if errors.doctor }}" id="err-doctor" role="alert">{{ errors.doctor or '' }}</p>
+        <button type="button" class="btn-size hidden" id="doc-clear" style="margin-top:10px">Bỏ chọn bác sĩ</button>
       </div>
     </section>
 
@@ -294,15 +296,17 @@
   }
   function clearErrs(n) { [].forEach.call(steps[n - 1].querySelectorAll('.err'), function (p) { p.textContent = ''; p.classList.remove('show'); var f = p.closest('.field'); if (f) f.classList.remove('has-err'); }); }
 
-  /* ── Chữ to hơn ── */
-  var sizeBtn = $('btn-size');
-  try { if (localStorage.getItem('reg_big') === '1') { document.documentElement.classList.add('big'); sizeBtn.setAttribute('aria-pressed', 'true'); sizeBtn.textContent = '🔍 Chữ nhỏ lại'; } } catch (e) {}
-  sizeBtn.addEventListener('click', function () {
-    var on = document.documentElement.classList.toggle('big');
-    sizeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    sizeBtn.textContent = on ? '🔍 Chữ nhỏ lại' : '🔍 Chữ to hơn';
-    try { localStorage.setItem('reg_big', on ? '1' : '0'); } catch (e) {}
-  });
+  /* ── Cỡ chữ: nút − và + (4 mức, nhớ lại cho lần sau) ── */
+  var SIZES = [20, 23, 26, 29], lvl = 0, minus = $('sz-minus'), plus = $('sz-plus');
+  function applySize() {
+    document.documentElement.style.fontSize = SIZES[lvl] + 'px';
+    minus.disabled = lvl === 0; plus.disabled = lvl === SIZES.length - 1;
+    try { localStorage.setItem('reg_size', String(lvl)); } catch (e) {}
+  }
+  try { var sv = parseInt(localStorage.getItem('reg_size'), 10); if (sv >= 0 && sv < SIZES.length) lvl = sv; } catch (e) {}
+  minus.addEventListener('click', function () { if (lvl > 0) { lvl--; applySize(); } });
+  plus.addEventListener('click', function () { if (lvl < SIZES.length - 1) { lvl++; applySize(); } });
+  applySize();
 
   /* ── Kiểm tra từng bước (gợi ý nhanh; máy chủ vẫn kiểm tra lại) ── */
   function normPhone(s) { s = s.replace(/[\s.\-()]/g, ''); if (s.indexOf('+84') === 0) s = '0' + s.slice(3); else if (/^84\d{9}$/.test(s)) s = '0' + s.slice(2); return s; }
@@ -389,17 +393,23 @@
 
   /* ── Chuyên khoa → chỉ hiện bác sĩ phù hợp ── */
   var specGroup = $('spec-group'), clearBtn = $('spec-clear'), otherBox = $('other-box'), doctorBox = $('doctor-box');
+  var docClear = $('doc-clear');
   function filterDoctors() {
     var sp = form.querySelector('input[name="specialty"]:checked');
     var tag = sp ? sp.getAttribute('data-tag') : '';
     var any = false;
-    [].forEach.call(doctorBox.querySelectorAll('label.choice:not([data-always])'), function (l) {
+    [].forEach.call(doctorBox.querySelectorAll('label.choice'), function (l) {
       var show = !sp || !tag ? !sp : l.getAttribute('data-tag') === tag;     // chưa chọn khoa → hiện tất cả; khoa không có bác sĩ → ẩn
       l.classList.toggle('hidden', !show); if (show) any = true;
-      var r = l.querySelector('input'); if (!show && r.checked) form.querySelector('input[name="doctor"][value=""]').checked = true;
+      var r = l.querySelector('input'); if (!show && r.checked) r.checked = false;
     });
     doctorBox.classList.toggle('hidden', !!sp && !any);
+    docClear.classList.toggle('hidden', !radio('doctor'));
   }
+  doctorBox.addEventListener('change', function () { docClear.classList.toggle('hidden', !radio('doctor')); });
+  docClear.addEventListener('click', function () {
+    var c = form.querySelector('input[name="doctor"]:checked'); if (c) c.checked = false; docClear.classList.add('hidden');
+  });
   specGroup.addEventListener('change', function () {
     var sp = radio('specialty');
     otherBox.classList.toggle('hidden', sp !== '__khac__');
@@ -444,7 +454,7 @@
   function buildSummary() {
     var sp = form.querySelector('input[name="specialty"]:checked'), spTxt = '—';
     if (sp) spTxt = sp.value === '__khac__' ? (val('specialty_other') || '—') : sp.parentNode.querySelector('span').textContent;
-    var dc = form.querySelector('input[name="doctor"]:checked'), dcTxt = (dc && dc.value) ? dc.parentNode.querySelector('b').textContent : 'Bác sĩ nào cũng được';
+    var dc = form.querySelector('input[name="doctor"]:checked'), dcTxt = dc ? dc.parentNode.querySelector('b').textContent : '—';
     var d = val('exam_date');
     var rows = [
       ['Họ và tên', val('full_name').toUpperCase(), 1], ['Năm sinh', val('birth_year'), 1], ['Giới tính', radio('gender'), 1],
