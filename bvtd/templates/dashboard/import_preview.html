@@ -60,6 +60,7 @@
           <th class="px-3 py-2 text-left">Ngày lập</th><th class="px-3 py-2 text-right">Trong file</th>
           <th class="px-3 py-2 text-right">Đã có trên Sheet</th><th class="px-3 py-2 text-right">Chưa có</th>
           <th class="px-3 py-2 text-left">Tình trạng</th>
+          <th class="px-3 py-2 text-left">Đã ghi vào Sheet ngày</th>
         </tr></thead>
         <tbody class="divide-y divide-slate-100">
         {% for d in c.order if d in c.selected %}{% set pg = c.progress.get(d) %}
@@ -73,6 +74,7 @@
               {% elif pg.have %}<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-semibold">🔁 Đã nhập một phần</span>
               {% else %}<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">🆕 Chưa nhập</span>{% endif %}
             </td>
+            <td class="px-3 py-2 mono text-slate-500">{{ pg.when or '—' }}</td>
           </tr>
         {% endfor %}
         </tbody>

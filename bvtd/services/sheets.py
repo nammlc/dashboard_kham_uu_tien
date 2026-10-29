@@ -33,6 +33,10 @@ COL_EXAM_TIME   = "GIỜ KHÁM DỰ KIẾN"
 COL_KHOA        = "KHOA KHÁM CHỮA BỆNH"
 COL_ADDRESS     = "ĐỊA CHỈ"
 COL_STT         = "STT"
+COL_CCCD        = "4. SỐ CĂN CƯỚC CÔNG DÂN - CHỨNG MINH THƯ"
+COL_SYMPTOM     = "1. TRIỆU CHỨNG CHÍNH"
+COL_CONSENT_1   = "1. CAM KẾT CÁC THÔNG TIN LÀ THÔNG TIN ĐÚNG, CHỊU TRÁCH NHIỆM TRƯỚC PHÁP LUẬT TRƯỚC NHỮNG THÔNG TIN ĐÃ CUNG CẤP TRÊN"
+COL_CONSENT_2   = "ĐỒNG Ý CÁC ĐIỀU KHOẢN ĐẶT LỊCH KHÁM ONLINE TẠI BVĐK TÂM ĐỨC CẦU QUAN"
 COL_ACTUAL_DATE = "NGÀY THỰC KHÁM"   # cột MỚI (thêm tay trên Sheet): ngày bệnh nhân thực sự đến khám
 COL_CREATED     = "NGÀY TẠO LỊCH HẸN KHÁM"   # cột MỚI (thêm tay trên Sheet): ngày Minh Lộ tạo lịch hẹn (= "Ngày lập" của file 04-4)
 
@@ -568,13 +572,13 @@ def build_sheet_field_map(record: dict, import_time_str: str) -> dict:
         _COL_ADDRESS_FORM:            record.get("ĐỊA CHỈ", "N/A"),
         COL_KHOA:                     khoa_hen,
         COL_GENDER:                   record.get("GIỚI TÍNH") or "N/A",
-        "1. TRIỆU CHỨNG CHÍNH":       "N/A",
-        "4. SỐ CĂN CƯỚC CÔNG DÂN - CHỨNG MINH THƯ": "N/A",
+        COL_SYMPTOM:                  "N/A",
+        COL_CCCD:                     "N/A",
         COL_SPECIALTY:                "Other: Bệnh nhân điều trị nội khoa tái khám",
         COL_DOCTOR:                   "N/A",
         COL_EXAM_TIME:                "N/A",
-        "1. CAM KẾT CÁC THÔNG TIN LÀ THÔNG TIN ĐÚNG, CHỊU TRÁCH NHIỆM TRƯỚC PHÁP LUẬT TRƯỚC NHỮNG THÔNG TIN ĐÃ CUNG CẤP TRÊN": "CÓ",
-        "ĐỒNG Ý CÁC ĐIỀU KHOẢN ĐẶT LỊCH KHÁM ONLINE TẠI BVĐK TÂM ĐỨC CẦU QUAN": "CÓ",
+        COL_CONSENT_1:                "CÓ",
+        COL_CONSENT_2:                "CÓ",
     }
 
 
@@ -606,13 +610,14 @@ def _index_sheet(df: pd.DataFrame) -> dict:
     laps = df["_created"].tolist() if "_created" in df.columns else blank
     phones = df[COL_PHONE].tolist() if COL_PHONE in df.columns else blank
     stts = df[COL_STT].tolist() if COL_STT in df.columns else blank
-    for i, (name, h, l, phone, stt) in enumerate(zip(names, hens, laps, phones, stts)):
+    tss = df[COL_TIMESTAMP].tolist() if COL_TIMESTAMP in df.columns else blank
+    for i, (name, h, l, phone, stt, ts) in enumerate(zip(names, hens, laps, phones, stts, tss)):
         nk = norm_name(name)
         if not nk:
             continue
         hk, lk, pk = _date_key(h), _date_key(l), norm_phone_key(phone)
         ref = {"stt": "" if stt is None else str(stt).strip(), "row": i + 2, "phone": pk,
-               "has_lap": bool(lk), "hen": hk, "lap": lk}
+               "has_lap": bool(lk), "hen": hk, "lap": lk, "ts": to_dmy(ts)}      # ts = ngày dòng này được GHI vào Sheet
         if lk:
             idx["lap"].setdefault((nk, lk), []).append(ref)
         if hk:
@@ -661,7 +666,7 @@ def check_sheet_duplicates(df: pd.DataFrame, candidates: list[dict]):
             ref = found[0]
             r2 = dict(r)
             r2.update({"_existing_stt": ref["stt"], "_existing_row": ref["row"], "_match": how,
-                       "_existing_hen": ref["hen"],
+                       "_existing_hen": ref["hen"], "_existing_ts": ref["ts"],
                        "_backfill": bool(lk) and len(found) == 1 and not ref["has_lap"]})
             dup_records.append(r2)
         else:
@@ -721,38 +726,35 @@ def sheet_import_diagnostics(df) -> dict:
     return out
 
 
-def append_patients(records: list[dict]) -> tuple[int, str | None]:
+def append_field_maps(maps: list[dict]) -> tuple[int, str | None]:
     """
-    Ghi BN (từ file 04-4) vào Sheet chính, ghép đúng cột theo TÊN tiêu đề dòng 1.
-    NGÀY KHÁM ghi dạng số serial + USER_ENTERED để Sheet tự hiểu là Date;
-    NGÀY TẠO LỊCH HẸN KHÁM ghi dạng chữ dd/mm/yyyy (xem build_sheet_field_map);
-    TRẠNG THÁI khớp list dropdown. Trả về (số dòng đã ghi, lỗi hoặc None).
+    Ghi các bản ghi {tên cột: giá trị} vào cuối Sheet chính, ghép đúng cột theo TÊN tiêu đề dòng 1 (không phụ thuộc thứ tự cột;
+    cột không có trong bản ghi để trống). Cột 'NGÀY KHÁM' (nếu giá trị là dd/mm/yyyy) được đổi sang số serial + USER_ENTERED
+    để Sheet tự hiểu là Date. Trả về (số dòng đã ghi, lỗi hoặc None).
 
-    Thêm dòng KHÔNG idempotent nên KHÔNG tự thử lại: nếu mất kết nối giữa chừng, người dùng bấm lại thì
-    bước kiểm tra trùng (đọc Sheet mới) sẽ loại những dòng đã được ghi — không bao giờ nhập 2 lần.
+    Thêm dòng KHÔNG idempotent nên KHÔNG tự thử lại: nếu mất kết nối giữa chừng, người dùng bấm lại thì bước kiểm tra
+    trùng (đọc Sheet mới) sẽ loại những dòng đã được ghi — không bao giờ ghi 2 lần.
     """
-    if not records:
+    if not maps:
         return 0, "Không có dữ liệu để ghi."
     try:
         ws = _open_ws()
         headers = [canon_header(h) for h in _retry(lambda: ws.row_values(1))]
         if not headers:
             return 0, "Sheet đang trống, không có dòng tiêu đề."
-
-        import_time_str = vn_now().strftime("%d/%m/%Y %H:%M:%S")
         date_idx = headers.index(COL_EXAM_DATE) if COL_EXAM_DATE in headers else None
 
-        def to_serial(s):
+        def to_serial(v):
             try:
-                return (datetime.strptime(str(s).strip(), "%d/%m/%Y") - datetime(1899, 12, 30)).days
+                return (datetime.strptime(str(v).strip(), "%d/%m/%Y") - datetime(1899, 12, 30)).days
             except Exception:
-                return s
+                return v
 
         rows = []
-        for r in records:
-            fm = build_sheet_field_map(r, import_time_str)
+        for fm in maps:
+            fm = dict(fm)
             # Sheet nào chỉ có cột "ĐỊA CHỈ" (không có "2. ĐỊA CHỈ (THÔN/XÃ)") thì ghi vào đó
-            if _COL_ADDRESS_FORM not in headers and COL_ADDRESS in headers:
+            if _COL_ADDRESS_FORM not in headers and COL_ADDRESS in headers and _COL_ADDRESS_FORM in fm:
                 fm[COL_ADDRESS] = fm[_COL_ADDRESS_FORM]
             row = [fm.get(h, "") for h in headers]
             if date_idx is not None:
@@ -765,11 +767,20 @@ def append_patients(records: list[dict]) -> tuple[int, str | None]:
         updated = ((resp or {}).get("updates") or {}).get("updatedRows") if isinstance(resp, dict) else None
         if updated is not None and int(updated) != len(rows):
             return 0, (f"Google chỉ xác nhận ghi {updated}/{len(rows)} dòng. Hãy tải lại trang để xem phần đã ghi, "
-                       "rồi import lại — hệ thống sẽ tự bỏ qua những bệnh nhân đã có.")
+                       "rồi thử lại — hệ thống sẽ tự bỏ qua những dòng đã có.")
         return len(rows), None
     except Exception as e:
         _WS_CACHE["ws"] = None
         return 0, friendly_error(e, "ghi Sheet")
+
+
+def append_patients(records: list[dict]) -> tuple[int, str | None]:
+    """Ghi BN (từ file 04-4) vào Sheet chính. NGÀY TẠO LỊCH HẸN KHÁM ghi dạng chữ dd/mm/yyyy (xem build_sheet_field_map);
+    TRẠNG THÁI khớp list dropdown."""
+    if not records:
+        return 0, "Không có dữ liệu để ghi."
+    import_time_str = vn_now().strftime("%d/%m/%Y %H:%M:%S")
+    return append_field_maps([build_sheet_field_map(r, import_time_str) for r in records])
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -20,6 +20,9 @@ class Config:
     SHEET_ID   = os.environ.get("SHEET_ID", "1EYiRA3ar41aue8DlbWA7JTKoLL0M2tiLTcZINhdMfTs")
     SHEET_NAME = os.environ.get("SHEET_NAME", "Câu trả lời biểu mẫu 1")
 
+    # ── Trang đăng ký khám công khai (/dang-ky). Đặt REG_ENABLED=0 để tạm đóng ──────────
+    REG_ENABLED = os.environ.get("REG_ENABLED", "1") != "0"
+
     # ── Upload (file Excel Minh Lộ) ──────────────────────────────────────────
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024   # tối đa 10MB
 

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{ 'Đã ghi nhận đăng ký' if s.already else 'Đăng ký thành công' }} – BVĐK Tâm Đức Cầu Quan</title>
+<style>
+  *{box-sizing:border-box}
+  html{font-size:20px}
+  body{margin:0;background:#f2f7fb;color:#12263a;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.5}
+  header{background:#0b5ea8;color:#fff;padding:16px 14px;text-align:center;font-size:.85rem;letter-spacing:.03em}
+  .wrap{max-width:720px;margin:0 auto;padding:18px 14px 40px}
+  .ok{background:#fff;border:3px solid #157a37;border-radius:20px;padding:22px 18px;text-align:center}
+  .ok .tick{width:78px;height:78px;border-radius:50%;background:#157a37;color:#fff;font-size:3rem;line-height:78px;margin:0 auto 10px}
+  .ok h1{margin:.2rem 0 .3rem;font-size:1.6rem;color:#0f5c29}
+  .ok.already{border-color:#0b5ea8}.ok.already .tick{background:#0b5ea8}.ok.already h1{color:#08457d}
+  table{width:100%;border-collapse:collapse;margin:16px 0 0;text-align:left}
+  th{width:38%;color:#4a5f73;font-weight:600;padding:8px 6px;vertical-align:top;border-bottom:1px solid #e1eaf1}
+  td{padding:8px 6px;font-weight:800;border-bottom:1px solid #e1eaf1;word-break:break-word}
+  .big{font-size:1.35rem;color:#0b5ea8}
+  .todo{background:#fff8e1;border:2px solid #f0cf65;border-radius:16px;padding:14px 18px;margin:16px 0}
+  .todo h2{margin:0 0 6px;font-size:1.1rem}
+  .todo ul{margin:0;padding-left:1.2rem}.todo li{margin-bottom:.3rem}
+  .btn{display:block;text-align:center;text-decoration:none;font-weight:800;font-size:1.1rem;padding:16px;border-radius:16px;border:3px solid #0b5ea8;color:#0b5ea8;background:#fff;margin-top:12px;min-height:60px}
+</style>
+</head>
+<body>
+<header>BỆNH VIỆN ĐA KHOA TÂM ĐỨC CẦU QUAN</header>
+<div class="wrap">
+  <div class="ok {{ 'already' if s.already }}" role="status">
+    <div class="tick" aria-hidden="true">✓</div>
+    {% if s.already %}
+      <h1>Đăng ký này đã được ghi nhận</h1>
+      <p>Hệ thống đã có đăng ký của bạn cho ngày này từ trước. <b>Không cần đăng ký lại.</b></p>
+    {% else %}
+      <h1>ĐĂNG KÝ THÀNH CÔNG</h1>
+      <p>Bệnh viện đã nhận được đăng ký của bạn.</p>
+    {% endif %}
+    <div class="big">{{ s.exam_time }} · ngày {{ s.exam_date }}</div>
+    <table>
+      <tr><th>Họ và tên</th><td>{{ s.name }}</td></tr>
+      <tr><th>Năm sinh</th><td>{{ s.birth_year }}</td></tr>
+      <tr><th>Số điện thoại</th><td>{{ s.phone }}</td></tr>
+      <tr><th>Chuyên khoa</th><td>{{ s.specialty or '—' }}</td></tr>
+      <tr><th>Bác sĩ</th><td>{{ s.doctor or 'Bác sĩ nào cũng được' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="todo">
+    <h2>📌 Khi đến khám, xin nhớ:</h2>
+    <ul>
+      <li>Đến <b>trước giờ hẹn 15–30 phút</b> để làm thủ tục.</li>
+      <li>Mang theo <b>căn cước công dân</b> và <b>thẻ bảo hiểm y tế</b> (nếu có).</li>
+      <li>Nếu cần đổi hoặc hủy lịch, xin báo cho bệnh viện <b>trước giờ khám</b>.</li>
+    </ul>
+  </div>
+  <p style="text-align:center;color:#4a5f73;font-size:.85rem">Bạn có thể chụp màn hình này để lưu lại.</p>
+  <a class="btn" href="{{ url_for('register_page') }}">Đăng ký cho người khác</a>
+</div>
+</body>
+</html>

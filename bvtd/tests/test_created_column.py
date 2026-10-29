@@ -113,6 +113,14 @@ class DuplicateByCreatedDate(_Base):
         self.assertIn("ĐÃ NHẬP ĐỦ", t)
         self.assertIn("Toàn bộ 3 bệnh nhân", t)
 
+    def test_status_table_says_on_which_day_the_lap_was_written_to_the_sheet(self):
+        """Dòng ghi vào Sheet ngày 14/10 (Dấu thời gian) nhưng là ngày lập 21/10: phải thấy rõ 2 ngày này KHÁC nhau."""
+        self.install_sheet(FakeSheet([sheet_row(1, "ĐỖ THỊ NGA", phone="0372984602", hen="05/11/2026", created=LAP_TODAY)]))
+        self.upload()
+        t = self.preview(LAP_TODAY)
+        self.assertIn("Đã ghi vào Sheet ngày", t)
+        self.assertRegex(t, r"21/10/2026 3 1 2 .{0,40}14/10/2026")
+
     def test_partial_lap_status(self):
         self.install_sheet(FakeSheet([sheet_row(1, "ĐỖ THỊ NGA", phone="0372984602", hen="05/11/2026", created=LAP_TODAY)]))
         self.upload()

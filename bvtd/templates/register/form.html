@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Đăng ký khám bệnh online – BVĐK Tâm Đức Cầu Quan</title>
+<script>document.documentElement.classList.add('js');</script>
+<style>
+  :root{--bg:#f2f7fb;--card:#fff;--ink:#12263a;--muted:#4a5f73;--line:#b9c8d6;--blue:#0b5ea8;--blue-d:#08457d;--green:#157a37;--green-d:#0f5c29;--red:#b3261e;--red-bg:#fdecea;--sel:#e3f1ff}
+  *{box-sizing:border-box}
+  html{font-size:20px;-webkit-text-size-adjust:100%;scroll-padding-bottom:150px}
+  html.big{font-size:25px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
+  .wrap{max-width:720px;margin:0 auto;padding:14px 14px 120px}
+  header.top{background:var(--blue);color:#fff;padding:16px 14px;text-align:center}
+  header.top .hos{font-size:.85rem;letter-spacing:.03em;opacity:.95}
+  header.top h1{margin:.2rem 0 0;font-size:1.45rem;line-height:1.25}
+  .tools{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:12px 0 4px;flex-wrap:wrap}
+  .tools p{margin:0;color:var(--muted);font-size:.85rem;flex:1;min-width:200px}
+  button,.btn{font:inherit;cursor:pointer}
+  .btn-size{border:2px solid var(--blue);background:#fff;color:var(--blue);border-radius:12px;padding:8px 14px;font-weight:700;min-height:48px}
+  .progress{margin:10px 0 14px}
+  .progress .txt{font-weight:800;font-size:1.05rem;color:var(--blue-d)}
+  .bar{height:12px;background:#d6e3ee;border-radius:99px;overflow:hidden;margin-top:6px}
+  .bar i{display:block;height:100%;background:var(--blue);width:20%;transition:width .25s}
+  .card{background:var(--card);border:2px solid #d3e0ea;border-radius:18px;padding:18px 16px}
+  .step h2{margin:0 0 4px;font-size:1.3rem;color:var(--blue-d)}
+  .step .lead{margin:0 0 14px;color:var(--muted);font-size:.9rem}
+  .field{margin:0 0 18px}
+  label.q,.q{display:block;font-weight:800;font-size:1.08rem;margin-bottom:6px}
+  .hint{display:block;font-weight:400;color:var(--muted);font-size:.85rem;margin-top:2px}
+  .req{color:var(--red)}
+  input[type=text],input[type=tel],input[type=number],input[type=date],textarea{
+    width:100%;font:inherit;font-size:1.1rem;padding:12px 14px;min-height:56px;border:2.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+  textarea{min-height:110px;resize:vertical}
+  input:focus,textarea:focus{outline:4px solid #9cc8ee;border-color:var(--blue)}
+  .uc{text-transform:uppercase}
+  .choices{display:grid;gap:10px}
+  .choices.cols3{grid-template-columns:repeat(3,1fr)}
+  .choices.cols2{grid-template-columns:repeat(2,1fr)}
+  .choices.slots{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:420px){.choices.slots{grid-template-columns:repeat(2,1fr)}.choices.cols3{grid-template-columns:1fr}}
+  .choice{position:relative;display:block}
+  .choice input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .choice span{display:flex;align-items:center;justify-content:center;text-align:center;min-height:58px;padding:10px 12px;border:2.5px solid var(--line);border-radius:14px;background:#fff;font-weight:700;font-size:1.02rem}
+  .choices.list .choice span{justify-content:flex-start;text-align:left}
+  .choice small{display:block;font-weight:400;color:var(--muted);font-size:.8rem}
+  .choice input:checked+span{border-color:var(--blue);background:var(--sel);box-shadow:inset 0 0 0 2px var(--blue)}
+  .choice input:focus-visible+span{outline:4px solid #9cc8ee}
+  .choice input:disabled+span{opacity:.35;text-decoration:line-through;cursor:not-allowed}
+  .sub{margin-top:10px}
+  .err{display:none;margin:8px 0 0;padding:8px 12px;border-radius:10px;background:var(--red-bg);color:var(--red);font-weight:700;font-size:.95rem}
+  .err.show{display:block}
+  .has-err input[type=text],.has-err input[type=tel],.has-err input[type=number],.has-err input[type=date],.has-err textarea{border-color:var(--red)}
+  .banner{background:var(--red-bg);border:2px solid var(--red);color:var(--red);border-radius:14px;padding:12px 14px;margin:0 0 14px;font-weight:700}
+  .check{display:flex;gap:14px;align-items:flex-start;padding:14px;border:2.5px solid var(--line);border-radius:14px;background:#fff;margin:0 0 10px;cursor:pointer}
+  .check input{width:34px;height:34px;flex:none;margin:2px 0 0;accent-color:var(--blue)}
+  .check span{font-weight:700}
+  details.terms{border:2px solid var(--line);border-radius:14px;padding:10px 14px;background:#fafcfe;margin:0 0 12px}
+  details.terms summary{font-weight:800;color:var(--blue-d);cursor:pointer;min-height:44px;display:flex;align-items:center}
+  details.terms ol{padding-left:1.2rem;margin:.3rem 0;font-size:.88rem}
+  details.terms li{margin-bottom:.35rem}
+  .note{background:#fff8e1;border:2px solid #f0cf65;border-radius:14px;padding:10px 14px;font-size:.88rem;margin:0 0 14px}
+  .sum{width:100%;border-collapse:collapse;margin:0 0 14px;font-size:.95rem}
+  .sum th{width:38%;text-align:left;color:var(--muted);font-weight:600;padding:8px 6px;vertical-align:top;border-bottom:1px solid #e1eaf1}
+  .sum td{padding:8px 6px;font-weight:800;border-bottom:1px solid #e1eaf1;word-break:break-word}
+  .sum a{display:inline-block;font-weight:700;font-size:.9rem;margin-left:6px;padding:6px 10px;color:var(--blue);text-decoration:underline}
+  .nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:2px solid #d3e0ea;padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:12px;justify-content:center;z-index:5}
+  .nav .inner{display:flex;gap:12px;width:100%;max-width:720px}
+  .nav button{flex:1;min-height:62px;border-radius:16px;border:3px solid var(--blue);font-weight:800;font-size:1.05rem;white-space:nowrap}
+  .nav .back{background:#fff;color:var(--blue);flex:.8}
+  .nav .next{background:var(--blue);color:#fff;flex:1.4}
+  .nav .next:active{background:var(--blue-d)}
+  .nav .send{background:var(--green);border-color:var(--green);color:#fff;flex:1.6}
+  .nav .send:active{background:var(--green-d)}
+  .nav button[disabled]{opacity:.6}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .foot{margin:18px 0 0;color:var(--muted);font-size:.82rem;text-align:center}
+  /* Có JS: mỗi lần chỉ 1 bước. Không có JS: hiện toàn bộ như một biểu mẫu thường. */
+  html.js .step{display:none}
+  html.js .step.active{display:block}
+  html:not(.js) .nav .next,html:not(.js) .nav .back,html:not(.js) .progress{display:none}
+  html:not(.js) .step{margin-bottom:22px}
+  html:not(.js) .nav{position:static;border:0;padding:0}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="hos">BỆNH VIỆN ĐA KHOA TÂM ĐỨC CẦU QUAN</div>
+  <h1>ĐĂNG KÝ KHÁM BỆNH ONLINE</h1>
+</header>
+
+<div class="wrap">
+  <div class="tools">
+    <p>Điền lần lượt từng bước, mất khoảng 3 phút. Cần giúp đỡ, hãy nhờ người thân hoặc nhân viên bệnh viện.</p>
+    <button type="button" class="btn-size" id="btn-size" aria-pressed="false">🔍 Chữ to hơn</button>
+  </div>
+
+  <div class="progress" id="progress" aria-live="polite">
+    <div class="txt" id="progress-txt">Bước 1 / 5</div>
+    <div class="bar"><i id="progress-bar"></i></div>
+  </div>
+
+  {% if banner %}<div class="banner" role="alert" id="server-banner">{{ banner }}</div>{% endif %}
+
+  <form method="post" action="{{ url_for('register_page') }}" id="reg-form" autocomplete="on" novalidate
+        data-start="{{ start_step }}" data-today="{{ today }}" data-max="{{ max_date }}" data-now="{{ now_hm }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="hp" aria-hidden="true"><label>Để trống ô này <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+
+    {# ───────── BƯỚC 1 ───────── #}
+    <section class="step card" data-step="1" aria-labelledby="h1">
+      <h2 id="h1" tabindex="-1">1. Thông tin của bệnh nhân</h2>
+      <p class="lead">Điền đúng như trên giấy tờ tùy thân.</p>
+
+      <div class="field {{ 'has-err' if errors.full_name }}">
+        <label class="q" for="full_name">Họ và tên <span class="req">*</span><span class="hint">Viết đầy đủ họ, tên đệm và tên. Ví dụ: NGUYỄN VĂN AN</span></label>
+        <input type="text" id="full_name" name="full_name" class="uc" value="{{ v.full_name or '' }}" maxlength="80" autocomplete="name" enterkeyhint="next">
+        <p class="err {{ 'show' if errors.full_name }}" id="err-full_name" role="alert">{{ errors.full_name or '' }}</p>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.birth_year }}">
+        <label class="q" for="birth_year">Năm sinh <span class="req">*</span><span class="hint">Gồm 4 chữ số. Ví dụ: 1958</span></label>
+        <input type="tel" inputmode="numeric" id="birth_year" name="birth_year" value="{{ v.birth_year or '' }}" maxlength="4" autocomplete="bday-year" enterkeyhint="next">
+        <p class="err {{ 'show' if errors.birth_year }}" id="err-birth_year" role="alert">{{ errors.birth_year or '' }}</p>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.gender }}">
+        <div class="q" id="q-gender">Giới tính <span class="req">*</span></div>
+        <div class="choices cols3" role="radiogroup" aria-labelledby="q-gender">
+          {% for g in ['NAM','NỮ','KHÁC'] %}
+          <label class="choice"><input type="radio" name="gender" value="{{ g }}" {{ 'checked' if v.gender == g }}><span>{{ g|title if g != 'KHÁC' else 'Khác' }}</span></label>
+          {% endfor %}
+        </div>
+        <p class="err {{ 'show' if errors.gender }}" id="err-gender" role="alert">{{ errors.gender or '' }}</p>
+      </div>
+    </section>
+
+    {# ───────── BƯỚC 2 ───────── #}
+    <section class="step card" data-step="2" aria-labelledby="h2">
+      <h2 id="h2" tabindex="-1">2. Địa chỉ và liên lạc</h2>
+      <p class="lead">Để bệnh viện có thể gọi điện khi cần.</p>
+
+      <div class="field {{ 'has-err' if errors.address }}">
+        <label class="q" for="address">Địa chỉ (thôn / xã) <span class="req">*</span><span class="hint">Ví dụ: Thôn 3, xã Trung Chính</span></label>
+        <input type="text" id="address" name="address" value="{{ v.address or '' }}" maxlength="120" autocomplete="street-address" enterkeyhint="next">
+        <p class="err {{ 'show' if errors.address }}" id="err-address" role="alert">{{ errors.address or '' }}</p>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.phone }}">
+        <label class="q" for="phone">Số điện thoại <span class="req">*</span><span class="hint">10 chữ số, bắt đầu bằng số 0. Ví dụ: 0912345678</span></label>
+        <input type="tel" inputmode="tel" id="phone" name="phone" value="{{ v.phone or '' }}" maxlength="16" autocomplete="tel" enterkeyhint="next">
+        <p class="err {{ 'show' if errors.phone }}" id="err-phone" role="alert">{{ errors.phone or '' }}</p>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.cccd }}">
+        <label class="q" for="cccd">Số căn cước công dân <span class="req">*</span><span class="hint">12 chữ số in trên thẻ căn cước (hoặc 9 số nếu dùng chứng minh thư cũ)</span></label>
+        <input type="tel" inputmode="numeric" id="cccd" name="cccd" value="{{ v.cccd or '' }}" maxlength="16" autocomplete="off" enterkeyhint="next">
+        <p class="err {{ 'show' if errors.cccd }}" id="err-cccd" role="alert">{{ errors.cccd or '' }}</p>
+      </div>
+    </section>
+
+    {# ───────── BƯỚC 3 ───────── #}
+    <section class="step card" data-step="3" aria-labelledby="h3">
+      <h2 id="h3" tabindex="-1">3. Lý do khám</h2>
+      <p class="lead">Cho bệnh viện biết bạn đang gặp vấn đề gì.</p>
+
+      <div class="field {{ 'has-err' if errors.symptoms }}">
+        <label class="q" for="symptoms">Triệu chứng chính <span class="req">*</span><span class="hint">Ví dụ: đau đầu, ho kéo dài, khám thai, kiểm tra huyết áp…</span></label>
+        <textarea id="symptoms" name="symptoms" maxlength="300">{{ v.symptoms or '' }}</textarea>
+        <p class="err {{ 'show' if errors.symptoms }}" id="err-symptoms" role="alert">{{ errors.symptoms or '' }}</p>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.specialty or errors.specialty_other }}">
+        <div class="q" id="q-spec">Chuyên khoa muốn khám <span class="hint">Không bắt buộc. Nếu chưa biết, cứ bỏ qua – bệnh viện sẽ hướng dẫn.</span></div>
+        <div class="choices list" role="radiogroup" aria-labelledby="q-spec" id="spec-group">
+          {% for val, label, tag in specialties %}
+          <label class="choice"><input type="radio" name="specialty" value="{{ val }}" data-tag="{{ tag }}" {{ 'checked' if v.specialty == val }}><span>{{ label }}</span></label>
+          {% endfor %}
+          <label class="choice"><input type="radio" name="specialty" value="{{ OTHER }}" data-tag="" {{ 'checked' if v.specialty == OTHER }}><span>Chuyên khoa khác (ghi rõ)</span></label>
+        </div>
+        <div class="sub {{ '' if v.specialty == OTHER else 'hidden' }}" id="other-box">
+          <label class="q" for="specialty_other">Ghi rõ chuyên khoa</label>
+          <input type="text" id="specialty_other" name="specialty_other" value="{{ v.specialty_other or '' }}" maxlength="80">
+        </div>
+        <p class="err {{ 'show' if errors.specialty or errors.specialty_other }}" id="err-specialty" role="alert">{{ errors.specialty or errors.specialty_other or '' }}</p>
+        <button type="button" class="btn-size hidden" id="spec-clear" style="margin-top:10px">Bỏ chọn chuyên khoa</button>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.doctor }}" id="doctor-box">
+        <div class="q" id="q-doc">Bác sĩ muốn khám <span class="hint">Không bắt buộc.</span></div>
+        <div class="choices list" role="radiogroup" aria-labelledby="q-doc">
+          <label class="choice" data-always="1"><input type="radio" name="doctor" value="" {{ 'checked' if not v.doctor }}><span>Bác sĩ nào cũng được</span></label>
+          {% for val, name, detail, tag in doctors %}
+          <label class="choice" data-tag="{{ tag }}"><input type="radio" name="doctor" value="{{ val }}" {{ 'checked' if v.doctor == val }}><span><b>{{ name }}</b><small>{{ detail }}</small></span></label>
+          {% endfor %}
+        </div>
+        <p class="err {{ 'show' if errors.doctor }}" id="err-doctor" role="alert">{{ errors.doctor or '' }}</p>
+      </div>
+    </section>
+
+    {# ───────── BƯỚC 4 ───────── #}
+    <section class="step card" data-step="4" aria-labelledby="h4">
+      <h2 id="h4" tabindex="-1">4. Ngày và giờ muốn đến khám</h2>
+      <p class="lead">Bệnh viện nhận đăng ký trong vòng {{ max_days }} ngày tới.</p>
+      <div class="note">⏰ Nên đăng ký trong <b>giờ hành chính</b> và <b>trước giờ muốn đến khám khoảng 6–8 tiếng</b> để bệnh viện kịp sắp xếp lịch.</div>
+
+      <div class="field {{ 'has-err' if errors.exam_date }}">
+        <div class="q" id="q-date">Ngày khám <span class="req">*</span></div>
+        <div class="choices cols3" id="quick-dates" aria-labelledby="q-date"></div>
+        <div class="sub">
+          <label class="q" for="exam_date" style="font-weight:600">Hoặc chọn ngày khác:</label>
+          <input type="date" id="exam_date" name="exam_date" value="{{ v.exam_date or '' }}" min="{{ today }}" max="{{ max_date }}">
+        </div>
+        <p class="err {{ 'show' if errors.exam_date }}" id="err-exam_date" role="alert">{{ errors.exam_date or '' }}</p>
+      </div>
+
+      <div class="field {{ 'has-err' if errors.exam_time }}">
+        <div class="q" id="q-time">Giờ khám dự kiến <span class="req">*</span></div>
+        <div class="q" style="font-weight:600;font-size:.95rem;color:var(--muted)">Buổi sáng</div>
+        <div class="choices slots" role="radiogroup" aria-labelledby="q-time">
+          {% for t in slots_morning %}<label class="choice"><input type="radio" name="exam_time" value="{{ t }}" {{ 'checked' if v.exam_time == t }}><span>{{ t }}</span></label>{% endfor %}
+        </div>
+        <div class="q" style="font-weight:600;font-size:.95rem;color:var(--muted);margin-top:14px">Buổi chiều</div>
+        <div class="choices slots" role="radiogroup">
+          {% for t in slots_afternoon %}<label class="choice"><input type="radio" name="exam_time" value="{{ t }}" {{ 'checked' if v.exam_time == t }}><span>{{ t }}</span></label>{% endfor %}
+        </div>
+        <p class="err {{ 'show' if errors.exam_time }}" id="err-exam_time" role="alert">{{ errors.exam_time or '' }}</p>
+      </div>
+    </section>
+
+    {# ───────── BƯỚC 5 ───────── #}
+    <section class="step card" data-step="5" aria-labelledby="h5">
+      <h2 id="h5" tabindex="-1">5. Kiểm tra và gửi đăng ký</h2>
+      <p class="lead">Xem lại thông tin. Nếu sai, bấm “Sửa” để quay lại chỗ đó.</p>
+      <table class="sum" id="summary" aria-label="Thông tin đã điền"></table>
+
+      <details class="terms">
+        <summary>📄 Đọc các điều khoản đặt lịch khám online</summary>
+        <ol>
+          <li><b>Cung cấp thông tin:</b> Người bệnh cam kết cung cấp đầy đủ, chính xác các thông tin cá nhân cần thiết khi đăng ký lịch khám.</li>
+          <li><b>Thời gian có mặt:</b> Đến trước giờ hẹn từ 15–30 phút để hoàn tất thủ tục khám bệnh.</li>
+          <li><b>Thay đổi, hủy lịch:</b> Được quyền thay đổi hoặc hủy lịch hẹn trước giờ khám theo quy định của bệnh viện. Không đến khám mà không thông báo trước có thể bị hạn chế quyền đặt lịch.</li>
+          <li><b>Tuân thủ quy định bệnh viện:</b> Chấp hành nội quy, hướng dẫn của nhân viên y tế trong quá trình khám bệnh.</li>
+          <li><b>Chi phí khám bệnh:</b> Thanh toán chi phí theo quy định hiện hành; xuất trình giấy tờ liên quan (BHYT, CCCD…) khi đến khám.</li>
+          <li><b>Bảo mật thông tin:</b> Thông tin cá nhân và tình trạng sức khỏe được bệnh viện bảo mật theo quy định của Luật Khám bệnh, chữa bệnh 2023.</li>
+          <li><b>Từ chối phục vụ:</b> Bệnh viện có quyền từ chối hoặc điều chỉnh lịch khám nếu người bệnh cung cấp thông tin không chính xác, vi phạm nội quy bệnh viện, hoặc có hành vi gây rối, ảnh hưởng đến hoạt động khám chữa bệnh.</li>
+        </ol>
+      </details>
+
+      <div class="field {{ 'has-err' if errors.agree_truth }}">
+        <label class="check"><input type="checkbox" name="agree_truth" value="1" {{ 'checked' if v.agree_truth == '1' }}><span>Tôi cam kết các thông tin trên là đúng, và chịu trách nhiệm trước pháp luật về những thông tin đã cung cấp.</span></label>
+        <p class="err {{ 'show' if errors.agree_truth }}" id="err-agree_truth" role="alert">{{ errors.agree_truth or '' }}</p>
+      </div>
+      <div class="field {{ 'has-err' if errors.agree_terms }}">
+        <label class="check"><input type="checkbox" name="agree_terms" value="1" {{ 'checked' if v.agree_terms == '1' }}><span>Tôi đồng ý với các điều khoản đặt lịch khám online của Bệnh viện Đa khoa Tâm Đức Cầu Quan.</span></label>
+        <p class="err {{ 'show' if errors.agree_terms }}" id="err-agree_terms" role="alert">{{ errors.agree_terms or '' }}</p>
+      </div>
+      <noscript><p class="note">Trình duyệt của bạn đang tắt JavaScript nên trang hiển thị toàn bộ các mục cùng lúc. Bạn vẫn có thể điền và bấm Gửi.</p></noscript>
+    </section>
+
+    <div class="nav">
+      <div class="inner">
+        <button type="button" class="back" id="btn-back">← Quay lại</button>
+        <button type="button" class="next" id="btn-next">Tiếp tục →</button>
+        <button type="submit" class="send" id="btn-send">✔ GỬI ĐĂNG KÝ</button>
+      </div>
+    </div>
+  </form>
+
+  <p class="foot">Thông tin của bạn chỉ dùng để sắp xếp lịch khám tại bệnh viện.</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var form = document.getElementById('reg-form');
+  var steps = [].slice.call(form.querySelectorAll('.step'));
+  var TOTAL = steps.length, cur = 1;
+  var bar = document.getElementById('progress-bar'), txt = document.getElementById('progress-txt');
+  var btnBack = document.getElementById('btn-back'), btnNext = document.getElementById('btn-next'), btnSend = document.getElementById('btn-send');
+  var TODAY = form.dataset.today, MAXD = form.dataset.max, NOW = form.dataset.now;
+
+  function $(id) { return document.getElementById(id); }
+  function fld(name) { return form.querySelector('[name="' + name + '"]'); }
+  function val(name) { var e = fld(name); return e ? (e.value || '').trim() : ''; }
+  function radio(name) { var e = form.querySelector('input[name="' + name + '"]:checked'); return e ? e.value : ''; }
+  function setErr(key, msg) {
+    var p = $('err-' + key); if (!p) return;
+    p.textContent = msg || ''; p.classList.toggle('show', !!msg);
+    var f = p.closest('.field'); if (f) f.classList.toggle('has-err', !!msg);
+  }
+  function clearErrs(n) { [].forEach.call(steps[n - 1].querySelectorAll('.err'), function (p) { p.textContent = ''; p.classList.remove('show'); var f = p.closest('.field'); if (f) f.classList.remove('has-err'); }); }
+
+  /* ── Chữ to hơn ── */
+  var sizeBtn = $('btn-size');
+  try { if (localStorage.getItem('reg_big') === '1') { document.documentElement.classList.add('big'); sizeBtn.setAttribute('aria-pressed', 'true'); sizeBtn.textContent = '🔍 Chữ nhỏ lại'; } } catch (e) {}
+  sizeBtn.addEventListener('click', function () {
+    var on = document.documentElement.classList.toggle('big');
+    sizeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    sizeBtn.textContent = on ? '🔍 Chữ nhỏ lại' : '🔍 Chữ to hơn';
+    try { localStorage.setItem('reg_big', on ? '1' : '0'); } catch (e) {}
+  });
+
+  /* ── Kiểm tra từng bước (gợi ý nhanh; máy chủ vẫn kiểm tra lại) ── */
+  function normPhone(s) { s = s.replace(/[\s.\-()]/g, ''); if (s.indexOf('+84') === 0) s = '0' + s.slice(3); else if (/^84\d{9}$/.test(s)) s = '0' + s.slice(2); return s; }
+  var CHECKS = {
+    1: function () {
+      var ok = true, n = val('full_name').replace(/\s+/g, ' ');
+      if (!n) { setErr('full_name', 'Vui lòng nhập họ và tên.'); ok = false; }
+      else if (n.split(' ').length < 2) { setErr('full_name', 'Vui lòng nhập đầy đủ họ và tên (ví dụ: NGUYỄN VĂN AN).'); ok = false; }
+      else if (/[0-9@#$%^&*_=+<>\/\\|{}\[\]~`!?;:,"()]/.test(n)) { setErr('full_name', 'Họ tên chỉ được có chữ cái. Vui lòng kiểm tra lại.'); ok = false; }
+      var y = val('birth_year'), cy = parseInt(TODAY.slice(0, 4), 10);
+      if (!/^\d{4}$/.test(y) || +y < 1900 || +y > cy) { setErr('birth_year', 'Vui lòng nhập năm sinh gồm 4 chữ số (ví dụ: 1958).'); ok = false; }
+      if (!radio('gender')) { setErr('gender', 'Vui lòng chọn giới tính.'); ok = false; }
+      return ok;
+    },
+    2: function () {
+      var ok = true;
+      if (val('address').length < 2) { setErr('address', 'Vui lòng nhập địa chỉ (thôn/xã).'); ok = false; }
+      if (!/^0\d{9}$/.test(normPhone(val('phone')))) { setErr('phone', 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng số 0 (ví dụ: 0912345678).'); ok = false; }
+      if (!/^(\d{9}|\d{12})$/.test(val('cccd').replace(/[\s.\-]/g, ''))) { setErr('cccd', 'Số căn cước công dân gồm 12 chữ số (hoặc chứng minh thư cũ gồm 9 chữ số).'); ok = false; }
+      return ok;
+    },
+    3: function () {
+      var ok = true;
+      if (val('symptoms').length < 2) { setErr('symptoms', 'Vui lòng cho biết lý do khám / triệu chứng chính.'); ok = false; }
+      if (radio('specialty') === '__khac__' && val('specialty_other').length < 2) { setErr('specialty', 'Vui lòng ghi rõ chuyên khoa muốn khám.'); ok = false; }
+      return ok;
+    },
+    4: function () {
+      var ok = true, d = val('exam_date');
+      if (!d) { setErr('exam_date', 'Vui lòng chọn ngày khám.'); ok = false; }
+      else if (d < TODAY) { setErr('exam_date', 'Ngày khám đã qua. Vui lòng chọn từ hôm nay trở đi.'); ok = false; }
+      else if (d > MAXD) { setErr('exam_date', 'Ngày khám quá xa. Vui lòng chọn ngày gần hơn.'); ok = false; }
+      var t = radio('exam_time');
+      if (!t) { setErr('exam_time', 'Vui lòng chọn giờ khám dự kiến.'); ok = false; }
+      else if (d === TODAY && t < NOW) { setErr('exam_time', 'Giờ này đã qua. Vui lòng chọn giờ khác hoặc ngày khác.'); ok = false; }
+      return ok;
+    },
+    5: function () {
+      var ok = true;
+      if (!fld('agree_truth').checked) { setErr('agree_truth', 'Cần tích vào ô cam kết thông tin đúng sự thật.'); ok = false; }
+      if (!fld('agree_terms').checked) { setErr('agree_terms', 'Cần tích vào ô đồng ý điều khoản đặt lịch.'); ok = false; }
+      return ok;
+    }
+  };
+  function focusFirstError(n) {
+    var first = steps[n - 1].querySelector('.err.show');
+    if (first) { var f = first.closest('.field'); var inp = f && f.querySelector('input:not([type=radio]):not([type=checkbox]),textarea'); (inp || first).scrollIntoView({ block: 'center' }); if (inp) inp.focus(); }
+  }
+
+  /* ── Điều hướng bước ── */
+  function show(n, focusHeading) {
+    cur = n;
+    steps.forEach(function (s, i) { s.classList.toggle('active', i + 1 === n); });
+    txt.textContent = 'Bước ' + n + ' / ' + TOTAL;
+    bar.style.width = (n / TOTAL * 100) + '%';
+    btnBack.classList.toggle('hidden', n === 1);
+    btnNext.classList.toggle('hidden', n === TOTAL);
+    btnSend.classList.toggle('hidden', n !== TOTAL);
+    if (n === TOTAL) buildSummary();
+    if (n === 3) filterDoctors();
+    if (n === 4) { renderQuickDates(); disablePastSlots(); }
+    if (focusHeading !== false) { window.scrollTo(0, 0); var h = steps[n - 1].querySelector('h2'); if (h) h.focus({ preventScroll: true }); }
+  }
+  btnNext.addEventListener('click', function () {
+    clearErrs(cur);
+    if (CHECKS[cur]()) show(cur + 1); else focusFirstError(cur);
+  });
+  btnBack.addEventListener('click', function () { show(cur - 1); });
+  form.addEventListener('keydown', function (e) {                       // Enter = "Tiếp tục", không gửi nhầm
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.type !== 'checkbox' && e.target.type !== 'submit' && cur < TOTAL) {
+      e.preventDefault(); btnNext.click();
+    }
+  });
+  form.addEventListener('submit', function (e) {
+    for (var n = 1; n <= TOTAL; n++) {                                   // kiểm tra lại tất cả; sai ở bước nào thì quay về bước đó
+      clearErrs(n);
+      if (!CHECKS[n]()) { e.preventDefault(); show(n); focusFirstError(n); return; }
+    }
+    btnSend.disabled = true; btnSend.textContent = 'Đang gửi… xin chờ';  // chống bấm đúp
+  });
+  [].forEach.call(form.querySelectorAll('input,textarea'), function (el) {   // sửa xong thì mất chữ đỏ
+    el.addEventListener('input', function () { var f = el.closest('.field'); if (f) { var p = f.querySelector('.err'); if (p) { p.classList.remove('show'); f.classList.remove('has-err'); } } });
+  });
+
+  /* ── Chuyên khoa → chỉ hiện bác sĩ phù hợp ── */
+  var specGroup = $('spec-group'), clearBtn = $('spec-clear'), otherBox = $('other-box'), doctorBox = $('doctor-box');
+  function filterDoctors() {
+    var sp = form.querySelector('input[name="specialty"]:checked');
+    var tag = sp ? sp.getAttribute('data-tag') : '';
+    var any = false;
+    [].forEach.call(doctorBox.querySelectorAll('label.choice:not([data-always])'), function (l) {
+      var show = !sp || !tag ? !sp : l.getAttribute('data-tag') === tag;     // chưa chọn khoa → hiện tất cả; khoa không có bác sĩ → ẩn
+      l.classList.toggle('hidden', !show); if (show) any = true;
+      var r = l.querySelector('input'); if (!show && r.checked) form.querySelector('input[name="doctor"][value=""]').checked = true;
+    });
+    doctorBox.classList.toggle('hidden', !!sp && !any);
+  }
+  specGroup.addEventListener('change', function () {
+    var sp = radio('specialty');
+    otherBox.classList.toggle('hidden', sp !== '__khac__');
+    clearBtn.classList.toggle('hidden', !sp);
+    filterDoctors();
+  });
+  clearBtn.addEventListener('click', function () {
+    var c = form.querySelector('input[name="specialty"]:checked'); if (c) c.checked = false;
+    otherBox.classList.add('hidden'); clearBtn.classList.add('hidden'); filterDoctors();
+  });
+  if (radio('specialty')) clearBtn.classList.remove('hidden');
+
+  /* ── Ngày khám: 3 nút nhanh (hôm nay / mai / kia) theo ngày của MÁY CHỦ, không theo đồng hồ điện thoại ── */
+  var WD = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+  function addDays(iso, k) { var p = iso.split('-'); var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + k)); return d.toISOString().slice(0, 10); }
+  function pretty(iso) { var p = iso.split('-'); var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); return WD[d.getUTCDay()] + ', ' + p[2] + '/' + p[1] + '/' + p[0]; }
+  function short(iso) { var p = iso.split('-'); var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); return WD[d.getUTCDay()] + ' ' + p[2] + '/' + p[1]; }
+  function renderQuickDates() {
+    var box = $('quick-dates'), labels = ['Hôm nay', 'Ngày mai', 'Ngày kia'], cur = val('exam_date');
+    box.innerHTML = '';
+    labels.forEach(function (lb, k) {
+      var iso = addDays(TODAY, k), l = document.createElement('label'); l.className = 'choice';
+      var i = document.createElement('input'); i.type = 'radio'; i.name = 'quick_date'; i.value = iso; i.checked = (cur === iso);
+      var s = document.createElement('span'); s.innerHTML = '<b></b><small></small>'; s.firstChild.textContent = lb; s.lastChild.textContent = short(iso);
+      l.appendChild(i); l.appendChild(s); box.appendChild(l);
+      i.addEventListener('change', function () { fld('exam_date').value = iso; setErr('exam_date', ''); disablePastSlots(); });
+    });
+  }
+  fld('exam_date').addEventListener('change', function () {
+    [].forEach.call(form.querySelectorAll('input[name="quick_date"]'), function (r) { r.checked = (r.value === fld('exam_date').value); });
+    disablePastSlots();
+  });
+  function disablePastSlots() {
+    var today = val('exam_date') === TODAY;
+    [].forEach.call(form.querySelectorAll('input[name="exam_time"]'), function (r) {
+      var past = today && r.value < NOW; r.disabled = past; if (past && r.checked) r.checked = false;
+    });
+  }
+
+  /* ── Trang tóm tắt ── */
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function buildSummary() {
+    var sp = form.querySelector('input[name="specialty"]:checked'), spTxt = '—';
+    if (sp) spTxt = sp.value === '__khac__' ? (val('specialty_other') || '—') : sp.parentNode.querySelector('span').textContent;
+    var dc = form.querySelector('input[name="doctor"]:checked'), dcTxt = (dc && dc.value) ? dc.parentNode.querySelector('b').textContent : 'Bác sĩ nào cũng được';
+    var d = val('exam_date');
+    var rows = [
+      ['Họ và tên', val('full_name').toUpperCase(), 1], ['Năm sinh', val('birth_year'), 1], ['Giới tính', radio('gender'), 1],
+      ['Địa chỉ', val('address'), 2], ['Số điện thoại', normPhone(val('phone')), 2], ['Số căn cước', val('cccd').replace(/[\s.\-]/g, ''), 2],
+      ['Triệu chứng', val('symptoms'), 3], ['Chuyên khoa', spTxt, 3], ['Bác sĩ', dcTxt, 3],
+      ['Ngày khám', d ? pretty(d) : '—', 4], ['Giờ khám dự kiến', radio('exam_time') || '—', 4]
+    ];
+    $('summary').innerHTML = rows.map(function (r) {
+      return '<tr><th>' + r[0] + '</th><td>' + esc(r[1]) + ' <a href="#" data-go="' + r[2] + '">Sửa</a></td></tr>';
+    }).join('');
+  }
+  $('summary').addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-go]'); if (a) { e.preventDefault(); show(+a.getAttribute('data-go')); }
+  });
+
+  /* ── Khởi động ── */
+  clearBtn.classList.toggle('hidden', !radio('specialty'));
+  show(Math.min(Math.max(parseInt(form.dataset.start, 10) || 1, 1), TOTAL), false);
+  var banner = $('server-banner'); if (banner) banner.scrollIntoView({ block: 'start' });
+})();
+</script>
+</body>
+</html>

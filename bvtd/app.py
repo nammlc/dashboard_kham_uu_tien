@@ -559,6 +559,106 @@ def import_backfill():
         return _json_or_flash(False, f"Lỗi máy chủ: {type(e).__name__}: {e}", "error", back)
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# ĐĂNG KÝ KHÁM ONLINE — trang CÔNG KHAI cho bệnh nhân tự điền (không cần đăng nhập)
+# ════════════════════════════════════════════════════════════════════════════════
+
+_reg_lock = threading.Lock()          # ghi đăng ký tuần tự (chống bấm đúp)
+
+
+def _reg_no_store(resp):
+    resp.headers["Cache-Control"] = "no-store"          # có thông tin cá nhân → không để trình duyệt/proxy lưu
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+def _reg_render(values=None, errors=None, banner="", status=200):
+    from services import registration as RG
+    now = RG.vn_now()
+    today = now.date()
+    ctx = {
+        "v": values or {}, "errors": errors or {}, "banner": banner,
+        "start_step": RG.first_error_step(errors) if errors else 1,
+        "csrf": session.get("reg_csrf", ""),
+        "specialties": RG.SPECIALTIES, "doctors": RG.DOCTORS, "OTHER": RG.OTHER,
+        "slots_morning": RG.SLOTS_MORNING, "slots_afternoon": RG.SLOTS_AFTERNOON,
+        "today": today.isoformat(), "max_date": (today + timedelta(days=RG.MAX_DAYS_AHEAD)).isoformat(),
+        "now_hm": now.strftime("%H:%M"), "max_days": RG.MAX_DAYS_AHEAD,
+    }
+    return _reg_no_store(app.make_response((render_template("register/form.html", **ctx), status)))
+
+
+def _reg_ip() -> str:
+    return (request.access_route[0] if request.access_route else request.remote_addr) or "?"
+
+
+@app.route("/dang-ky", methods=["GET", "POST"])
+def register_page():
+    from services import registration as RG
+    if not app.config.get("REG_ENABLED", True):
+        return _reg_no_store(app.make_response((render_template("register/closed.html"), 503)))
+
+    if request.method == "GET":
+        session.update(RG.new_form_state())
+        session.pop("reg_done", None)
+        return _reg_render()
+
+    # ── POST ──
+    values = {k: v for k, v in request.form.items() if k not in ("csrf", "website")}
+    bad = RG.check_state(session, request.form)
+    if bad and session.get("reg_done"):                               # bấm đúp: lượt đầu đã ghi xong → cho xem trang kết quả
+        return redirect(url_for("register_done"))
+    if bad:
+        if "hết hạn" in bad or "quá lâu" in bad:
+            session.update(RG.new_form_state())                       # cấp phiên mới, GIỮ nguyên những gì đã điền
+        return _reg_render(values, {}, bad, 400)
+    clean, errors = RG.validate(request.form)
+    if errors:                                                        # lỗi nhập liệu KHÔNG tính vào giới hạn (nhiều bệnh nhân dùng chung wifi/máy ở bệnh viện)
+        return _reg_render(values, errors, f"Có {len(errors)} mục cần kiểm tra lại (hiện chữ đỏ bên dưới).", 422)
+    if RG.rate_limited(_reg_ip()):                                    # chỉ đơn HỢP LỆ mới đụng tới Sheet → giới hạn ở đây
+        return _reg_render(values, {}, "Hệ thống đang nhận quá nhiều đăng ký từ thiết bị này. Vui lòng đợi vài phút rồi thử lại.", 429)
+
+    summary = {
+        "name": clean["full_name"], "birth_year": clean["birth_year"], "phone": clean["phone"],
+        "exam_date": clean["exam_date"].strftime("%d/%m/%Y"), "exam_time": clean["exam_time"],
+        "specialty": next((lbl for v, lbl, _ in RG.SPECIALTIES if v == clean["specialty"]), clean["specialty"]),
+        "doctor": next((nm for v, nm, _, _ in RG.DOCTORS if v == clean["doctor"]), ""),
+        "already": False,
+    }
+
+    with _locked(_reg_lock) as got:                                   # tuần tự hoá: 2 lần bấm gần nhau không ghi đôi
+        if not got:
+            return _reg_render(values, {}, "Hệ thống đang bận. Vui lòng đợi vài giây rồi bấm Gửi lại.", 503)
+        already = RG.recently_submitted(clean)
+        if not already:
+            try:
+                already = RG.already_on_sheet(_get_df(fresh=True), clean)    # đã có trên Sheet (kể cả Google Form cũ)
+            except Exception as e:                                    # không đọc được Sheet → vẫn cho đăng ký, tránh chặn oan
+                app.logger.warning(f"register: không kiểm tra trùng được: {e}")
+        if already:
+            summary["already"] = True
+        else:
+            ok, err = RG.submit(clean)
+            if not ok:
+                app.logger.error(f"register: ghi Sheet lỗi: {err}")
+                return _reg_render(values, {}, "Hệ thống đang bận, chưa ghi được đăng ký. Vui lòng bấm Gửi lại sau ít phút. "
+                                   "Nếu vẫn lỗi, xin gọi điện cho bệnh viện.", 503)
+            RG.remember_submitted(clean)
+            cache.delete("main_df")
+
+    session["reg_done"] = summary
+    session.update(RG.new_form_state())
+    return redirect(url_for("register_done"))                          # PRG: tải lại trang không gửi lại đơn
+
+
+@app.route("/dang-ky/xong")
+def register_done():
+    summary = session.get("reg_done")
+    if not summary:
+        return redirect(url_for("register_page"))
+    return _reg_no_store(app.make_response(render_template("register/done.html", s=summary)))
+
+
 # ── API: cập nhật trạng thái bệnh nhân (từ bảng danh sách) ──────────────────
 @app.route("/api/status", methods=["POST"])
 @login_required

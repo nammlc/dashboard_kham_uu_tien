@@ -44,7 +44,13 @@ def lap_progress(records: list[dict], dup_records: list[dict]) -> dict:
     "fresh": số BN chưa có}}. `dup_records` là kết quả check_sheet_duplicates() chạy trên TOÀN BỘ file."""
     total = Counter(lap_key(r) for r in records)
     have = Counter(lap_key(r) for r in dup_records)
-    return {lap: {"total": n, "have": min(have.get(lap, 0), n), "fresh": n - min(have.get(lap, 0), n)}
+    when = {}                                       # ngày lập → các NGÀY mà các dòng này được ghi vào Sheet (cũ → mới)
+    for r in dup_records:
+        d = r.get("_existing_ts")
+        if d:
+            when.setdefault(lap_key(r), set()).add(d)
+    return {lap: {"total": n, "have": min(have.get(lap, 0), n), "fresh": n - min(have.get(lap, 0), n),
+                  "when": ", ".join(sorted(when.get(lap, ()), key=_dmy))}
             for lap, n in total.items()}
 
 
