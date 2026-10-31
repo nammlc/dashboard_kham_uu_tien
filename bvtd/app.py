@@ -10,7 +10,8 @@ import os, json, time, uuid, threading
 from datetime import datetime, timedelta
 
 from flask import (Flask, render_template, redirect, url_for,
-                   session, request, flash, jsonify, g)
+                   session, request, flash, jsonify, g, abort)
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import (LoginManager, UserMixin,
                          login_user, logout_user, login_required, current_user)
 from authlib.integrations.flask_client import OAuth
@@ -25,6 +26,11 @@ env = os.environ.get("FLASK_ENV", "development")
 app.config.from_object(
     "config.ProductionConfig" if env == "production" else "config.DevelopmentConfig"
 )
+
+# ── Chạy sau reverse proxy (Coolify/Traefik) ──────────────────────────────────
+# Tin header X-Forwarded-For / X-Forwarded-Proto từ đúng 1 proxy, để Flask biết trang đang chạy bằng
+# HTTPS (cần cho link đăng nhập Google và cookie). Không đụng tới Host.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # ── Cache (tránh gọi Google Sheets quá nhiều) ────────────────────────────────
 cache = Cache(app)
@@ -58,6 +64,34 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id: str):
     return _users.get(user_id)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TÁCH TÊN MIỀN: bệnh nhân  ↔  nhân viên (admin)
+# ════════════════════════════════════════════════════════════════════════════════
+# PATIENT_HOST (tuỳ chọn) = tên miền dành cho bệnh nhân, ví dụ dangkyhenkham.tracuuduoc-bvdktamduccauquan.com
+#   • Mở trang chủ "/" của tên miền này → tự chuyển sang /dang-ky.
+#   • Thêm PATIENT_HOST_PUBLIC_ONLY=1 → tên miền này CHỈ phục vụ trang công khai (/dang-ky, /dang-ky/xong,
+#     /static); mọi đường dẫn khác (đăng nhập, bảng điều khiển...) trả 404. Trang admin chỉ vào được bằng
+#     tên miền admin.
+# Không đặt PATIENT_HOST → không thay đổi gì (chạy local / test như cũ).
+_PATIENT_HOST = os.environ.get("PATIENT_HOST", "").strip().lower()
+_PATIENT_PUBLIC_ONLY = os.environ.get("PATIENT_HOST_PUBLIC_ONLY", "0") == "1"
+_PATIENT_PUBLIC_PATHS = ("/dang-ky", "/dang-ky/xong")
+
+
+@app.before_request
+def _patient_host_gate():
+    if not _PATIENT_HOST:
+        return None
+    if request.host.split(":")[0].lower() != _PATIENT_HOST:
+        return None
+    path = request.path
+    if path == "/":
+        return redirect(url_for("register_page"), code=302)
+    if _PATIENT_PUBLIC_ONLY and not (path in _PATIENT_PUBLIC_PATHS or path.startswith("/static/")):
+        abort(404)
+    return None
 
 
 # ════════════════════════════════════════════════════════════════════════════════
