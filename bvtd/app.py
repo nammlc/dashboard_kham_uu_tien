@@ -75,16 +75,23 @@ def load_user(user_id: str):
 #     /static); mọi đường dẫn khác (đăng nhập, bảng điều khiển...) trả 404. Trang admin chỉ vào được bằng
 #     tên miền admin.
 # Không đặt PATIENT_HOST → không thay đổi gì (chạy local / test như cũ).
-_PATIENT_HOST = os.environ.get("PATIENT_HOST", "").strip().lower()
+def _norm_host(h: str) -> str:
+    """Chuẩn hoá: bỏ https://, đường dẫn, cổng, dấu chấm cuối, chữ hoa."""
+    h = h.strip().lower()
+    h = h.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0].rstrip(".")
+    return h
+
+# Cho phép nhiều tên miền bệnh nhân, cách nhau bằng dấu phẩy
+_PATIENT_HOSTS = {_norm_host(h) for h in os.environ.get("PATIENT_HOST", "").split(",") if h.strip()}
 _PATIENT_PUBLIC_ONLY = os.environ.get("PATIENT_HOST_PUBLIC_ONLY", "0") == "1"
 _PATIENT_PUBLIC_PATHS = ("/dang-ky", "/dang-ky/xong")
 
 
 @app.before_request
 def _patient_host_gate():
-    if not _PATIENT_HOST:
+    if not _PATIENT_HOSTS:
         return None
-    if request.host.split(":")[0].lower() != _PATIENT_HOST:
+    if _norm_host(request.host) not in _PATIENT_HOSTS:
         return None
     path = request.path
     if path == "/":
