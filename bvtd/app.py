@@ -10,7 +10,8 @@ import os, json, time, uuid, threading
 from datetime import datetime, timedelta
 
 from flask import (Flask, render_template, redirect, url_for,
-                   session, request, flash, jsonify, g)
+                   session, request, flash, jsonify, g, abort)
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import (LoginManager, UserMixin,
                          login_user, logout_user, login_required, current_user)
 from authlib.integrations.flask_client import OAuth
@@ -25,6 +26,11 @@ env = os.environ.get("FLASK_ENV", "development")
 app.config.from_object(
     "config.ProductionConfig" if env == "production" else "config.DevelopmentConfig"
 )
+
+# ── Chạy sau reverse proxy (Coolify/Traefik) ──────────────────────────────────
+# Tin header X-Forwarded-For / X-Forwarded-Proto từ đúng 1 proxy, để Flask biết trang đang chạy bằng
+# HTTPS (cần cho link đăng nhập Google và cookie). Không đụng tới Host.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # ── Cache (tránh gọi Google Sheets quá nhiều) ────────────────────────────────
 cache = Cache(app)
@@ -58,6 +64,41 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id: str):
     return _users.get(user_id)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TÁCH TÊN MIỀN: bệnh nhân  ↔  nhân viên (admin)
+# ════════════════════════════════════════════════════════════════════════════════
+# PATIENT_HOST (tuỳ chọn) = tên miền dành cho bệnh nhân, ví dụ dangkyhenkham.tracuuduoc-bvdktamduccauquan.com
+#   • Mở trang chủ "/" của tên miền này → tự chuyển sang /dang-ky.
+#   • Thêm PATIENT_HOST_PUBLIC_ONLY=1 → tên miền này CHỈ phục vụ trang công khai (/dang-ky, /dang-ky/xong,
+#     /static); mọi đường dẫn khác (đăng nhập, bảng điều khiển...) trả 404. Trang admin chỉ vào được bằng
+#     tên miền admin.
+# Không đặt PATIENT_HOST → không thay đổi gì (chạy local / test như cũ).
+def _norm_host(h: str) -> str:
+    """Chuẩn hoá: bỏ https://, đường dẫn, cổng, dấu chấm cuối, chữ hoa."""
+    h = h.strip().lower()
+    h = h.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0].rstrip(".")
+    return h
+
+# Cho phép nhiều tên miền bệnh nhân, cách nhau bằng dấu phẩy
+_PATIENT_HOSTS = {_norm_host(h) for h in os.environ.get("PATIENT_HOST", "").split(",") if h.strip()}
+_PATIENT_PUBLIC_ONLY = os.environ.get("PATIENT_HOST_PUBLIC_ONLY", "0") == "1"
+_PATIENT_PUBLIC_PATHS = ("/dang-ky", "/dang-ky/xong", "/robots.txt", "/sitemap.xml")
+
+
+@app.before_request
+def _patient_host_gate():
+    if not _PATIENT_HOSTS:
+        return None
+    if _norm_host(request.host) not in _PATIENT_HOSTS:
+        return None
+    path = request.path
+    if path == "/":
+        return redirect(url_for("register_page"), code=302)
+    if _PATIENT_PUBLIC_ONLY and not (path in _PATIENT_PUBLIC_PATHS or path.startswith("/static/")):
+        abort(404)
+    return None
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -566,9 +607,10 @@ def import_backfill():
 _reg_lock = threading.Lock()          # ghi đăng ký tuần tự (chống bấm đúp)
 
 
-def _reg_no_store(resp):
+def _reg_no_store(resp, indexable=False):
     resp.headers["Cache-Control"] = "no-store"          # có thông tin cá nhân → không để trình duyệt/proxy lưu
-    resp.headers["X-Robots-Tag"] = "noindex"
+    if not indexable:
+        resp.headers["X-Robots-Tag"] = "noindex"
     return resp
 
 
@@ -585,7 +627,11 @@ def _reg_render(values=None, errors=None, banner="", status=200):
         "today": today.isoformat(), "max_date": (today + timedelta(days=RG.MAX_DAYS_AHEAD)).isoformat(),
         "now_hm": now.strftime("%H:%M"), "max_days": RG.MAX_DAYS_AHEAD,
     }
-    return _reg_no_store(app.make_response((render_template("register/form.html", **ctx), status)))
+    # Chỉ cho Google lập chỉ mục khi là trang form trống (GET, 200). Form có lỗi / sau POST thì noindex.
+    indexable = request.method == "GET" and status == 200 and not errors
+    ctx["indexable"] = indexable
+    ctx["canonical"] = url_for("register_page", _external=True)
+    return _reg_no_store(app.make_response((render_template("register/form.html", **ctx), status)), indexable)
 
 
 def _reg_ip() -> str:
@@ -649,6 +695,34 @@ def register_page():
     session["reg_done"] = summary
     session.update(RG.new_form_state())
     return redirect(url_for("register_done"))                          # PRG: tải lại trang không gửi lại đơn
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    is_patient = (not _PATIENT_HOSTS) or _norm_host(request.host) in _PATIENT_HOSTS
+    if is_patient:
+        body = ("User-agent: *\nAllow: /dang-ky\nDisallow: /dang-ky/xong\n"
+                f"Sitemap: {url_for('sitemap_xml', _external=True)}\n")
+    else:
+        body = "User-agent: *\nDisallow: /\n"             # tên miền admin: cấm bot
+    return app.response_class(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    loc = url_for("register_page", _external=True)
+    body = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            f'<url><loc>{loc}</loc></url></urlset>')
+    return app.response_class(body, mimetype="application/xml")
+
+
+@app.after_request
+def _admin_host_noindex(resp):
+    """Tên miền không phải của bệnh nhân (admin) → luôn noindex."""
+    if _PATIENT_HOSTS and _norm_host(request.host) not in _PATIENT_HOSTS:
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
 
 
 @app.route("/dang-ky/xong")

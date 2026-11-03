@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>Đăng ký lịch hẹn khám online – BVĐK Tâm Đức Cầu Quan</title>
+{% if indexable %}<meta name="robots" content="index, follow">
+<meta name="description" content="Đăng ký lịch hẹn khám online tại Bệnh viện Đa khoa Tâm Đức Cầu Quan. Chọn chuyên khoa, bác sĩ, ngày giờ khám nhanh chóng, không cần xếp hàng.">
+<link rel="canonical" href="{{ canonical }}">
+{% else %}<meta name="robots" content="noindex">
+{% endif %}<title>Đăng ký lịch hẹn khám online – BVĐK Tâm Đức Cầu Quan</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 <script>document.documentElement.classList.add('js');</script>
 <style>
@@ -31,6 +34,7 @@
   label.q,.q{display:block;font-weight:800;font-size:1.08rem;margin-bottom:6px}
   .hint{display:block;font-weight:400;color:var(--muted);font-size:.85rem;margin-top:2px}
   .req{color:var(--red)}
+  .reqnote{margin:0 0 10px;font-size:.8rem;color:var(--muted)}
   input[type=text],input[type=tel],input[type=number],input[type=date],textarea{
     width:100%;font:inherit;font-size:1.1rem;padding:12px 14px;min-height:56px;border:2.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
   textarea{min-height:110px;resize:vertical}
@@ -105,6 +109,8 @@
     <div class="bar"><i id="progress-bar"></i></div>
   </div>
 
+  <p class="reqnote">Những trường có dấu <span class="req">*</span> là trường bắt buộc nhập.</p>
+
   {% if banner %}<div class="banner" role="alert" id="server-banner">{{ banner }}</div>{% endif %}
 
   <form method="post" action="{{ url_for('register_page') }}" id="reg-form" autocomplete="on" novalidate
@@ -146,7 +152,7 @@
       <p class="lead">Để bệnh viện có thể gọi điện khi cần.</p>
 
       <div class="field {{ 'has-err' if errors.address }}">
-        <label class="q" for="address">Địa chỉ (thôn / xã) <span class="req">*</span><span class="hint">Ví dụ: Thôn 3, xã Trung Chính</span></label>
+        <label class="q" for="address">Địa chỉ (thôn / xã) <span class="hint">Không bắt buộc. Ví dụ: Thôn 3, xã Trung Chính</span></label>
         <input type="text" id="address" name="address" value="{{ v.address or '' }}" maxlength="120" autocomplete="street-address" enterkeyhint="next">
         <p class="err {{ 'show' if errors.address }}" id="err-address" role="alert">{{ errors.address or '' }}</p>
       </div>
@@ -158,7 +164,7 @@
       </div>
 
       <div class="field {{ 'has-err' if errors.cccd }}">
-        <label class="q" for="cccd">Số căn cước công dân <span class="req">*</span><span class="hint">12 chữ số in trên thẻ căn cước (hoặc 9 số nếu dùng chứng minh thư cũ)</span></label>
+        <label class="q" for="cccd">Số căn cước công dân <span class="hint">Không bắt buộc. 12 chữ số in trên thẻ căn cước (hoặc 9 số nếu dùng chứng minh thư cũ)</span></label>
         <input type="tel" inputmode="numeric" id="cccd" name="cccd" value="{{ v.cccd or '' }}" maxlength="16" autocomplete="off" enterkeyhint="next">
         <p class="err {{ 'show' if errors.cccd }}" id="err-cccd" role="alert">{{ errors.cccd or '' }}</p>
       </div>
@@ -170,7 +176,7 @@
       <p class="lead">Cho bệnh viện biết bạn đang gặp vấn đề gì.</p>
 
       <div class="field {{ 'has-err' if errors.symptoms }}">
-        <label class="q" for="symptoms">Triệu chứng chính <span class="req">*</span><span class="hint">Ví dụ: đau đầu, ho kéo dài, khám thai, kiểm tra huyết áp…</span></label>
+        <label class="q" for="symptoms">Triệu chứng chính <span class="hint">Không bắt buộc. Ví dụ: đau đầu, ho kéo dài, khám thai, kiểm tra huyết áp…</span></label>
         <textarea id="symptoms" name="symptoms" maxlength="300">{{ v.symptoms or '' }}</textarea>
         <p class="err {{ 'show' if errors.symptoms }}" id="err-symptoms" role="alert">{{ errors.symptoms or '' }}</p>
       </div>
@@ -311,14 +317,12 @@
     },
     2: function () {
       var ok = true;
-      if (val('address').length < 2) { setErr('address', 'Vui lòng nhập địa chỉ (thôn/xã).'); ok = false; }
       if (!/^0\d{9}$/.test(normPhone(val('phone')))) { setErr('phone', 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng số 0 (ví dụ: 0912345678).'); ok = false; }
-      if (!/^(\d{9}|\d{12})$/.test(val('cccd').replace(/[\s.\-]/g, ''))) { setErr('cccd', 'Số căn cước công dân gồm 12 chữ số (hoặc chứng minh thư cũ gồm 9 chữ số).'); ok = false; }
+      if (val('cccd') && !/^(\d{9}|\d{12})$/.test(val('cccd').replace(/[\s.\-]/g, ''))) { setErr('cccd', 'Số căn cước công dân gồm 12 chữ số (hoặc chứng minh thư cũ gồm 9 chữ số).'); ok = false; }
       return ok;
     },
     3: function () {
       var ok = true;
-      if (val('symptoms').length < 2) { setErr('symptoms', 'Vui lòng cho biết lý do khám / triệu chứng chính.'); ok = false; }
       if (radio('specialty') === '__khac__' && val('specialty_other').length < 2) { setErr('specialty', 'Vui lòng ghi rõ chuyên khoa muốn khám.'); ok = false; }
       return ok;
     },
@@ -446,8 +450,8 @@
     var d = val('exam_date');
     var rows = [
       ['Họ và tên', val('full_name').toUpperCase(), 1], ['Năm sinh', val('birth_year'), 1], ['Giới tính', radio('gender'), 1],
-      ['Địa chỉ', val('address'), 2], ['Số điện thoại', normPhone(val('phone')), 2], ['Số căn cước', val('cccd').replace(/[\s.\-]/g, ''), 2],
-      ['Triệu chứng', val('symptoms'), 3], ['Chuyên khoa', spTxt, 3], ['Bác sĩ', dcTxt, 3],
+      ['Địa chỉ', val('address') || '—', 2], ['Số điện thoại', normPhone(val('phone')), 2], ['Số căn cước', val('cccd').replace(/[\s.\-]/g, '') || '—', 2],
+      ['Triệu chứng', val('symptoms') || '—', 3], ['Chuyên khoa', spTxt, 3], ['Bác sĩ', dcTxt, 3],
       ['Ngày khám', d ? pretty(d) : '—', 4], ['Giờ khám dự kiến', radio('exam_time') || '—', 4]
     ];
     $('summary').innerHTML = rows.map(function (r) {

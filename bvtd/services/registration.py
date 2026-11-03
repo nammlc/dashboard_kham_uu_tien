@@ -140,11 +140,8 @@ def validate(form, now: datetime | None = None):
         errors["gender"] = "Vui lòng chọn giới tính."
     c["gender"] = gender
 
-    # 4) Địa chỉ
-    addr = g("address", 120)
-    if len(addr) < 2:
-        errors["address"] = "Vui lòng nhập địa chỉ (thôn/xã)."
-    c["address"] = addr
+    # 4) Địa chỉ (không bắt buộc)
+    c["address"] = g("address", 120)
 
     # 5) SĐT: 10 số bắt đầu bằng 0
     phone = normalize_phone(form.get("phone", ""))
@@ -152,17 +149,14 @@ def validate(form, now: datetime | None = None):
         errors["phone"] = "Số điện thoại phải gồm 10 chữ số, bắt đầu bằng số 0 (ví dụ: 0912345678)."
     c["phone"] = phone
 
-    # 6) CCCD (12 số) / CMND (9 số)
+    # 6) CCCD (12 số) / CMND (9 số) — không bắt buộc; nếu có nhập thì phải đúng định dạng
     cccd = re.sub(r"[\s.\-]", "", str(form.get("cccd", "") or ""))
-    if not re.fullmatch(r"\d{9}|\d{12}", cccd):
+    if cccd and not re.fullmatch(r"\d{9}|\d{12}", cccd):
         errors["cccd"] = "Số căn cước công dân gồm 12 chữ số (hoặc chứng minh thư cũ gồm 9 chữ số)."
     c["cccd"] = cccd
 
-    # 7) Triệu chứng
-    sym = g("symptoms", 300)
-    if len(sym) < 2:
-        errors["symptoms"] = "Vui lòng cho biết lý do khám / triệu chứng chính."
-    c["symptoms"] = sym
+    # 7) Triệu chứng (không bắt buộc)
+    c["symptoms"] = g("symptoms", 300)
 
     # 8) Chuyên khoa (không bắt buộc) — "Khác" thì lấy chữ người dùng ghi, như Google Form
     sp = g("specialty", 120)

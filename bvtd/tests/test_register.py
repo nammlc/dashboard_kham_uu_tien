@@ -52,7 +52,7 @@ class PageTests(RegisterBase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("no-store", r.headers["Cache-Control"])
         html = r.get_data(as_text=True)
-        self.assertNotRegex(html, r"https?://(?!www\.w3)", "không phụ thuộc CDN/trang ngoài (mạng yếu ở vùng quê)")
+        self.assertNotRegex(re.sub(r'<link rel="canonical"[^>]*>', "", html), r"https?://(?!www\.w3)", "không phụ thuộc CDN/trang ngoài (mạng yếu ở vùng quê)")
         for name in ("full_name", "birth_year", "gender", "address", "phone", "cccd", "symptoms", "specialty", "doctor",
                      "exam_date", "exam_time", "agree_truth", "agree_terms", "csrf"):
             self.assertIn(f'name="{name}"', html, name)
@@ -157,6 +157,12 @@ class ValidationTests(RegisterBase):
         self.assertEqual(len(self.rows()), 0)
         return r
 
+    def test_optional_fields_can_be_empty(self):
+        """Địa chỉ, CCCD, triệu chứng không bắt buộc; CCCD nếu nhập thì vẫn phải đúng định dạng."""
+        r = self.submit(address="", cccd="", symptoms="")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(len(self.rows()), 1)
+
     def test_each_rule(self):
         self.check("full_name", "đầy đủ họ và tên", full_name="An")
         self.check("full_name", "Vui lòng nhập họ và tên", full_name="  ")
@@ -164,10 +170,8 @@ class ValidationTests(RegisterBase):
         self.check("birth_year", "4 chữ số", birth_year="58")
         self.check("birth_year", "4 chữ số", birth_year="2099")
         self.check("gender", "chọn giới tính", gender="")
-        self.check("address", "địa chỉ", address=" ")
         self.check("phone", "10 chữ số", phone="12345")
         self.check("cccd", "12 chữ số", cccd="123")
-        self.check("symptoms", "triệu chứng", symptoms="")
         self.check("specialty", "không hợp lệ", specialty="Khoa lạ")
         self.check("specialty_other", "ghi rõ", specialty=RG.OTHER, specialty_other="")
         self.check("doctor", "không hợp lệ", doctor="BS Giả")
