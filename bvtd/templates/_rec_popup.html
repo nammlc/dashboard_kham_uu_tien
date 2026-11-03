@@ -198,7 +198,6 @@ window.RecPopup = (function () {
         render({ tone: partial ? 'warning' : 'ok',
                  title: partial ? 'Cập nhật chưa hoàn tất' : 'Thành công',
                  text: d.message || (partial ? 'Một số bệnh nhân chưa được cập nhật. Vui lòng tải lại trang rồi thử lại.' : ''),
-                 sub: partial ? '' : 'Trang sẽ tự tải lại sau vài giây…',
                  // Thành công hoàn toàn: KHÔNG có nút — trang tự tải lại. Chỉ ca "một phần" mới có nút để người dùng đọc xong rồi bấm.
                  buttons: partial ? [{ label: 'Tải lại trang', kind: 'primary', onClick: go }] : [] });
         if (!partial) timer = setTimeout(go, config.successMs);
