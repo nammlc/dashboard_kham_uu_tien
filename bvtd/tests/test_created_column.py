@@ -240,3 +240,52 @@ class PatientsTabCreatedTime(_Base):
     def test_blank_created_date_falls_back_to_timestamp_date(self):
         t = self.rows_html(sheet_row(1, "AN", hen="25/10/2026", created=""))
         self.assertIn("14/10/2026 16:44", t)
+
+
+class ReportDetailSearch(_Base):
+    """Trang chi tiết báo cáo: ô tìm kiếm (tên, SĐT... không phân biệt dấu), giữ nguyên kỳ báo cáo."""
+    URL = "/bao-cao/chi-tiet"
+    BASE = {"period": "month", "key": "2026-10-01", "kind": "all"}
+
+    def page(self, **extra):
+        self.install_sheet(FakeSheet([
+            sheet_row(1, "NGUYỄN VĂN AN", phone="0912345678", hen="12/10/2026", khoa="KHOA NỘI"),
+            sheet_row(2, "TRẦN THỊ BÌNH", phone="0987000111", hen="13/10/2026", khoa="KHOA SẢN"),
+            sheet_row(3, "LÊ ĐỨC CƯỜNG", phone="0933222111", hen="14/10/2026", khoa="KHOA NỘI"),
+        ]))
+        h = self.client.get(self.URL, query_string={**self.BASE, **extra}).get_data(as_text=True)
+        return h, text(h)
+
+    def test_form_is_there_and_keeps_context(self):
+        h, _ = self.page()
+        self.assertIn('name="q"', h); self.assertIn("Tìm kiếm", h)
+        for k, v in self.BASE.items():
+            self.assertIn(f'name="{k}" value="{v}"', h)
+
+    def test_no_query_lists_everyone(self):
+        _, t = self.page()
+        self.assertIn("NGUYỄN VĂN AN", t); self.assertIn("TRẦN THỊ BÌNH", t); self.assertIn("LÊ ĐỨC CƯỜNG", t)
+        self.assertIn("3 bệnh nhân", t)
+
+    def test_search_without_accents_and_case(self):
+        _, t = self.page(q="nguyen")
+        self.assertIn("NGUYỄN VĂN AN", t); self.assertNotIn("TRẦN THỊ BÌNH", t)
+        self.assertIn("1 kết quả", t)
+        _, t = self.page(q="duc cuong")                         # đ → d
+        self.assertIn("LÊ ĐỨC CƯỜNG", t); self.assertNotIn("NGUYỄN VĂN AN", t)
+
+    def test_search_by_phone_and_khoa(self):
+        _, t = self.page(q="0987")
+        self.assertIn("TRẦN THỊ BÌNH", t); self.assertNotIn("NGUYỄN VĂN AN", t)
+        _, t = self.page(q="khoa noi")
+        self.assertIn("NGUYỄN VĂN AN", t); self.assertIn("LÊ ĐỨC CƯỜNG", t); self.assertNotIn("TRẦN THỊ BÌNH", t)
+
+    def test_no_match_message_and_clear_link(self):
+        h, t = self.page(q="khong-co-ai")
+        self.assertIn("Không tìm thấy bệnh nhân nào khớp", t)
+        self.assertIn("Xoá tìm kiếm", t)
+        self.assertIn("0 kết quả", t)
+
+    def test_period_label_still_shown_when_search_has_no_match(self):
+        _, t = self.page(q="khong-co-ai")
+        self.assertIn("Tháng 10/2026", t)                       # nhãn kỳ lấy từ danh sách gốc, không mất khi không có kết quả

@@ -11,8 +11,35 @@
       <span class="bg-slate-100 text-slate-700 font-semibold px-2.5 py-1 rounded-full">{{ kind_label }}</span>
       <span class="text-slate-500">{{ period_name }}: <b class="text-slate-700">{{ ky }}</b></span>
     </div>
-    <span class="ml-auto text-xs text-slate-400">{{ total }} bệnh nhân</span>
+    <span class="ml-auto text-xs text-slate-400">{{ total }} {{ 'kết quả' if q else 'bệnh nhân' }}</span>
   </div>
+
+  <!-- Tìm kiếm trong danh sách (giữ nguyên kỳ báo cáo / loại đang xem) -->
+  <form method="GET" action="{{ url_for('report_detail') }}" role="search"
+        class="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-slate-100">
+    <input type="hidden" name="period" value="{{ period }}">
+    <input type="hidden" name="key" value="{{ key }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
+    {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
+    <div class="relative flex-1 min-w-56 max-w-md">
+      <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="search" name="q" value="{{ q }}" maxlength="80" autocomplete="off" aria-label="Tìm bệnh nhân"
+             placeholder="Tìm tên, SĐT, STT, năm sinh, khoa..."
+             class="w-full text-sm border border-slate-300 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20">
+    </div>
+    <button type="submit"
+            class="inline-flex items-center gap-1.5 bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a] transition-colors">
+      Tìm kiếm
+    </button>
+    {% if q %}
+    <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to) }}"
+       class="text-sm text-slate-500 hover:text-red-500">✕ Xoá tìm kiếm</a>
+    {% endif %}
+  </form>
 
   {% if not has_actual_col %}
   <div class="mx-5 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
@@ -57,7 +84,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="9" class="px-5 py-10 text-center text-slate-400">Không có bệnh nhân nào khớp mục này.</td></tr>
+        <tr><td colspan="9" class="px-5 py-10 text-center text-slate-400">{% if q %}Không tìm thấy bệnh nhân nào khớp “{{ q }}”.{% else %}Không có bệnh nhân nào khớp mục này.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -69,14 +96,14 @@
     <span class="text-xs text-slate-400">Hiển thị {{ (page-1)*per_page+1 }}–{{ [page*per_page, total]|min }} / {{ total }}</span>
     <div class="flex gap-1">
       {% if page > 1 %}
-      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, page=page-1) }}"
+      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, q=q, page=page-1) }}"
          class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">‹</a>{% endif %}
       {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
-      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, page=p) }}"
+      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, q=q, page=p) }}"
          class="px-3 py-1.5 text-xs border rounded-lg {% if p == page %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ p }}</a>
       {% endfor %}
       {% if page < total_pages %}
-      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, page=page+1) }}"
+      <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, q=q, page=page+1) }}"
          class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">›</a>{% endif %}
     </div>
   </div>

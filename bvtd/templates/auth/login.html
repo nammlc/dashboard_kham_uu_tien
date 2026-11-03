@@ -21,6 +21,12 @@
       </div>
     </div>
 
+    {% if expired %}
+      <div class="mb-4 text-sm px-4 py-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+        Phiên đăng nhập đã hết hạn do {{ idle_minutes }} phút không thao tác. Vui lòng đăng nhập lại.
+      </div>
+    {% endif %}
+
     <!-- Flash errors -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}

@@ -13,6 +13,12 @@ class Config:
         e.strip() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()
     )
 
+    # ── Phiên đăng nhập admin: sau N phút KHÔNG thao tác trên trang web thì tự đăng xuất ──
+    SESSION_IDLE_MINUTES = int(os.environ.get("SESSION_IDLE_MINUTES", "15"))
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_HTTPONLY = True
+
     # ── Mật khẩu admin cho đăng nhập bằng email ──────────────────────────────
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 

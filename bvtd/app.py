@@ -105,6 +105,68 @@ def _patient_host_gate():
 # AUTH ROUTES
 # ════════════════════════════════════════════════════════════════════════════════
 
+# ── Tự đăng xuất khi không thao tác ──────────────────────────────────────────
+# Mỗi request của admin đã đăng nhập làm mới mốc "last_active" (lưu trong session cookie đã ký).
+# Quá SESSION_IDLE_MINUTES (mặc định 15 phút) không có request nào → đăng xuất, kể cả khi trình duyệt còn cookie
+# "ghi nhớ đăng nhập" cũ (không có last_active → coi là hết phiên). Trang công khai /dang-ky không bị ảnh hưởng.
+def _idle_seconds() -> int:
+    return max(1, int(app.config.get("SESSION_IDLE_MINUTES", 15))) * 60
+
+
+def _wants_json() -> bool:
+    return (request.headers.get("X-Requested-With") == "fetch" or request.is_json
+            or "application/json" in (request.headers.get("Accept") or ""))
+
+
+@app.context_processor
+def _inject_idle():
+    return {"idle_seconds": _idle_seconds(), "idle_minutes": _idle_seconds() // 60}
+
+
+@app.before_request
+def _admin_idle_timeout():
+    if app.config.get("LOGIN_DISABLED") or request.endpoint in (None, "static"):
+        return None
+    if not current_user.is_authenticated:
+        return None
+    now, last = time.time(), session.get("last_active")
+    try:
+        expired = last is None or now - float(last) > _idle_seconds()
+    except (TypeError, ValueError):
+        expired = True
+    if expired:
+        logout_user()
+        session.pop("last_active", None)
+        login_url = url_for("login", expired=1)
+        if _wants_json():
+            return jsonify({"ok": False, "level": "warning", "redirect": login_url,
+                            "message": f"Phiên đăng nhập đã hết hạn do {_idle_seconds() // 60} phút không thao tác. "
+                                       "Vui lòng đăng nhập lại."}), 401
+        return redirect(login_url)
+    if request.endpoint != "session_status":           # chỉ HỎI trạng thái thì không gia hạn phiên
+        session["last_active"] = now
+    return None
+
+
+@app.route("/api/session-status")
+def session_status():
+    """Trình duyệt hỏi còn bao nhiêu giây trước khi hết phiên (không gia hạn). Hết phiên → 401 (xử lý ở before_request)."""
+    if app.config.get("LOGIN_DISABLED"):
+        return jsonify({"active": True, "remaining": _idle_seconds()})
+    if not current_user.is_authenticated:
+        return jsonify({"active": False, "redirect": url_for("login", expired=1)}), 401
+    remaining = _idle_seconds() - (time.time() - float(session.get("last_active", 0)))
+    return jsonify({"active": True, "remaining": max(0, int(remaining))})
+
+
+@app.route("/api/keepalive", methods=["POST"])
+def keepalive():
+    """Người dùng vẫn đang thao tác trên trang (không gọi máy chủ) → gia hạn phiên (before_request đã làm mới mốc)."""
+    if not app.config.get("LOGIN_DISABLED") and not current_user.is_authenticated:
+        return jsonify({"ok": False, "redirect": url_for("login", expired=1)}), 401
+    return jsonify({"ok": True})
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -120,12 +182,13 @@ def login():
         if email in allowed and password == admin_pw and admin_pw:
             u = User(email, email.split("@")[0])
             _users[email] = u
-            login_user(u, remember=True)
+            login_user(u, remember=False)                  # không "ghi nhớ" — hết 15 phút không thao tác là phải đăng nhập lại
+            session["last_active"] = time.time()
             return redirect(request.args.get("next") or url_for("dashboard"))
         else:
             flash("Email hoặc mật khẩu không đúng.", "error")
 
-    return render_template("auth/login.html")
+    return render_template("auth/login.html", expired=bool(request.args.get("expired")))
 
 
 @app.route("/login/google")
@@ -147,7 +210,8 @@ def google_callback():
 
     u = User(email, user_info.get("name", email), user_info.get("picture", ""))
     _users[email] = u
-    login_user(u, remember=True)
+    login_user(u, remember=False)
+    session["last_active"] = time.time()
     return redirect(url_for("dashboard"))
 
 
@@ -155,6 +219,7 @@ def google_callback():
 @login_required
 def logout():
     logout_user()
+    session.pop("last_active", None)
     return redirect(url_for("login"))
 
 
@@ -209,6 +274,13 @@ def report():
                            date_to=d_to.isoformat() if d_to else "")
 
 
+def _fold_text(s) -> str:
+    """Chữ thường, bỏ dấu tiếng Việt (đ → d): 'Nguyễn' khớp 'nguyen' — dùng cho ô tìm kiếm."""
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(s or "").lower().replace("đ", "d"))
+    return "".join(ch for ch in t if not unicodedata.combining(ch))
+
+
 @app.route("/bao-cao/chi-tiet")
 @login_required
 def report_detail():
@@ -227,10 +299,25 @@ def report_detail():
     per_page = 20
 
     d = report_drilldown(_get_df(), period, key, kind, d_from, d_to)
-    total = len(d)
-    page_df = d.iloc[(page - 1) * per_page: page * per_page] if total else d
     from services.sheets import COL_BIRTH_YEAR, COL_ACTUAL_DATE, to_dmy
     has_actual_col = COL_ACTUAL_DATE in d.columns
+    ky_df = d                                          # giữ nguyên danh sách của ô báo cáo để lấy nhãn kỳ (trước khi tìm kiếm)
+
+    # Tìm kiếm trong danh sách: tên, SĐT, STT, năm sinh, ngày hẹn / thực khám, khoa, nguồn (không phân biệt hoa-thường, có dấu hay không)
+    q = request.args.get("q", "").strip()[:80]
+    if q and len(d):
+        want = _fold_text(q)
+
+        def _hit(r):
+            actual = to_dmy(r.get(COL_ACTUAL_DATE, "")) if has_actual_col else ""
+            hay = " ".join(str(x or "") for x in (
+                r.get(COL_STT, ""), r.get(COL_NAME, ""), r.get(COL_BIRTH_YEAR, ""), r.get(COL_PHONE, ""),
+                r["_date"].strftime("%d/%m/%Y"), actual, r.get(COL_KHOA, ""), r.get(COL_SOURCE, "")))
+            return want in _fold_text(hay)
+        d = d[d.apply(_hit, axis=1)]
+
+    total = len(d)
+    page_df = d.iloc[(page - 1) * per_page: page * per_page] if total else d
 
     def _birth(v):
         t = str(v or "").strip()
@@ -263,12 +350,12 @@ def report_detail():
         })
 
     ky = "Toàn bộ"
-    if key != "all" and total:
+    if key != "all" and len(ky_df):
         from services.sheets import _period_label
-        ky = _period_label(d["_start"].iloc[0], period)
+        ky = _period_label(ky_df["_start"].iloc[0], period)
 
     return render_template("dashboard/report_detail.html",
-                           records=records, total=total, page=page, per_page=per_page,
+                           records=records, total=total, page=page, per_page=per_page, q=q,
                            kind=kind, kind_label=REPORT_KINDS[kind], key=key, ky=ky,
                            has_actual_col=has_actual_col,
                            period=period, period_name=PERIODS[period],

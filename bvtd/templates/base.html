@@ -327,6 +327,43 @@
   })();
   </script>
 
+  <!-- Tự đăng xuất khi không thao tác: trình duyệt theo dõi chuột/phím/cuộn/chạm; còn thao tác thì định kỳ báo máy chủ
+       gia hạn phiên; không thao tác quá hạn thì hỏi máy chủ (tab khác có thể vẫn đang dùng) rồi chuyển về trang đăng nhập. -->
+  <script>
+  (function () {
+    const IDLE = {{ idle_seconds }} * 1000, PING_EVERY = Math.min(180000, IDLE / 3);
+    let lastAct = Date.now(), lastPing = Date.now(), busy = false;
+    const login = () => { location.href = {{ url_for('login', expired=1)|tojson }}; };
+    const hdr = { 'X-Requested-With': 'fetch', 'Accept': 'application/json' };
+    const touch = () => { lastAct = Date.now(); };
+    ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel']
+      .forEach(ev => addEventListener(ev, touch, { passive: true, capture: true }));
+
+    async function ping() {
+      lastPing = Date.now();
+      try { const r = await fetch({{ url_for('keepalive')|tojson }}, { method: 'POST', headers: hdr, credentials: 'same-origin' });
+            if (r.status === 401) login(); } catch (_) {}
+    }
+    async function check() {                       // hết hạn ở trình duyệt này → hỏi máy chủ cho chắc
+      if (busy) return; busy = true;
+      try {
+        const r = await fetch({{ url_for('session_status')|tojson }}, { headers: hdr, credentials: 'same-origin' });
+        if (r.status === 401) { login(); return; }
+        const d = await r.json();
+        if (!d.active || d.remaining <= 0) { login(); return; }
+        lastAct = Date.now() - (IDLE - d.remaining * 1000);      // tab khác vẫn đang dùng → đợi đúng phần còn lại
+      } catch (_) {} finally { busy = false; }
+    }
+    function tick() {
+      const now = Date.now();
+      if (now - lastAct >= IDLE) check();
+      else if (lastAct > lastPing && now - lastPing >= PING_EVERY) ping();
+    }
+    setInterval(tick, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  })();
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>
