@@ -52,11 +52,11 @@ const REC = {
   describeFailure(res) {
     if (res.kind === 'ok') {
       const d = res.data || {}, lv = d.level || 'error';
-      const probs = (d.problems || []).slice(0, 5).map(p => '• ' + p).join('\n');
+      // Không liệt kê từng bệnh nhân — chỉ báo thành công / thất bại (chi tiết từng ca đã ghi log ở máy chủ)
       return {
         tone: lv === 'info' ? 'info' : (lv === 'warning' ? 'warning' : 'error'),
-        title: lv === 'error' ? 'Chưa cập nhật được' : (lv === 'warning' ? 'Chưa thực hiện được' : 'Thông báo'),
-        text: (d.message || 'Có lỗi xảy ra.') + (probs ? '\n' + probs : ''),
+        title: lv === 'error' ? 'Cập nhật thất bại' : (lv === 'warning' ? 'Chưa thực hiện được' : 'Thông báo'),
+        text: d.message || 'Cập nhật thất bại. Vui lòng thử lại.',
         canRetry: lv !== 'info', reloadFirst: !!d.reload_hint, detail: '',
       };
     }
@@ -192,14 +192,16 @@ window.RecPopup = (function () {
         let done = false, timer;
         const go = () => { if (done) return; done = true; clearTimeout(timer); resolve(); };
         closer = null;
-        // Thành công MỘT PHẦN (có ca lỗi): giữ pop-up cho tới khi người dùng đọc xong lý do và bấm tiếp tục, không tự chuyển trang
-        const probs = d.problems || [], partial = probs.length > 0;
+        // Thành công hoàn toàn: báo ngắn gọn rồi TỰ tải lại trang sau ~2,5 giây (không liệt kê tên bệnh nhân).
+        // Thành công MỘT PHẦN (có ca lỗi): giữ pop-up, không tự tải lại để người dùng kịp đọc.
+        const partial = (d.problems || []).length > 0;
         render({ tone: partial ? 'warning' : 'ok',
-                 title: partial ? 'Cập nhật một phần' : (d.count > 0 ? 'Cập nhật thành công' : 'Đã được cập nhật trước đó'),
-                 text: d.message, names: partial ? probs : d.names, more: partial ? d.more_problems : d.more,
-                 sub: partial ? '' : 'Đang chuyển trang…',
-                 buttons: [{ label: partial ? 'Đã hiểu — tải lại trang' : 'Tiếp tục ngay', kind: 'primary', onClick: go }] });
-        if (!partial) timer = setTimeout(go, 2200);
+                 title: partial ? 'Cập nhật chưa hoàn tất' : 'Thành công',
+                 text: d.message || (partial ? 'Một số bệnh nhân chưa được cập nhật. Vui lòng tải lại trang rồi thử lại.' : ''),
+                 sub: partial ? '' : 'Trang sẽ tự tải lại sau vài giây…',
+                 // Thành công hoàn toàn: KHÔNG có nút — trang tự tải lại. Chỉ ca "một phần" mới có nút để người dùng đọc xong rồi bấm.
+                 buttons: partial ? [{ label: 'Tải lại trang', kind: 'primary', onClick: go }] : [] });
+        if (!partial) timer = setTimeout(go, config.successMs);
       });
     },
     failure(info) {
@@ -217,6 +219,7 @@ window.RecPopup = (function () {
   };
 
   const state = { busy: false };
+  const config = { successMs: 2500 };            // thời gian hiện "Thành công" trước khi tự tải lại (ms)
   // Sau khi thành công: nếu server chỉ định trang đích (redirect) thì chuyển tới đó, ngược lại tải lại trang hiện tại.
   const reload = (anchor, data) => {
     if (data && data.redirect) { location.href = data.redirect; return; }
@@ -269,7 +272,7 @@ window.RecPopup = (function () {
     });
   }
 
-  return { REC, ui, deps, state, bindForm, run: o => REC.run(o, deps) };
+  return { REC, ui, deps, state, config, bindForm, run: o => REC.run(o, deps) };
 })();
 </script>
 {% endraw %}

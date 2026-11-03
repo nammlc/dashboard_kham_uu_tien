@@ -47,6 +47,7 @@ let fetchLog = [], fetchImpl = null;
 global.fetch = (u, o) => { fetchLog.push({ url: u, opts: o }); return fetchImpl(u, o); };
 (0, eval)(script + '\n;globalThis.RecPopup = window.RecPopup;');
 const P = globalThis.RecPopup;
+P.config.successMs = 30;                                  // thành công tự tải lại sau 2,5 giây; rút ngắn khi test
 
 // ───────── tiện ích ─────────
 const tick = () => new Promise(r => setImmediate(r));
@@ -88,7 +89,7 @@ const test = async (name, fn) => { reset(); await fn(); console.log('ok', ++n, n
     fetchImpl = async () => json({ ok: true, count: 1, message: 'xong' });
     P.bindForm(form, () => ({ anchor: 'buoc3' }), env);
     const p = form.submit(actionBtn('confirm'));
-    await settle(); clickBtn('Tiếp tục ngay'); await p;
+    await settle(); await p;
     assert.strictEqual(fetchLog.length, 1);
     assert.strictEqual(fetchLog[0].url, '/doi-chieu/xu-ly');
     assert.strictEqual(typeof fetchLog[0].url, 'string');
@@ -102,7 +103,7 @@ const test = async (name, fn) => { reset(); await fn(); console.log('ok', ++n, n
     const p = form.submit(actionBtn('confirm')); await settle();
     assert.strictEqual(fdSeen.get('action'), 'confirm');
     assert.strictEqual(fetchLog[0].opts.headers['X-Requested-With'], 'fetch');
-    clickBtn('Tiếp tục ngay'); await p;
+    await p;
   });
 
   await test('luồng đầy đủ: hỏi xác nhận → đang ghi → thành công → tải lại trang (giữ anchor)', async () => {
@@ -112,8 +113,8 @@ const test = async (name, fn) => { reset(); await fn(); console.log('ok', ++n, n
     const p = form.submit(null); await settle();
     assert(modalOpen()); assert.strictEqual(title(), 'Cập nhật 3?'); assert.strictEqual(fetchLog.length, 0, 'chưa được gửi trước khi xác nhận');
     clickBtn('Xác nhận cập nhật'); await settle();
-    assert.strictEqual(title(), 'Cập nhật thành công'); assert.strictEqual(ids['rec-m-list'].children.length, 3);
-    clickBtn('Tiếp tục ngay'); await p; await settle();
+    assert.strictEqual(title(), 'Thành công'); assert(/Đã cập nhật 3/.test(ids['rec-m-text'].textContent)); assert.strictEqual(ids['rec-m-list'].children.length, 0, 'không liệt kê tên bệnh nhân');
+    await p; await settle();
     assert.strictEqual(location.reloaded, 1); assert.strictEqual(location.hash, 'buoc2');
   });
 
@@ -121,7 +122,7 @@ const test = async (name, fn) => { reset(); await fn(); console.log('ok', ++n, n
     const form = new FakeForm({ action: '/import/confirm' });
     fetchImpl = async () => json({ ok: true, count: 5, message: 'Đã thêm 5', redirect: '/import' });
     P.bindForm(form, () => ({}), env);
-    const p = form.submit(null); await settle(); clickBtn('Tiếp tục ngay'); await p; await settle();
+    const p = form.submit(null); await settle(); await p; await settle();
     assert.strictEqual(location.href, '/import'); assert.strictEqual(location.reloaded, 0);
   });
 
@@ -166,7 +167,7 @@ const test = async (name, fn) => { reset(); await fn(); console.log('ok', ++n, n
     P.bindForm(form, () => ({}), env);
     const p = form.submit(null); await settle();
     assert.strictEqual(ids['rec-m-text'].textContent, 'Google đang giới hạn');
-    clickBtn('Thử lại'); await settle(); clickBtn('Tiếp tục ngay'); await p; await settle();
+    clickBtn('Thử lại'); await settle(); await p; await settle();
     assert.strictEqual(fetchLog.length, 2); assert.strictEqual(location.reloaded, 1);
   });
 
@@ -202,31 +203,46 @@ const test = async (name, fn) => { reset(); await fn(); console.log('ok', ++n, n
     const p1 = form.submit(null); await settle();
     await form.submit(null);
     assert.strictEqual(fetchLog.length, 1);
-    release(); await settle(); clickBtn('Tiếp tục ngay'); await p1;
+    release(); await settle(); await p1;
   });
 
-  await test('thành công MỘT PHẦN: hiện lý do từng ca, không tự chuyển trang cho tới khi bấm', async () => {
+  await test('thành công MỘT PHẦN: không liệt kê tên, không tự tải lại cho tới khi bấm', async () => {
     const form = new FakeForm({ action: '/doi-chieu/cap-nhat', dataset: { anchor: 'buoc2' } });
     fetchImpl = async () => json({ ok: true, level: 'warning', count: 2, message: 'Đã cập nhật 2, còn 1 lỗi',
                                    names: ['A', 'B'], problems: ['C: dòng đã đổi chỗ'], more_problems: 0 });
     P.bindForm(form, () => ({ anchor: 'buoc2' }), env);
     const p = form.submit(null); await settle();
-    assert.strictEqual(title(), 'Cập nhật một phần');
-    assert.strictEqual(ids['rec-m-list'].children.length, 1);
-    assert(/C: dòng đã đổi chỗ/.test(ids['rec-m-list'].children[0].textContent));
-    await new Promise(r => setTimeout(r, 2500));                        // quá 2,2 giây vẫn phải đang chờ người dùng
+    assert.strictEqual(title(), 'Cập nhật chưa hoàn tất');
+    assert.strictEqual(ids['rec-m-list'].children.length, 0);
+    assert(!/C: dòng đã đổi chỗ/.test(ids['rec-m-text'].textContent), 'không hiện tên/lý do từng ca');
+    await new Promise(r => setTimeout(r, 3000));                        // quá 3 giây vẫn phải đang chờ người dùng
     assert.strictEqual(location.reloaded, 0); assert(modalOpen());
-    clickBtn('Đã hiểu — tải lại trang'); await p; await settle();
+    clickBtn('Tải lại trang'); await p; await settle();
     assert.strictEqual(location.reloaded, 1); assert.strictEqual(location.hash, 'buoc2');
   });
 
-  await test('thất bại hoàn toàn kèm danh sách lý do → lý do hiện trong nội dung pop-up', async () => {
+  await test('thất bại hoàn toàn → chỉ báo "Cập nhật thất bại", không liệt kê từng ca', async () => {
     const form = new FakeForm({ action: '/x' });
     fetchImpl = async () => json({ ok: false, level: 'error', message: 'Không cập nhật được ca nào.', problems: ['A: lỗi 1', 'B: lỗi 2'] });
     P.bindForm(form, () => ({}), env);
     const p = form.submit(null); await settle();
-    assert(/A: lỗi 1/.test(ids['rec-m-text'].textContent) && /B: lỗi 2/.test(ids['rec-m-text'].textContent));
+    assert.strictEqual(title(), 'Cập nhật thất bại');
+    assert(!/A: lỗi 1|B: lỗi 2/.test(ids['rec-m-text'].textContent));
     clickBtn('Đóng'); await p;
+  });
+
+  await test('thành công: KHÔNG có nút nào, tự tải lại sau thời gian chờ', async () => {
+    const form = new FakeForm({ action: '/doi-chieu/cap-nhat', dataset: { anchor: 'buoc2' } });
+    fetchImpl = async () => json({ ok: true, count: 1, message: 'Cập nhật trạng thái thành công.' });
+    P.config.successMs = 200;
+    P.bindForm(form, () => ({ anchor: 'buoc2' }), env);
+    const p = form.submit(null); await settle();
+    assert.strictEqual(title(), 'Thành công');
+    assert.strictEqual(ids['rec-m-actions'].children.length, 0, 'không có nút Tải lại ngay');
+    assert.strictEqual(location.reloaded, 0, 'chưa tải lại ngay lập tức');
+    await p; await settle();
+    assert.strictEqual(location.reloaded, 1); assert.strictEqual(location.hash, 'buoc2');
+    P.config.successMs = 30;
   });
 
   console.log('\nALL JS OK (' + n + ' tests)');

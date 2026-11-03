@@ -871,15 +871,14 @@ def _mark_result(n, problems, fatal, names_done, tab, anchor, already=0):
     """Gom kết quả _mark_attended thành 1 phản hồi: lỗi chung · một phần · thành công."""
     if fatal:
         return _rec_reply(False, fatal, "error", tab, anchor)
+    if problems:                                        # chi tiết từng ca chỉ ghi log, không hiện trên giao diện
+        app.logger.warning("cập nhật trạng thái: %d ca lỗi: %s", len(problems), "; ".join(problems[:12]))
     if not n and problems:
-        return _rec_reply(False, "Không cập nhật được ca nào. " + problems[0] +
-                          (f" (và {len(problems) - 1} ca khác cũng lỗi)" if len(problems) > 1 else ""),
+        return _rec_reply(False, "Cập nhật thất bại. Vui lòng thử lại.",
                           "error", tab, anchor, problems=problems[:12], more=max(0, len(problems) - 12))
-    msg = f"Đã cập nhật \"Đã khám\" cho {n} bệnh nhân và kiểm tra lại trên Google Sheet."
-    if already:
-        msg += f" ({already} bệnh nhân khác đã được cập nhật từ trước.)"
+    msg = "Cập nhật trạng thái thành công."
     if problems:
-        msg += f" ⚠️ {len(problems)} ca CHƯA cập nhật được — xem lý do bên dưới, bấm Làm mới rồi xử lý lại các ca đó."
+        msg = "Cập nhật chưa hoàn tất: một số bệnh nhân chưa được cập nhật."
     return _rec_reply(True, msg, "warning" if problems else "success", tab, anchor, count=n,
                       names=names_done[:12], more=max(0, len(names_done) - 12),
                       problems=problems[:12], more_problems=max(0, len(problems) - 12))
@@ -1039,8 +1038,8 @@ def reconcile_apply():
             already = len(mine) - len(entries)
             if not entries:
                 if already:
-                    return _rec_reply(True, f"{already} bệnh nhân đã chọn đã được cập nhật \"Đã khám\" trước đó — "
-                                      "không cần ghi lại.", "success", tab, "buoc2", count=0, already=already)
+                    return _rec_reply(True, "Cập nhật trạng thái thành công.", "success", tab, "buoc2",
+                                      count=0, already=already)
                 return _rec_reply(False, "Không có bệnh nhân nào được chọn để cập nhật.", "warning", tab, "buoc2")
             n, problems, fatal = _mark_attended(entries)
             if n:

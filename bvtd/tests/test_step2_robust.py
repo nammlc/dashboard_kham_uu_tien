@@ -42,7 +42,8 @@ class Step2Robust(AppTestCase):
         self.seed(result(2, 1, "NGUYỄN THỊ TỈNH", TK, "attended_sure", V, "2026-10-20"))
         r = self.apply([2])
         self.assertFalse(r["ok"])
-        self.assertIn("không còn là bệnh nhân", r["message"])
+        self.assertEqual(r["message"], "Cập nhật thất bại. Vui lòng thử lại.")      # giao diện chỉ báo thất bại, không nêu tên
+        self.assertIn("không còn là bệnh nhân", r["problems"][0])                     # lý do chi tiết vẫn có trong JSON / log
 
     def test_duplicate_stt_on_sheet_resolves_by_name(self):
         self.install_sheet(FakeSheet([sheet_row(5, "AAA BBB"), sheet_row(5, "TRẦN THỊ MAI", source=VL)]))
