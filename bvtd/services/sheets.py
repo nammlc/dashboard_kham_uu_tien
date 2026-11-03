@@ -136,6 +136,20 @@ def parse_sheet_dates(series: pd.Series) -> pd.Series:
     return out
 
 
+def created_fields(rec: dict) -> tuple[str, str]:
+    """(ngày tạo lịch hẹn, giờ tạo lịch hẹn) để HIỂN THỊ ở tab Bệnh nhân.
+    - Ngày: lấy ô NGÀY TẠO LỊCH HẸN KHÁM; nếu ô trống thì lấy ngày của cột Dấu thời gian.
+    - Giờ : lấy giờ:phút từ cột Dấu thời gian (không có giờ trong ô → '').
+    Chỉ dùng để hiển thị, không ghi ngược vào Sheet và không ảnh hưởng việc so trùng khi import."""
+    created = str(rec.get(COL_CREATED, "") or "").strip()
+    ts_raw  = str(rec.get(COL_TIMESTAMP, "") or "").strip()
+    ts      = rec.get("_ts")
+    if ts is None or pd.isna(ts):
+        return created, ""
+    hhmm = ts.strftime("%H:%M") if ":" in ts_raw else ""
+    return (created or ts.strftime("%d/%m/%Y")), hhmm
+
+
 def load_dataframe() -> pd.DataFrame:
     """
     Đọc toàn bộ dữ liệu từ Google Sheet → DataFrame đã clean.

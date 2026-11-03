@@ -223,3 +223,20 @@ class StatusFilter(AppTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PatientsTabCreatedTime(_Base):
+    """Tab Bệnh nhân: có cột Giờ tạo hẹn (từ Dấu thời gian); ngày tạo hẹn trống thì lấy ngày của Dấu thời gian."""
+
+    def rows_html(self, *rows):
+        self.install_sheet(FakeSheet(list(rows)))
+        return text(self.client.get("/benh-nhan").get_data(as_text=True))
+
+    def test_header_and_time_from_timestamp(self):
+        t = self.rows_html(sheet_row(1, "AN", hen="25/10/2026", created="13/10/2026"))
+        self.assertIn("Giờ tạo hẹn", t)
+        self.assertIn("13/10/2026 16:44", t)            # ngày tạo có sẵn giữ nguyên; giờ lấy từ Dấu thời gian (14/10/2026 16:44:21)
+
+    def test_blank_created_date_falls_back_to_timestamp_date(self):
+        t = self.rows_html(sheet_row(1, "AN", hen="25/10/2026", created=""))
+        self.assertIn("14/10/2026 16:44", t)

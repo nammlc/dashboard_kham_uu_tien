@@ -338,6 +338,9 @@ def patients():
     total   = len(filtered)
     start   = (page - 1) * per_page
     records = filtered.iloc[start:start + per_page].to_dict("records")
+    from services.sheets import created_fields
+    for r in records:                                  # ngày/giờ tạo hẹn: trống thì lấy từ Dấu thời gian
+        r["_created_date"], r["_created_time"] = created_fields(r)
 
     return render_template("dashboard/patients.html",
                            records=records, total=total,
