@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Nhật ký truy cập{% endblock %}
+{% block page_title %}🛡️ Nhật ký truy cập{% endblock %}
+
+{% block content %}
+{# màu nhãn theo loại sự kiện #}
+{% set tone = {
+  'login_ok': 'bg-emerald-50 text-emerald-700', 'login_fail': 'bg-rose-50 text-rose-700',
+  'logout': 'bg-slate-100 text-slate-600', 'session_expired': 'bg-amber-50 text-amber-700',
+  'page': 'bg-blue-50 text-blue-700', 'action': 'bg-violet-50 text-violet-700',
+  'register_view': 'bg-cyan-50 text-cyan-700', 'register_submit': 'bg-teal-50 text-teal-700'} %}
+
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Lượt ghi nhận hôm nay</p>
+    <p class="text-2xl font-bold text-slate-800 mt-1">{{ stats.today }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Tài khoản hoạt động hôm nay</p>
+    <p class="text-2xl font-bold text-slate-800 mt-1">{{ stats.users_today }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Đăng nhập sai (24 giờ qua)</p>
+    <p class="text-2xl font-bold mt-1 {{ 'text-rose-600' if stats.fails_24h else 'text-slate-800' }}">{{ stats.fails_24h }}</p>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200">
+  <form method="GET" action="{{ url_for('access_log') }}" role="search"
+        class="flex flex-wrap items-center gap-2 px-5 py-4 border-b border-slate-100">
+    <input type="search" name="q" value="{{ q }}" maxlength="80" autocomplete="off" aria-label="Tìm trong nhật ký"
+           placeholder="🔍  Tìm email, IP, đường dẫn..."
+           class="flex-1 min-w-48 text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400">
+    <select name="event" aria-label="Loại sự kiện" class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white">
+      <option value="">Tất cả sự kiện</option>
+      {% for k, v in events.items() %}<option value="{{ k }}" {% if event == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select>
+    <div class="flex items-center gap-1.5 text-sm text-slate-500">
+      <label for="date_from">Từ</label>
+      <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
+             class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-blue-400">
+      <label for="date_to">đến</label>
+      <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
+             class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-blue-400">
+    </div>
+    <button type="submit" class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lọc</button>
+    {% if q or event or date_from or date_to %}
+    <a href="{{ url_for('access_log') }}" class="text-sm text-slate-500 hover:text-red-500">✕ Xoá lọc</a>
+    {% endif %}
+    <span class="ml-auto text-xs text-slate-400">{{ total }} bản ghi · giữ {{ stats.retention_days }} ngày</span>
+  </form>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm" style="min-width:980px">
+      <thead>
+        <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+          <th class="px-4 py-3 text-left">Thời gian</th>
+          <th class="px-3 py-3 text-left">Sự kiện</th>
+          <th class="px-3 py-3 text-left">Tài khoản</th>
+          <th class="px-3 py-3 text-left">Trang / đường dẫn</th>
+          <th class="px-3 py-3 text-left">IP</th>
+          <th class="px-3 py-3 text-left">Thiết bị</th>
+          <th class="px-3 py-3 text-left">Chi tiết</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in rows %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-4 py-2.5 mono text-xs text-slate-600 whitespace-nowrap">{{ r.when }}</td>
+          <td class="px-3 py-2.5 whitespace-nowrap">
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold {{ tone.get(r.event, 'bg-slate-100 text-slate-600') }}">{{ r.label }}</span>
+          </td>
+          <td class="px-3 py-2.5 text-xs text-slate-700">{{ r.email or '—' }}</td>
+          <td class="px-3 py-2.5 mono text-xs text-slate-600">{{ r.method }} {{ r.path or '—' }}{% if r.status %} <span class="text-slate-400">· {{ r.status }}</span>{% endif %}</td>
+          <td class="px-3 py-2.5 mono text-xs text-slate-600 whitespace-nowrap">{{ r.ip or '—' }}</td>
+          <td class="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap" title="{{ r.ua }}">{{ r.device }}</td>
+          <td class="px-3 py-2.5 text-xs text-slate-500">{{ r.detail or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="px-5 py-10 text-center text-slate-400">
+          {% if q or event or date_from or date_to %}Không có bản ghi nào khớp bộ lọc.{% else %}Chưa có bản ghi nào.{% endif %}
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% set total_pages = (total // per_page) + (1 if total % per_page else 0) %}
+  {% if total_pages > 1 %}
+  <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+    <span class="text-xs text-slate-400">Hiển thị {{ (page-1)*per_page+1 }}–{{ [page*per_page, total]|min }} / {{ total }}</span>
+    <div class="flex gap-1">
+      {% if page > 1 %}
+      <a href="{{ url_for('access_log', q=q, event=event, date_from=date_from, date_to=date_to, page=page-1) }}"
+         class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">‹</a>{% endif %}
+      {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
+      <a href="{{ url_for('access_log', q=q, event=event, date_from=date_from, date_to=date_to, page=p) }}"
+         class="px-3 py-1.5 text-xs border rounded-lg {% if p == page %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ p }}</a>
+      {% endfor %}
+      {% if page < total_pages %}
+      <a href="{{ url_for('access_log', q=q, event=event, date_from=date_from, date_to=date_to, page=page+1) }}"
+         class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">›</a>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

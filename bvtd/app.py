@@ -51,8 +51,43 @@ oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 
-# ── User Model (in-memory, đơn giản — có thể mở rộng sang DB sau) ────────────
-_users: dict[str, "User"] = {}
+# ── Cơ sở dữ liệu (SQLite trên máy chủ): tài khoản admin + nhật ký truy cập ────────────────
+from services import access_log as ACL, admin_users as ADM, db as DB
+
+
+def _admins() -> "ADM.AdminUsers":
+    """Bảng admin_users. Lần đầu (bảng trống) tự tạo tài khoản từ ALLOWED_EMAILS + ADMIN_PASSWORD trong .env."""
+    a = ADM.get(app.config["DATABASE_URL"])
+    if a.count() == 0 and app.config.get("ALLOWED_EMAILS"):
+        a.seed_from_env(app.config["ALLOWED_EMAILS"], app.config.get("ADMIN_PASSWORD", ""))
+    return a
+
+
+def _acl() -> "ACL.AccessLog":
+    return ACL.get(app.config["DATABASE_URL"], app.config.get("LOG_RETENTION_DAYS", 90))
+
+
+def _client_ip() -> str:
+    return request.remote_addr or ""             # ProxyFix(x_for=1) đã lấy đúng IP khách từ X-Forwarded-For
+
+
+_log_down_until = 0.0          # DB lỗi → tạm ngừng ghi log 30 giây, để trang không bị chậm vì chờ kết nối
+
+
+def _log(event, *, email="", detail="", status=None):
+    """Ghi 1 dòng nhật ký truy cập; lỗi ghi log không bao giờ được làm hỏng request."""
+    global _log_down_until
+    if not app.config.get("ACCESS_LOG_ENABLED", True) or not app.config.get("DATABASE_URL"):
+        return
+    if time.time() < _log_down_until:
+        return
+    try:
+        _acl().add(event, email=email, ip=_client_ip(), ua=request.headers.get("User-Agent", ""),
+                   method=request.method, path=request.path, status=status, detail=detail)
+    except Exception:                            # noqa: BLE001
+        _log_down_until = time.time() + 30
+        app.logger.warning("không ghi được nhật ký truy cập", exc_info=True)
+
 
 class User(UserMixin):
     def __init__(self, email: str, name: str, picture: str = ""):
@@ -63,7 +98,13 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id: str):
-    return _users.get(user_id)
+    """Nạp người dùng từ bảng admin_users: tắt tài khoản trong DB là bị đăng xuất ngay ở request kế tiếp."""
+    try:
+        row = _admins().get_active(user_id)
+    except Exception:                            # noqa: BLE001
+        app.logger.warning("không đọc được bảng admin_users", exc_info=True)
+        return None
+    return User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"]) if row else None
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -135,6 +176,8 @@ def _admin_idle_timeout():
     except (TypeError, ValueError):
         expired = True
     if expired:
+        _log("session_expired", email=getattr(current_user, "email", ""),
+             detail=f"Không thao tác quá {_idle_seconds() // 60} phút")
         logout_user()
         session.pop("last_active", None)
         login_url = url_for("login", expired=1)
@@ -167,6 +210,73 @@ def keepalive():
     return jsonify({"ok": True})
 
 
+# ── Ghi nhật ký truy cập ─────────────────────────────────────────────────────
+# Chỉ ghi ĐƯỜNG DẪN (không ghi ?q=... vì có thể chứa tên / SĐT bệnh nhân) và không ghi nội dung form.
+_LOG_SKIP = {None, "static", "session_status", "keepalive", "robots_txt", "sitemap_xml",   # nhiễu / tự động
+             "login", "login_google", "google_callback", "logout"}                          # đã ghi riêng ở trên
+
+PAGE_NAMES = {
+    "dashboard": "Tổng quan", "patients": "Bệnh nhân", "upcoming": "Lịch khám 3 ngày", "report": "Báo cáo",
+    "report_detail": "Báo cáo chi tiết", "report_csv": "Tải CSV báo cáo", "import_excel": "Import lịch hẹn",
+    "import_preview_page": "Import: xem trước", "import_confirm": "Import: xác nhận", "import_backfill": "Import: điền bổ sung",
+    "import_csv": "Import: tải CSV", "reconcile_page": "Đối chiếu tái khám", "reconcile_upload": "Đối chiếu: tải file",
+    "reconcile_run": "Đối chiếu: chạy", "reconcile_apply": "Đối chiếu: cập nhật trạng thái", "reconcile_one": "Đối chiếu: xử lý từng ca",
+    "reconcile_csv": "Đối chiếu: tải CSV", "dup_scan": "Quét trùng", "dup_delete": "Xoá bản ghi trùng",
+    "dup_clean_legacy": "Dọn bản ghi cũ", "api_update_status": "Cập nhật trạng thái", "refresh_cache": "Làm mới dữ liệu",
+    "access_log": "Nhật ký truy cập", "register_page": "Đăng ký khám", "register_done": "Đăng ký xong",
+}
+
+
+@app.after_request
+def _access_log_after(resp):
+    try:
+        ep = request.endpoint
+        if ep in _LOG_SKIP or not app.config.get("ACCESS_LOG_ENABLED", True):
+            return resp
+        if current_user.is_authenticated:
+            if resp.status_code >= 400 and resp.status_code != 401:
+                return resp
+            kind = "page" if request.method == "GET" else "action"
+            _log(kind, email=getattr(current_user, "email", ""), status=resp.status_code,
+                 detail=PAGE_NAMES.get(ep, ep or ""))
+        elif ep == "register_page":                     # bệnh nhân (chưa đăng nhập) vào / gửi trang đăng ký
+            if request.method == "GET" and resp.status_code == 200:
+                _log("register_view", status=200)
+            elif request.method == "POST" and resp.status_code in (301, 302, 303):
+                _log("register_submit", status=resp.status_code, detail="Gửi đăng ký thành công")
+    except Exception:                                   # noqa: BLE001
+        app.logger.warning("lỗi ghi nhật ký truy cập", exc_info=True)
+    return resp
+
+
+@app.route("/nhat-ky")
+@login_required
+def access_log():
+    """Trang xem nhật ký truy cập (mới nhất ở trên), lọc theo từ khoá / loại sự kiện / ngày."""
+    q     = request.args.get("q", "").strip()[:80]
+    event = request.args.get("event", "")
+    d_from, d_to = _parse_date(request.args.get("date_from", "")), _parse_date(request.args.get("date_to", ""))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
+    try:
+        log = _acl()
+        rows, total = log.query(q, event, d_from, d_to, page, per_page)
+        stats = log.stats()
+    except Exception:                                   # noqa: BLE001
+        app.logger.exception("không đọc được nhật ký truy cập")
+        rows, total, stats = [], 0, {"today": 0, "fails_24h": 0, "users_today": 0, "retention_days": app.config.get("LOG_RETENTION_DAYS", 90)}
+        flash("Không đọc được cơ sở dữ liệu nhật ký truy cập.", "error")
+    for r in rows:
+        r["when"], r["device"] = ACL.fmt_time(r["ts"]), ACL.short_ua(r["ua"])
+        r["label"] = ACL.EVENTS.get(r["event"], r["event"])
+    return render_template("dashboard/access_log.html", rows=rows, total=total, page=page, per_page=per_page, q=q,
+                           event=event, events=ACL.EVENTS, stats=stats,
+                           date_from=d_from.isoformat() if d_from else "", date_to=d_to.isoformat() if d_to else "")
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -176,16 +286,26 @@ def login():
         email    = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
-        allowed = app.config.get("ALLOWED_EMAILS", set())
-        admin_pw = app.config.get("ADMIN_PASSWORD", "")
+        try:
+            row = _admins().verify(email, password)         # mật khẩu so với bản băm trong bảng admin_users
+        except DB.NotConfigured:
+            flash("Hệ thống chưa được cấu hình cơ sở dữ liệu (thiếu DATABASE_URL). Vui lòng liên hệ quản trị viên.", "error")
+            return render_template("auth/login.html", expired=False)
+        except DB.DBError:
+            app.logger.exception("lỗi cơ sở dữ liệu khi đăng nhập")
+            flash("Hệ thống chưa kết nối được cơ sở dữ liệu tài khoản. Vui lòng thử lại sau.", "error")
+            return render_template("auth/login.html", expired=False)
 
-        if email in allowed and password == admin_pw and admin_pw:
-            u = User(email, email.split("@")[0])
-            _users[email] = u
+        if row:
+            u = User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"])
             login_user(u, remember=False)                  # không "ghi nhớ" — hết 15 phút không thao tác là phải đăng nhập lại
             session["last_active"] = time.time()
-            return redirect(request.args.get("next") or url_for("dashboard"))
+            _admins().touch_login(row["email"])
+            _log("login_ok", email=row["email"], detail="Email + mật khẩu")
+            nxt = request.args.get("next") or ""
+            return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("dashboard"))
         else:
+            _log("login_fail", email=email[:120], detail="Sai email / mật khẩu hoặc tài khoản bị tắt")
             flash("Email hoặc mật khẩu không đúng.", "error")
 
     return render_template("auth/login.html", expired=bool(request.args.get("expired")))
@@ -203,21 +323,25 @@ def google_callback():
     user_info = token.get("userinfo") or oauth.google.userinfo()
     email     = user_info.get("email", "").lower()
 
-    allowed = app.config.get("ALLOWED_EMAILS", set())
-    if allowed and email not in allowed:
+    row = _admins().get_active(email) if email else None      # chỉ email có trong bảng admin_users (và đang bật) mới vào được
+    if not row:
+        _log("login_fail", email=email[:120], detail="Google: tài khoản không có trong danh sách admin")
         flash("Tài khoản Google này không được phép truy cập.", "error")
         return redirect(url_for("login"))
 
-    u = User(email, user_info.get("name", email), user_info.get("picture", ""))
-    _users[email] = u
+    _admins().touch_login(email, user_info.get("name", ""), user_info.get("picture", ""))
+    row = _admins().get_active(email)
+    u = User(row["email"], row["name"] or email, row["picture"])
     login_user(u, remember=False)
     session["last_active"] = time.time()
+    _log("login_ok", email=email, detail="Google")
     return redirect(url_for("dashboard"))
 
 
 @app.route("/logout")
 @login_required
 def logout():
+    _log("logout", email=getattr(current_user, "email", ""))
     logout_user()
     session.pop("last_active", None)
     return redirect(url_for("login"))
@@ -1360,5 +1484,89 @@ def inject_globals():
 
 
 # ── Chạy local ────────────────────────────────────────────────────────────────
+
+# ════════════════════════════════════════════════════════════════════════════════
+# LỆNH QUẢN LÝ TÀI KHOẢN ADMIN (chạy trong terminal của máy chủ / container)
+#   flask --app app init-db                              (kiểm tra kết nối + tạo bảng)
+#   flask --app app admin-list
+#   flask --app app admin-add email@benhvien.vn        (hỏi mật khẩu; bỏ trống = chỉ đăng nhập bằng Google)
+#   flask --app app admin-passwd email@benhvien.vn      (đổi mật khẩu)
+#   flask --app app admin-disable email@benhvien.vn     /  admin-enable email@benhvien.vn
+# ════════════════════════════════════════════════════════════════════════════════
+import click
+
+
+@app.cli.command("init-db")
+def cli_init_db():
+    """Kiểm tra kết nối PostgreSQL và tạo bảng admin_users + access_log nếu chưa có (tự chạy lại được, không mất dữ liệu)."""
+    url = app.config.get("DATABASE_URL", "")
+    if not url:
+        raise click.ClickException("Chưa đặt biến môi trường DATABASE_URL.")
+    try:
+        with DB.pool(url).connection() as c:
+            ver = c.execute("SELECT version() AS v").fetchone()["v"]
+            tables = [r["tablename"] for r in c.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('admin_users','access_log') "
+                "ORDER BY tablename").fetchall()]
+    except DB.DBError as e:
+        raise click.ClickException(f"Không kết nối được PostgreSQL: {e}")
+    click.echo(f"Kết nối OK: {ver.split(',')[0]}")
+    click.echo(f"Các bảng đã có: {', '.join(tables)}")
+    n = _admins().count()
+    click.echo(f"Số tài khoản admin: {n}" + ("  → thêm bằng: flask --app app admin-add email@..." if n == 0 else ""))
+
+
+@app.cli.command("admin-list")
+def cli_admin_list():
+    """Liệt kê tài khoản admin."""
+    rows = _admins().list()
+    if not rows:
+        click.echo("Chưa có tài khoản admin nào.")
+    for r in rows:
+        last = ACL.fmt_time(r["last_login_at"]) if r["last_login_at"] else "chưa đăng nhập"
+        click.echo(f"{'BẬT ' if r['is_active'] else 'TẮT '} {r['email']:<36} "
+                   f"{'mật khẩu' if r['has_password'] else 'chỉ Google'}  · lần cuối: {last}")
+
+
+@app.cli.command("admin-add")
+@click.argument("email")
+@click.option("--name", default="", help="Tên hiển thị")
+def cli_admin_add(email, name):
+    """Thêm tài khoản admin."""
+    pw = click.prompt("Mật khẩu (>= 8 ký tự, bỏ trống = chỉ đăng nhập bằng Google)", hide_input=True,
+                      confirmation_prompt=True, default="", show_default=False)
+    try:
+        ok = _admins().add(email, pw, name)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    click.echo("Đã thêm tài khoản." if ok else "Email này đã có tài khoản.")
+
+
+@app.cli.command("admin-passwd")
+@click.argument("email")
+def cli_admin_passwd(email):
+    """Đổi mật khẩu một tài khoản admin."""
+    pw = click.prompt("Mật khẩu mới (>= 8 ký tự)", hide_input=True, confirmation_prompt=True)
+    try:
+        ok = _admins().set_password(email, pw)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    click.echo("Đã đổi mật khẩu." if ok else "Không tìm thấy tài khoản.")
+
+
+@app.cli.command("admin-disable")
+@click.argument("email")
+def cli_admin_disable(email):
+    """Tắt tài khoản (không xoá): người đó bị đăng xuất ở lần thao tác kế tiếp."""
+    click.echo("Đã tắt tài khoản." if _admins().set_active(email, False) else "Không tìm thấy tài khoản.")
+
+
+@app.cli.command("admin-enable")
+@click.argument("email")
+def cli_admin_enable(email):
+    """Bật lại tài khoản đã tắt."""
+    click.echo("Đã bật tài khoản." if _admins().set_active(email, True) else "Không tìm thấy tài khoản.")
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -19,7 +19,14 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_HTTPONLY = True
 
-    # ── Mật khẩu admin cho đăng nhập bằng email ──────────────────────────────
+    # ── Cơ sở dữ liệu PostgreSQL: bảng admin_users (tài khoản admin) + access_log (nhật ký truy cập) ──
+    # Dạng: postgresql://USER:MAT_KHAU@HOST:5432/TEN_DB   (mật khẩu có ký tự đặc biệt phải mã hoá URL, vd @ → %40)
+    # Trên Coolify: dùng "Postgres URL (internal)" của database đã tạo. Xem HUONG_DAN_POSTGRES.md.
+    DATABASE_URL = os.environ.get("DATABASE_URL", "")
+    ACCESS_LOG_ENABLED = os.environ.get("ACCESS_LOG_ENABLED", "1") != "0"
+    LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", "90"))        # nhật ký cũ hơn N ngày tự xoá
+
+    # ── Mật khẩu admin LẦN ĐẦU (chỉ dùng để tạo tài khoản khi bảng admin_users còn trống) ──────────
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
     # ── Google Sheets ─────────────────────────────────────────────────────────

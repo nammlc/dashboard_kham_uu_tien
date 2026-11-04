@@ -2,7 +2,7 @@
 import time
 import unittest
 
-from tests.helpers import A, AppTestCase
+from tests.helpers import A, AppTestCase, requires_db
 
 
 def _real_flask_login():
@@ -13,6 +13,7 @@ def _real_flask_login():
         return None
 
 
+@requires_db
 @unittest.skipUnless(_real_flask_login(), "flask_login là bản giả trong môi trường test")
 class SessionIdleTests(AppTestCase):
     EMAIL, PW = "admin@bvtd.vn", "mat-khau-test"

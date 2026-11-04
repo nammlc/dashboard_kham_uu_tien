@@ -224,6 +224,18 @@ class FakeClient:
         return self.sheet
 
 
+# ── PostgreSQL cho test: đặt TEST_DATABASE_URL trỏ tới 1 database RIÊNG để test (bảng sẽ bị TRUNCATE mỗi test!). ──
+# Không đặt → các test cần DB tự bỏ qua (skip), phần còn lại vẫn chạy bình thường.
+TEST_DB = os.environ.get("TEST_DATABASE_URL", "")
+requires_db = unittest.skipUnless(TEST_DB, "cần biến môi trường TEST_DATABASE_URL (PostgreSQL dành riêng cho test)")
+
+
+def reset_test_db():
+    from services import db as DB
+    with DB.pool(TEST_DB).connection() as c:
+        c.execute("TRUNCATE access_log, admin_users RESTART IDENTITY")
+
+
 class AppTestCase(unittest.TestCase):
     maxDiff = 600                      # lỗi so khớp trang HTML dài: chỉ in phần đầu cho dễ đọc
 
@@ -241,7 +253,9 @@ class AppTestCase(unittest.TestCase):
     def setUp(self):
         import datetime as dt
         from unittest import mock
-        A.app.config.update(TESTING=True, LOGIN_DISABLED=True)
+        A.app.config.update(TESTING=True, LOGIN_DISABLED=True, ACCESS_LOG_ENABLED=False, DATABASE_URL=TEST_DB)
+        if TEST_DB:
+            reset_test_db()                                                        # mỗi test bắt đầu với bảng trống
         A.current_user = type("U", (), {"is_authenticated": True, "name": "tester", "email": "t@x.vn", "picture": ""})()
         patches = [mock.patch.object(sh.time, "sleep", lambda s: None),
                    mock.patch.object(sh, "vn_today", lambda: self.TODAY or dt.date(2026, 10, 21))]
