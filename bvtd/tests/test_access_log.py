@@ -16,6 +16,19 @@ def _real_flask_login():
         return None
 
 
+class PageWindow(unittest.TestCase):
+    """Danh sách số trang hiển thị ở thanh phân trang (None = dấu …)."""
+
+    def test_windows(self):
+        w = A.page_window
+        self.assertEqual(w(1, 0), []); self.assertEqual(w(1, 1), [1])
+        self.assertEqual(w(1, 5), [1, 2, 3, 4, 5])
+        self.assertEqual(w(1, 20), [1, 2, 3, None, 20])
+        self.assertEqual(w(6, 20), [1, None, 4, 5, 6, 7, 8, None, 20])
+        self.assertEqual(w(20, 20), [1, None, 18, 19, 20])
+        self.assertEqual(w(4, 20), [1, 2, 3, 4, 5, 6, None, 20])        # chỉ thiếu 1 trang thì hiện số, không hiện …
+
+
 class SchemaFile(unittest.TestCase):
     def test_schema_sql_matches_the_one_used_by_the_app(self):
         """schema.sql (để tạo tay) phải giống đúng SQL mà ứng dụng tự chạy."""
@@ -153,6 +166,46 @@ class AccessLogPages(AppTestCase):
         h = self.client.get("/nhat-ky?q=8.8.8.8").get_data(as_text=True)
         self.assertIn("1 bản ghi", h)
         self.assertEqual(self.client.get("/nhat-ky?page=2").status_code, 200)
+
+    def fill(self, n):
+        for i in range(n):
+            A._acl().add("action", email="a@x.vn", method="POST", path=f"/p{i}", status=200)    # event riêng, lọc bằng event=action
+                                                                                                # (chính việc xem trang /nhat-ky cũng được ghi thành dòng "page")
+
+    def test_page_size_selector_and_range_text(self):
+        self.fill(61)
+        h = self.client.get("/nhat-ky?event=action&per_page=20").get_data(as_text=True)
+        self.assertIn("<b>1–20</b> / 61", h); self.assertIn('<option value="20" selected>', h)
+        h = self.client.get("/nhat-ky?event=action&per_page=100").get_data(as_text=True)
+        self.assertIn("<b>1–61</b> / 61", h); self.assertNotIn("Tới trang", h)        # 1 trang → không cần nút chuyển trang
+        h = self.client.get("/nhat-ky?event=action&per_page=7").get_data(as_text=True)              # giá trị lạ → về mặc định 20
+        self.assertIn("<b>1–20</b> / 61", h)
+        h = self.client.get("/nhat-ky?event=action").get_data(as_text=True)                         # không chọn gì → 20 dòng / trang
+        self.assertIn("<b>1–20</b> / 61", h); self.assertIn('<option value="20" selected>', h)
+
+    def test_page_beyond_the_end_shows_last_page(self):
+        self.fill(61)
+        h = self.client.get("/nhat-ky?event=action&per_page=20&page=999").get_data(as_text=True)
+        self.assertIn("<b>61–61</b> / 61", h); self.assertIn('aria-current="page"', h)
+        self.assertEqual(self.client.get("/nhat-ky?page=abc&per_page=xyz").status_code, 200)
+
+    def test_pager_controls_and_ellipsis(self):
+        self.fill(300)
+        h = self.client.get("/nhat-ky?event=action&per_page=20&page=8").get_data(as_text=True)      # 15 trang, đang ở trang 8
+        self.assertIn("…", h); self.assertIn('title="Trang đầu"', h); self.assertIn('title="Trang cuối"', h)
+        self.assertIn("Tới trang", h); self.assertIn('max="15"', h)
+        first = self.client.get("/nhat-ky?event=action&per_page=20&page=1").get_data(as_text=True)
+        self.assertNotIn('title="Trang đầu"', first)                                   # trang 1: « ‹ bị vô hiệu
+
+    def test_pager_keeps_filters_and_page_size(self):
+        self.fill(60)
+        A._acl().add("login_fail", email="x@x.vn")
+        h = self.client.get("/nhat-ky?event=action&per_page=20&q=a%40x.vn").get_data(as_text=True)
+        links = [l for l in h.split('href="') if "page=2" in l.split('"')[0]]
+        self.assertTrue(links)
+        for l in links:
+            u = l.split('"')[0]
+            self.assertIn("event=action", u); self.assertIn("per_page=20", u); self.assertIn("q=a@x.vn", u)
 
     def test_log_page_in_sidebar(self):
         self.assertIn("Nhật Ký Truy Cập", self.client.get("/benh-nhan").get_data(as_text=True))

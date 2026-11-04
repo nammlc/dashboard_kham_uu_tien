@@ -250,6 +250,26 @@ def _access_log_after(resp):
     return resp
 
 
+LOG_PAGE_SIZES = (20, 50, 100, 200)
+LOG_PAGE_DEFAULT = 20                      # số dòng mỗi trang mặc định của trang nhật ký
+
+
+def page_window(page: int, total_pages: int, around: int = 2) -> list:
+    """Danh sách số trang để hiển thị, None = dấu '…'. Ví dụ trang 6/20 → [1, None, 4, 5, 6, 7, 8, None, 20]."""
+    if total_pages <= 1:
+        return [1] if total_pages == 1 else []
+    keep = {1, total_pages} | set(range(max(1, page - around), min(total_pages, page + around) + 1))
+    out, prev = [], 0
+    for p in sorted(keep):
+        if p - prev == 2:                                 # chỉ thiếu đúng 1 trang → hiện luôn số đó thay vì dấu …
+            out.append(prev + 1)
+        elif p - prev > 2:
+            out.append(None)
+        out.append(p)
+        prev = p
+    return out
+
+
 @app.route("/nhat-ky")
 @login_required
 def access_log():
@@ -261,10 +281,19 @@ def access_log():
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
-    per_page = 50
+    try:
+        per_page = int(request.args.get("per_page", LOG_PAGE_DEFAULT))
+    except ValueError:
+        per_page = LOG_PAGE_DEFAULT
+    if per_page not in LOG_PAGE_SIZES:
+        per_page = LOG_PAGE_DEFAULT
     try:
         log = _acl()
         rows, total = log.query(q, event, d_from, d_to, page, per_page)
+        total_pages = max(1, -(-total // per_page))
+        if page > total_pages:                          # gõ trang vượt quá → về trang cuối thay vì hiện bảng trống
+            page = total_pages
+            rows, total = log.query(q, event, d_from, d_to, page, per_page)
         stats = log.stats()
     except Exception:                                   # noqa: BLE001
         app.logger.exception("không đọc được nhật ký truy cập")
@@ -273,7 +302,10 @@ def access_log():
     for r in rows:
         r["when"], r["device"] = ACL.fmt_time(r["ts"]), ACL.short_ua(r["ua"])
         r["label"] = ACL.EVENTS.get(r["event"], r["event"])
+    total_pages = max(1, -(-total // per_page))
     return render_template("dashboard/access_log.html", rows=rows, total=total, page=page, per_page=per_page, q=q,
+                           total_pages=total_pages, pages=page_window(page, total_pages), page_sizes=LOG_PAGE_SIZES,
+                           first_row=(page - 1) * per_page + 1 if total else 0, last_row=min(page * per_page, total),
                            event=event, events=ACL.EVENTS, stats=stats,
                            date_from=d_from.isoformat() if d_from else "", date_to=d_to.isoformat() if d_to else "")
 
