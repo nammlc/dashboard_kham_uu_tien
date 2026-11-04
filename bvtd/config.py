@@ -13,6 +13,10 @@ class Config:
         e.strip() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()
     )
 
+    # ── Xác minh quyền sở hữu website với công cụ tìm kiếm (tuỳ chọn): chỉ dán phần "content" của thẻ meta ──
+    GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "").strip()
+    BING_SITE_VERIFICATION   = os.environ.get("BING_SITE_VERIFICATION", "").strip()
+
     # ── Phiên đăng nhập admin: sau N phút KHÔNG thao tác trên trang web thì tự đăng xuất ──
     SESSION_IDLE_MINUTES = int(os.environ.get("SESSION_IDLE_MINUTES", "15"))
     SESSION_COOKIE_HTTPONLY = True

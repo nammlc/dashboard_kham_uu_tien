@@ -52,7 +52,7 @@ class PageTests(RegisterBase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("no-store", r.headers["Cache-Control"])
         html = r.get_data(as_text=True)
-        self.assertNotRegex(re.sub(r'<link rel="canonical"[^>]*>', "", html), r"https?://(?!www\.w3)", "không phụ thuộc CDN/trang ngoài (mạng yếu ở vùng quê)")
+        self.assertNotRegex(re.sub(r'<link rel="canonical"[^>]*>|<meta property="og:[^>]*>', "", html), r"https?://(?!www\.w3)", "không phụ thuộc CDN/trang ngoài (mạng yếu ở vùng quê)")
         for name in ("full_name", "birth_year", "gender", "address", "phone", "cccd", "symptoms", "specialty", "doctor",
                      "exam_date", "exam_time", "agree_truth", "agree_terms", "csrf"):
             self.assertIn(f'name="{name}"', html, name)

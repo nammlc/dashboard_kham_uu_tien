@@ -136,7 +136,8 @@ def _patient_host_gate():
         return None
     path = request.path
     if path == "/":
-        return redirect(url_for("register_page"), code=302)
+        # 301 (vĩnh viễn): Google gom "/" về /dang-ky thay vì giữ cả hai địa chỉ trong chỉ mục
+        return redirect(url_for("register_page"), code=301)
     if _PATIENT_PUBLIC_ONLY and not (path in _PATIENT_PUBLIC_PATHS or path.startswith("/static/")):
         abort(404)
     return None

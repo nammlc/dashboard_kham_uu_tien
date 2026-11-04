@@ -6,7 +6,15 @@
 {% if indexable %}<meta name="robots" content="index, follow">
 <meta name="description" content="Đăng ký lịch hẹn khám online tại Bệnh viện Đa khoa Tâm Đức Cầu Quan. Chọn chuyên khoa, bác sĩ, ngày giờ khám nhanh chóng, không cần xếp hàng.">
 <link rel="canonical" href="{{ canonical }}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:title" content="Đăng ký lịch hẹn khám online – BVĐK Tâm Đức Cầu Quan">
+<meta property="og:description" content="Chọn chuyên khoa, ngày giờ khám nhanh chóng, không cần xếp hàng.">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:image" content="{{ url_for('static', filename='logo.png', _external=True) }}">
 {% else %}<meta name="robots" content="noindex">
+{% endif %}{% if config.GOOGLE_SITE_VERIFICATION %}<meta name="google-site-verification" content="{{ config.GOOGLE_SITE_VERIFICATION }}">
+{% endif %}{% if config.BING_SITE_VERIFICATION %}<meta name="msvalidate.01" content="{{ config.BING_SITE_VERIFICATION }}">
 {% endif %}<title>Đăng ký lịch hẹn khám online – BVĐK Tâm Đức Cầu Quan</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
 <script>document.documentElement.classList.add('js');</script>
