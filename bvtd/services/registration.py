@@ -291,8 +291,8 @@ def rate_limited(ip: str, now_ts: float | None = None) -> bool:
 
 
 def dup_key(c: dict) -> tuple:
-    from services.sheets import norm_name
-    return (norm_name(c["full_name"]), c["phone"], c["exam_date"])
+    from services.sheets import acc_name              # giữ dấu thanh: 2 người nhà khác dấu (TRẦN/TRẢN) cùng SĐT không bị chặn nhầm
+    return (acc_name(c["full_name"]), c["phone"], c["exam_date"])
 
 
 def recently_submitted(c: dict, now_ts: float | None = None) -> bool:

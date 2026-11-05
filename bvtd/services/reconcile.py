@@ -21,7 +21,7 @@ import pandas as pd
 
 from services.sheets import (
     COL_NAME, COL_PHONE, COL_BIRTH_YEAR, COL_SOURCE, COL_STATUS, COL_STT, COL_GENDER,
-    STATUS_ATTENDED, norm_name, norm_phone_key,
+    STATUS_ATTENDED, norm_name, norm_phone_key, accent_compare,
 )
 
 RECONCILE_LOOKBACK_DAYS = 7    # danh sách gốc: BN có NGÀY KHÁM trong X ngày gần đây
@@ -206,6 +206,8 @@ def compare_person(a: dict, b: dict):
     rel, ratio = name_relation(a["nn"], b["nn"])
     if rel is None:
         return None
+    # Dấu thanh: "TRẦN" ≠ "TRẢN", "TÚC" ≠ "TỤC" (bỏ dấu thì giống hệt nhau nhưng là 2 người khác nhau).
+    acc, acc_pairs = accent_compare(a["name"], b["name"])
     phone_eq = bool(a["phone"] and b["phone"] and a["phone"] == b["phone"])
     phone_ne = bool(a["phone"] and b["phone"] and a["phone"] != b["phone"])
     diff = abs(a["birth"] - b["birth"]) if (a["birth"] and b["birth"]) else None
@@ -224,10 +226,17 @@ def compare_person(a: dict, b: dict):
         notes.append(f"Tên thiếu/thừa tên đệm: «{a['name']}» ↔ «{b['name']}»")
     score = round(100 * ratio, 1)
 
+    if acc == "conflict":
+        shown = ", ".join(f"«{x}» ≠ «{y}»" for x, y in acc_pairs[:3])
+        if phone_eq:                       # trùng SĐT: có thể gõ sai dấu, hoặc 2 người nhà dùng chung SĐT → để người xem quyết
+            notes.append(f"⚠️ Khác dấu thanh ({shown}) nhưng trùng SĐT — có thể nhập sai dấu hoặc là 2 người khác nhau")
+            return {"tier": 3, "score": score, "rel": rel, "notes": notes, "acc": 2}
+        return None                        # khác dấu thanh, không có SĐT trùng → khác người (kể cả cùng năm sinh)
+
     if conflicts:
         if rel == "exact" and phone_eq:
             notes.append("⚠️ SĐT trùng nhưng " + " và ".join(conflicts) + " — có thể là 2 người khác nhau")
-            return {"tier": 3, "score": score, "rel": rel, "notes": notes}
+            return {"tier": 3, "score": score, "rel": rel, "notes": notes, "acc": 1 if acc == "weak" else 0}
         return None
 
     corroborated = phone_eq or (diff is not None and diff <= 1)
@@ -240,9 +249,12 @@ def compare_person(a: dict, b: dict):
             return None                       # tên gần giống mà không có bằng chứng nào → coi là người khác
         tier = 3
         notes.append("Đã khớp " + ("SĐT" if phone_eq else f"năm sinh (lệch {diff})") + " nhưng tên chưa trùng hẳn")
+    if acc == "weak":
+        notes.append("Một bên thiếu dấu thanh — chưa phân biệt được các tên gần giống (vd TRẦN / TRẢN)")
     if phone_ne:
         notes.append(f"SĐT khác nhau ({a['phone']} ≠ {b['phone']})")
-    return {"tier": tier, "score": score, "rel": rel, "notes": notes}
+    # "acc": 0 = tên khớp cả dấu · 1 = thiếu dấu một bên · 2 = khác dấu (chỉ khi trùng SĐT) — dùng để ưu tiên khi chọn ứng viên
+    return {"tier": tier, "score": score, "rel": rel, "notes": notes, "acc": 1 if acc == "weak" else 0}
 
 
 def parse_dmy(s):
@@ -273,7 +285,7 @@ def find_duplicate_tk_form(khoa_patients, form_patients, window_days=DUPLICATE_W
         if fv["key"]:
             buckets.setdefault(fv["key"], []).append(j)
 
-    cand = []                                              # (tier, |lệch ngày|, -score, i, j, cmp)
+    cand = []                                              # (tier, acc, |lệch ngày|, -score, i, j, cmp)
     for i, pk in enumerate(khoa_patients):
         kv = person_view(pk)
         if not kv["key"]:
@@ -286,11 +298,11 @@ def find_duplicate_tk_form(khoa_patients, form_patients, window_days=DUPLICATE_W
                 continue
             c = compare_person(kv, forms[j])
             if c:
-                cand.append((c["tier"], gap if gap is not None else 99, -c["score"], i, j, c))
-    cand.sort(key=lambda t: t[:5])
+                cand.append((c["tier"], c["acc"], gap if gap is not None else 99, -c["score"], i, j, c))
+    cand.sort(key=lambda t: t[:6])
 
     used_k, used_f, results = set(), set(), []
-    for tier, _gap, _ns, i, j, c in cand:
+    for tier, _acc, _gap, _ns, i, j, c in cand:
         if i in used_k or j in used_f:
             continue
         used_k.add(i); used_f.add(j)
@@ -338,7 +350,7 @@ def reconcile_attendance(sheet_patients, visit_records,
             "visit": None, "score": 0.0, "match_tier": None, "near_miss": None, "match_notes": [],
         }
 
-        best = None                                    # (tier, -score, v, cmp)
+        best = None                                    # (tier, acc, -score, v, cmp, ngày)
         if exam_date:                                  # không rõ ngày hẹn → không đủ an toàn để khớp
             w_start = exam_date - timedelta(days=window_before)
             w_end = min(exam_date + timedelta(days=window_after), today_d)
@@ -346,12 +358,12 @@ def reconcile_attendance(sheet_patients, visit_records,
                 if vd is None or not (w_start <= vd <= w_end):
                     continue
                 c = compare_person(pp, pv)
-                if c and (best is None or (c["tier"], -c["score"]) < best[:2]):
-                    best = (c["tier"], -c["score"], v, c, vd)
+                if c and (best is None or (c["tier"], c["acc"], -c["score"]) < best[:3]):
+                    best = (c["tier"], c["acc"], -c["score"], v, c, vd)
 
         if best:
-            c = best[3]
-            entry.update(visit=best[2], visit_date=best[4], score=c["score"], match_tier=c["tier"], match_notes=c["notes"],
+            c = best[4]
+            entry.update(visit=best[3], visit_date=best[5], score=c["score"], match_tier=c["tier"], match_notes=c["notes"],
                          status="attended_sure" if c["tier"] <= 2 else "attended_unsure")
         else:
             entry.update(score=0.0, status="not_attended")
@@ -360,11 +372,11 @@ def reconcile_attendance(sheet_patients, visit_records,
             # đã sinh ra lịch hẹn (không phải lượt tái khám) → gợi ý sẽ sai. Chỉ giữ cho nhóm vãng lai / form.
             for vd, v, pv in (() if patient_kind(p.get("source")) == "tai_kham" else bucket):
                 c = compare_person(pp, pv)
-                if c and (near is None or (c["tier"], -c["score"]) < near[:2]):
-                    near = (c["tier"], -c["score"], v, vd, c)
+                if c and (near is None or (c["tier"], c["acc"], -c["score"]) < near[:3]):
+                    near = (c["tier"], c["acc"], -c["score"], v, vd, c)
             if near:
-                entry["near_miss"] = {"visit": near[2], "score": near[4]["score"],
-                                      "visit_date": near[3], "notes": near[4]["notes"]}
+                entry["near_miss"] = {"visit": near[3], "score": near[5]["score"],
+                                      "visit_date": near[4], "notes": near[5]["notes"]}
         results.append(entry)
     return results
 

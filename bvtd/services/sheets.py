@@ -5,7 +5,7 @@ Toàn bộ logic kết nối Google Sheets và xử lý DataFrame.
 Tách riêng khỏi Flask routes để dễ test và maintain.
 """
 
-import os, json, re, time, threading, unicodedata
+import os, json, re, time, threading, unicodedata, difflib
 from zoneinfo import ZoneInfo
 import pandas as pd
 import gspread
@@ -545,6 +545,52 @@ def norm_name(s) -> str:
     return re.sub(r"\s+", " ", s2.strip()).upper()
 
 
+# ── So khớp tên CÓ XÉT DẤU THANH ─────────────────────────────────────────────
+# norm_name() bỏ HẾT dấu nên "TRẦN" = "TRẢN" = "TRAN", "TÚC" = "TỤC" = "TUC" → 2 bệnh nhân khác nhau bị coi là 1 người
+# (báo "đã tái khám" nhầm, báo trùng nhầm). Hai hàm dưới đây phân biệt DẤU THANH (huyền, sắc, hỏi, ngã, nặng).
+# Quy tắc: một bên hoàn toàn không dấu / thiếu dấu thanh → "weak" (chưa chắc, vẫn có thể là 1 người vì người dân hay gõ
+# không dấu); cả hai bên đều có dấu thanh nhưng KHÁC nhau → "conflict" (khác người, trừ khi có bằng chứng mạnh khác).
+_TONE_MARKS = {"\u0300", "\u0301", "\u0309", "\u0303", "\u0323"}      # huyền, sắc, hỏi, ngã, nặng
+
+
+def _split_tone(word: str):
+    """'TRẦN' → ('TRÂN', dấu huyền). Tách riêng dấu thanh; â/ă/ê/ô/ơ/ư/đ giữ nguyên ở phần gốc."""
+    d = unicodedata.normalize("NFD", word)
+    tone = "".join(c for c in d if c in _TONE_MARKS)
+    base = unicodedata.normalize("NFC", "".join(c for c in d if c not in _TONE_MARKS))
+    return base, tone
+
+
+def _words(s) -> list[str]:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", str(s or "")).strip()).upper().split()
+
+
+def acc_name(s) -> str:
+    """Tên chuẩn hoá GIỮ dấu thanh (khoá so sánh chính xác): hoa/thường, khoảng trắng, kiểu đặt dấu (hòa/hoà) không còn khác nhau."""
+    return " ".join(b + t for b, t in map(_split_tone, _words(s)))
+
+
+def accent_compare(a, b):
+    """So 2 tên (chưa chuẩn hoá) theo từng từ đã khớp khi bỏ dấu. Trả về (kết quả, danh sách cặp từ khác dấu):
+         'same'     — mọi từ khớp cả dấu thanh
+         'weak'     — có từ thiếu dấu một bên (vd 'TRAN' / 'TRẦN') nhưng KHÔNG có dấu nào đối nghịch
+         'conflict' — có từ mà hai bên đều có dấu thanh nhưng khác nhau (vd 'TRẦN' / 'TRẢN', 'TÚC' / 'TỤC')"""
+    wa, wb = _words(a), _words(b)
+    sm = difflib.SequenceMatcher(None, [norm_name(w) for w in wa], [norm_name(w) for w in wb], autojunk=False)
+    res, conflicts = "same", []
+    for blk in sm.get_matching_blocks():
+        for k in range(blk.size):
+            x, y = wa[blk.a + k], wb[blk.b + k]
+            (bx, tx), (by, ty) = _split_tone(x), _split_tone(y)
+            if (bx, tx) == (by, ty):
+                continue
+            if tx and ty and tx != ty:
+                conflicts.append((x, y))
+            else:
+                res = "weak"
+    return ("conflict", conflicts) if conflicts else (res, [])
+
+
 def norm_phone_key(s) -> str:
     """Chỉ giữ chữ số; 9 số → thêm 0 đầu; không hợp lệ → ''."""
     digits = re.sub(r"\D", "", str(s or ""))
@@ -630,7 +676,7 @@ def _index_sheet(df: pd.DataFrame) -> dict:
         if not nk:
             continue
         hk, lk, pk = _date_key(h), _date_key(l), norm_phone_key(phone)
-        ref = {"stt": "" if stt is None else str(stt).strip(), "row": i + 2, "phone": pk,
+        ref = {"stt": "" if stt is None else str(stt).strip(), "row": i + 2, "phone": pk, "name": str(name or ""),
                "has_lap": bool(lk), "hen": hk, "lap": lk, "ts": to_dmy(ts)}      # ts = ngày dòng này được GHI vào Sheet
         if lk:
             idx["lap"].setdefault((nk, lk), []).append(ref)
@@ -665,15 +711,18 @@ def check_sheet_duplicates(df: pd.DataFrame, candidates: list[dict]):
         lk = to_dmy(r.get("NGÀY LẬP", ""))
         pk = norm_phone_key(r.get("SỐ ĐIỆN THOẠI", ""))
 
+        # Khoá tên đã bỏ dấu → phải loại thêm những dòng khác DẤU THANH (TRẦN ≠ TRẢN): đó là 2 người khác nhau
+        name = r.get("HỌ TÊN", "")
+        same_person = lambda x: accent_compare(name, x["name"])[0] != "conflict"
         found, how = [], None
         if nk and lk:
-            found = [x for x in idx["lap"].get((nk, lk), ()) if not _phones_conflict(pk, x["phone"])]
+            found = [x for x in idx["lap"].get((nk, lk), ()) if not _phones_conflict(pk, x["phone"]) and same_person(x)]
             how = "lap" if found else None
         if not found and nk and hk and pk:
-            found = [x for x in idx["full"].get((nk, pk, hk), ())]
+            found = [x for x in idx["full"].get((nk, pk, hk), ()) if same_person(x)]
             how = "hen" if found else None
         if not found and nk and hk:
-            found = [x for x in idx["nd"].get((nk, hk), ()) if not _phones_conflict(pk, x["phone"])]
+            found = [x for x in idx["nd"].get((nk, hk), ()) if not _phones_conflict(pk, x["phone"]) and same_person(x)]
             how = "hen" if found else None
 
         if found:
@@ -695,13 +744,15 @@ def drop_file_duplicates(records: list[dict]):
     for r in records:
         key = (norm_name(r.get("HỌ TÊN", "")), to_dmy(r.get("NGÀY HẸN", "")), to_dmy(r.get("NGÀY LẬP", "")))
         pk = norm_phone_key(r.get("SỐ ĐIỆN THOẠI", ""))
-        if key[0] and any(not _phones_conflict(pk, other) for other in seen.get(key, ())):
+        nm = r.get("HỌ TÊN", "")
+        if key[0] and any(not _phones_conflict(pk, other) and accent_compare(nm, other_nm)[0] != "conflict"
+                          for other, other_nm in seen.get(key, ())):
             r2 = dict(r)
             r2["_existing_stt"] = "(trùng ngay trong file)"
             dropped.append(r2)
             continue
         if key[0]:
-            seen.setdefault(key, []).append(pk)
+            seen.setdefault(key, []).append((pk, nm))
         kept.append(r)
     return kept, dropped
 
@@ -898,13 +949,14 @@ def _resolve_items(grid, headers, items):
     for i, it in enumerate(items):
         stt = str(it.get("stt") or "").strip()
         expect = norm_name(it.get("name", ""))
+        expect_acc = acc_name(it.get("name", ""))          # TRẦN ≠ TRẢN: xác nhận đúng dòng bằng tên CÓ dấu thanh
         try:
             hint = int(it["sheet_row"])
         except (KeyError, TypeError, ValueError):
             hint = -1
 
         def name_ok(r):
-            return not expect or name_ci is None or norm_name(_cell(grid, r, name_ci)) == expect
+            return not expect or name_ci is None or acc_name(_cell(grid, r, name_ci)) == expect_acc
 
         picked = None
         if stt and stt in stt_rows:
