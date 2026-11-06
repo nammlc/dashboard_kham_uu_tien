@@ -335,8 +335,7 @@ def login():
             session["last_active"] = time.time()
             _admins().touch_login(row["email"])
             _log("login_ok", email=row["email"], detail="Email + mật khẩu")
-            nxt = request.args.get("next") or ""
-            return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("dashboard"))
+            return redirect(_safe_next(request.args.get("next")) or url_for("dashboard"))
         else:
             _log("login_fail", email=email[:120], detail="Sai email / mật khẩu hoặc tài khoản bị tắt")
             flash("Email hoặc mật khẩu không đúng.", "error")
@@ -344,31 +343,84 @@ def login():
     return render_template("auth/login.html", expired=bool(request.args.get("expired")))
 
 
+def _safe_next(nxt) -> str:
+    """Chỉ nhận đường dẫn NỘI BỘ ("/abc"); chặn "//evil.com", "/\\evil.com" và mọi địa chỉ ngoài (open redirect)."""
+    nxt = str(nxt or "")
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt and "\n" not in nxt else ""
+
+
+def _google_enabled() -> bool:
+    return bool(app.config.get("GOOGLE_CLIENT_ID") and app.config.get("GOOGLE_CLIENT_SECRET"))
+
+
+@app.context_processor
+def _inject_google():
+    return {"google_login_enabled": _google_enabled()}
+
+
+def _google_fail(event_detail: str, message: str, email: str = ""):
+    _log("login_fail", email=email[:120], detail=event_detail)
+    flash(message, "error")
+    return redirect(url_for("login"))
+
+
 @app.route("/login/google")
 def login_google():
-    redirect_uri = url_for("google_callback", _external=True)
-    return oauth.google.authorize_redirect(redirect_uri)
+    """Bước 1: chuyển sang Google. Chưa cấu hình GOOGLE_CLIENT_ID/SECRET thì báo rõ thay vì lỗi 500."""
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    if not _google_enabled():
+        return _google_fail("Google: chưa cấu hình GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET",
+                            "Đăng nhập bằng Google chưa được bật trên hệ thống. Vui lòng đăng nhập bằng email và mật khẩu.")
+    session["oauth_next"] = _safe_next(request.args.get("next"))
+    redirect_uri = app.config.get("GOOGLE_REDIRECT_URI") or url_for("google_callback", _external=True)
+    return oauth.google.authorize_redirect(redirect_uri, prompt="select_account")      # luôn cho chọn tài khoản (máy dùng chung)
 
 
 @app.route("/login/google/callback")
 def google_callback():
-    token     = oauth.google.authorize_access_token()
-    user_info = token.get("userinfo") or oauth.google.userinfo()
-    email     = user_info.get("email", "").lower()
+    """Bước 2: Google trả về. Chỉ vào được khi email đã được Google XÁC MINH và đang bật trong bảng admin_users."""
+    nxt = _safe_next(session.pop("oauth_next", ""))
+    if not _google_enabled():
+        return _google_fail("Google: chưa cấu hình GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET",
+                            "Đăng nhập bằng Google chưa được bật trên hệ thống. Vui lòng đăng nhập bằng email và mật khẩu.")
 
-    row = _admins().get_active(email) if email else None      # chỉ email có trong bảng admin_users (và đang bật) mới vào được
+    err = request.args.get("error")
+    if err:                                                      # bấm Huỷ / từ chối cấp quyền
+        msg = "Bạn đã huỷ đăng nhập bằng Google." if err == "access_denied" else "Google từ chối đăng nhập. Vui lòng thử lại."
+        return _google_fail(f"Google: {err[:60]}", msg)
+
+    try:
+        token     = oauth.google.authorize_access_token()
+        user_info = token.get("userinfo") or oauth.google.userinfo()
+    except Exception as e:                                       # noqa: BLE001 — state không khớp (mở link cũ/đổi trình duyệt), mạng lỗi…
+        app.logger.warning("Google OAuth lỗi: %s: %s", type(e).__name__, e)
+        return _google_fail(f"Google: không hoàn tất được ({type(e).__name__})",
+                            "Chưa hoàn tất được đăng nhập Google (phiên đăng nhập bị hết hạn hoặc mạng lỗi). Vui lòng bấm “Đăng nhập bằng Google” lại.")
+
+    email = str(user_info.get("email") or "").strip().lower()
+    if not email or user_info.get("email_verified") not in (True, "true"):
+        return _google_fail("Google: email chưa được Google xác minh", "Email của tài khoản Google này chưa được xác minh nên không thể đăng nhập.", email)
+
+    try:
+        row = _admins().get_active(email)                        # chỉ email có trong bảng admin_users (và đang bật) mới vào được
+        if row:
+            _admins().touch_login(email, user_info.get("name", ""), user_info.get("picture", ""))
+            row = _admins().get_active(email)
+    except DB.NotConfigured:
+        return _google_fail("Google: thiếu DATABASE_URL", "Hệ thống chưa được cấu hình cơ sở dữ liệu (thiếu DATABASE_URL). Vui lòng liên hệ quản trị viên.", email)
+    except DB.DBError:
+        app.logger.exception("lỗi cơ sở dữ liệu khi đăng nhập Google")
+        return _google_fail("Google: lỗi cơ sở dữ liệu", "Hệ thống chưa kết nối được cơ sở dữ liệu tài khoản. Vui lòng thử lại sau.", email)
+
     if not row:
-        _log("login_fail", email=email[:120], detail="Google: tài khoản không có trong danh sách admin")
-        flash("Tài khoản Google này không được phép truy cập.", "error")
-        return redirect(url_for("login"))
+        return _google_fail("Google: tài khoản không có trong danh sách admin",
+                            f"Tài khoản {email} không được phép truy cập. Hãy nhờ quản trị viên thêm email này vào danh sách admin.", email)
 
-    _admins().touch_login(email, user_info.get("name", ""), user_info.get("picture", ""))
-    row = _admins().get_active(email)
-    u = User(row["email"], row["name"] or email, row["picture"])
-    login_user(u, remember=False)
+    login_user(User(row["email"], row["name"] or email.split("@")[0], row["picture"]), remember=False)
     session["last_active"] = time.time()
     _log("login_ok", email=email, detail="Google")
-    return redirect(url_for("dashboard"))
+    return redirect(nxt or url_for("dashboard"))
 
 
 @app.route("/logout")

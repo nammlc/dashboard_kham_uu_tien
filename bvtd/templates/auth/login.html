@@ -39,8 +39,9 @@
       {% endfor %}
     {% endwith %}
 
+    {% if google_login_enabled %}
     <!-- Google OAuth -->
-    <a href="{{ url_for('login_google') }}"
+    <a href="{{ url_for('login_google', next=request.args.get('next')) }}"
        class="w-full flex items-center justify-center gap-3 border border-slate-300
               rounded-lg px-4 py-2.5 text-sm font-medium text-slate-700
               hover:bg-slate-50 transition-colors mb-5">
@@ -57,6 +58,7 @@
       <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
       <div class="relative flex justify-center"><span class="bg-white px-3 text-xs text-slate-400">hoặc</span></div>
     </div>
+    {% endif %}
 
     <!-- Email/Password form -->
     <form method="POST">

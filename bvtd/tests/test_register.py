@@ -90,6 +90,17 @@ class PageTests(RegisterBase):
         self.assertRegex(html, r"\.bar\{position:sticky;bottom:0")         # nút Gửi luôn thấy được trên điện thoại
         self.assertEqual(html.count('type="submit"'), 1)
 
+    def test_header_is_large_on_desktop(self):
+        """Trên PC tiêu đề + logo phải to rõ (không bị 'lọt thỏm' trong thanh xanh), ở cả trang form lẫn trang kết quả."""
+        form = self.client.get("/dang-ky").get_data(as_text=True)
+        self.assertRegex(form, r"@media\(min-width:900px\)\{\s*header\.top\{padding:24px\}")
+        self.assertIn("header.top h1{font-size:2.3rem}", form)
+        self.assertIn("header.top .logo{width:92px;height:92px}", form)
+        self.submit()
+        done = self.client.get("/dang-ky/xong").get_data(as_text=True)
+        self.assertIn("header b{font-size:2.3rem}", done)
+        self.assertIn("header img{width:92px;height:92px}", done)
+
     def test_closed_switch(self):
         A.app.config["REG_ENABLED"] = False
         r = self.client.get("/dang-ky")

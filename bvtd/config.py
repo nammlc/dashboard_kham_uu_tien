@@ -7,6 +7,9 @@ class Config:
     # ── Google OAuth (cho nút "Đăng nhập bằng Google") ───────────────────────
     GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    # Tuỳ chọn: ép địa chỉ callback (vd https://quanly.example.com/login/google/callback) khi proxy không gửi đúng
+    # X-Forwarded-Proto/Host. Để trống = tự lấy theo địa chỉ trang đang mở. PHẢI trùng "Authorized redirect URI" trên Google.
+    GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "").strip()
 
     # ── Danh sách email được phép đăng nhập (phân cách bởi dấu phẩy) ─────────
     ALLOWED_EMAILS = set(
