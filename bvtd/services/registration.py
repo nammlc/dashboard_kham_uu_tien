@@ -15,30 +15,20 @@ from collections import deque
 from datetime import date, datetime, timedelta
 
 # ── Danh mục (giữ NGUYÊN chuỗi của Google Form để thống kê trên Sheet không bị lệch) ─────────────────────────────
-# (giá trị ghi vào Sheet, nhãn hiển thị cho người lớn tuổi dễ đọc, nhãn bác sĩ phù hợp)
+# (giá trị ghi vào Sheet, nhãn hiển thị cho người lớn tuổi dễ đọc)
 SPECIALTIES = [
-    ("Khám Sản - Phụ Khoa",                          "Khám Sản - Phụ khoa",                              "san"),
-    ("Khám Nội tổng hợp",                            "Khám Nội tổng hợp",                                ""),
-    ("Khám Y học cổ truyền",                         "Khám Y học cổ truyền",                             ""),
-    ("Khám Ngoại",                                   "Khám Ngoại",                                       "ngoai"),
-    ("Khám Nhi",                                     "Khám Nhi (trẻ em)",                                "nhi"),
-    ("Khám Nội Tiết (Huyết áp, tiểu đương, COPD)",   "Khám Nội tiết (huyết áp, tiểu đường, COPD)",       "noitiet"),
-    ("khám Mắt",                                     "Khám Mắt",                                         "mat"),
+    ("Khám Sản - Phụ Khoa",                          "Khám Sản - Phụ khoa"),
+    ("Khám Nội tổng hợp",                            "Khám Nội tổng hợp"),
+    ("Khám Y học cổ truyền",                         "Khám Y học cổ truyền"),
+    ("Khám Ngoại",                                   "Khám Ngoại"),
+    ("Khám Nhi",                                     "Khám Nhi (trẻ em)"),
+    ("Khám Nội Tiết (Huyết áp, tiểu đương, COPD)",   "Khám Nội tiết (huyết áp, tiểu đường, COPD)"),
+    ("khám Mắt",                                     "Khám Mắt"),
 ]
 OTHER = "__khac__"
 
-# (giá trị ghi vào Sheet, tên hiển thị, chi tiết hiển thị, nhãn chuyên khoa)
-DOCTORS = [
-    ("PGĐ - BS Lê Tiến Dũng - Chuyên Khoa Nội Tiết - Pk số 2", "PGĐ - BS Lê Tiến Dũng",  "Nội tiết · Phòng khám số 2", "noitiet"),
-    ("BS Lê Thị Chuyên - Chuyên Khoa Nội Tiết - Pk số 5",      "BS Lê Thị Chuyên",      "Nội tiết · Phòng khám số 5", "noitiet"),
-    ("BS Nguyễn Thị Lý - Chuyên Khoa Nội Tiết - Pk số 3",      "BS Nguyễn Thị Lý",      "Nội tiết · Phòng khám số 3", "noitiet"),
-    ("BS Nguyễn Thị Linh - Chuyên Khoa Mắt - Pk số 1",         "BS Nguyễn Thị Linh",    "Mắt · Phòng khám số 1",      "mat"),
-    ("BS Bùi Văn Hùng - Chuyên Khoa Ngoại - Pk số 6",          "BS Bùi Văn Hùng",       "Ngoại · Phòng khám số 6",    "ngoai"),
-    ("BS Lê Đức Linh - Chuyên Khoa Sản - Pk sản",              "BS Lê Đức Linh",        "Sản · Phòng khám sản",       "san"),
-    ("BS Nguyễn Doãn Khoa - Chuyên Khoa Nhi - Pk nhi",         "BS Nguyễn Doãn Khoa",   "Nhi · Phòng khám nhi",       "nhi"),
-]
-
-GENDERS = ["NAM", "NỮ", "KHÁC"]
+# Trang đăng ký chỉ hỏi: họ tên · năm sinh · SĐT · triệu chứng · chuyên khoa · ngày/giờ khám · 2 cam kết.
+# Địa chỉ, giới tính, CCCD, bác sĩ đã BỎ khỏi biểu mẫu → các cột tương ứng trên Sheet để trống (nhân viên bổ sung khi tiếp đón).
 
 
 def _slots(start_h, start_m, end_h, end_m, step=30):
@@ -84,7 +74,7 @@ def sheet_safe(v: str) -> str:
 
 
 def as_text_cell(v: str) -> str:
-    """Số điện thoại / CCCD: luôn ép thành chữ để Sheet không bỏ số 0 đầu hay đổi sang số khoa học."""
+    """Số điện thoại: luôn ép thành chữ để Sheet không bỏ số 0 đầu hay đổi sang số khoa học."""
     return "'" + v if v else v
 
 
@@ -103,13 +93,6 @@ def vn_now() -> datetime:
 
 
 # ── Kiểm tra dữ liệu ───────────────────────────────────────────────────────────────────────────────────────────
-FIELD_STEP = {"full_name": 1, "birth_year": 1, "gender": 1,
-              "address": 2, "phone": 2, "cccd": 2,
-              "symptoms": 3, "specialty": 3, "specialty_other": 3, "doctor": 3,
-              "exam_date": 4, "exam_time": 4,
-              "agree_truth": 5, "agree_terms": 5}
-
-
 def validate(form, now: datetime | None = None):
     """form: dict-like (request.form). Trả về (clean, errors). errors rỗng = hợp lệ."""
     now = now or vn_now()
@@ -134,33 +117,18 @@ def validate(form, now: datetime | None = None):
         errors["birth_year"] = f"Vui lòng nhập năm sinh gồm 4 chữ số (ví dụ: 1958)."
     c["birth_year"] = by
 
-    # 3) Giới tính
-    gender = g("gender", 10).upper()
-    if gender not in GENDERS:
-        errors["gender"] = "Vui lòng chọn giới tính."
-    c["gender"] = gender
-
-    # 4) Địa chỉ (không bắt buộc)
-    c["address"] = g("address", 120)
-
-    # 5) SĐT: 10 số bắt đầu bằng 0
+    # 3) SĐT: 10 số bắt đầu bằng 0
     phone = normalize_phone(form.get("phone", ""))
     if not re.fullmatch(r"0\d{9}", phone):
         errors["phone"] = "Số điện thoại phải gồm 10 chữ số, bắt đầu bằng số 0 (ví dụ: 0912345678)."
     c["phone"] = phone
 
-    # 6) CCCD (12 số) / CMND (9 số) — không bắt buộc; nếu có nhập thì phải đúng định dạng
-    cccd = re.sub(r"[\s.\-]", "", str(form.get("cccd", "") or ""))
-    if cccd and not re.fullmatch(r"\d{9}|\d{12}", cccd):
-        errors["cccd"] = "Số căn cước công dân gồm 12 chữ số (hoặc chứng minh thư cũ gồm 9 chữ số)."
-    c["cccd"] = cccd
-
-    # 7) Triệu chứng (không bắt buộc)
+    # 4) Triệu chứng (không bắt buộc)
     c["symptoms"] = g("symptoms", 300)
 
-    # 8) Chuyên khoa (không bắt buộc) — "Khác" thì lấy chữ người dùng ghi, như Google Form
+    # 5) Chuyên khoa (không bắt buộc) — "Khác" thì lấy chữ người dùng ghi, như Google Form
     sp = g("specialty", 120)
-    valid_sp = {v for v, _, _ in SPECIALTIES}
+    valid_sp = {v for v, _ in SPECIALTIES}
     if sp == OTHER:
         other = g("specialty_other", 80)
         if len(other) < 2:
@@ -171,16 +139,8 @@ def validate(form, now: datetime | None = None):
         c["specialty"] = ""
     else:
         c["specialty"] = sp
-    c["specialty_tag"] = next((t for v, _, t in SPECIALTIES if v == sp), "")
 
-    # 9) Bác sĩ (không bắt buộc)
-    doc = g("doctor", 120)
-    if doc and doc not in {v for v, _, _, _ in DOCTORS}:
-        errors["doctor"] = "Bác sĩ không hợp lệ. Vui lòng chọn lại."
-        doc = ""
-    c["doctor"] = doc
-
-    # 10) Ngày khám: từ hôm nay đến +MAX_DAYS_AHEAD
+    # 6) Ngày khám: từ hôm nay đến +MAX_DAYS_AHEAD
     d = _parse_date(g("exam_date", 12))
     if d is None:
         errors["exam_date"] = "Vui lòng chọn ngày khám."
@@ -190,7 +150,7 @@ def validate(form, now: datetime | None = None):
         errors["exam_date"] = f"Chỉ nhận đăng ký trong vòng {MAX_DAYS_AHEAD} ngày tới."
     c["exam_date"] = d
 
-    # 11) Giờ khám: phải là một khung giờ có sẵn; hôm nay thì không được là giờ đã qua
+    # 7) Giờ khám: phải là một khung giờ có sẵn; hôm nay thì không được là giờ đã qua
     t = g("exam_time", 6)
     if t not in ALL_SLOTS:
         errors["exam_time"] = "Vui lòng chọn giờ khám dự kiến."
@@ -198,7 +158,7 @@ def validate(form, now: datetime | None = None):
         errors["exam_time"] = "Giờ này đã qua. Vui lòng chọn giờ khác hoặc ngày khác."
     c["exam_time"] = t
 
-    # 12) Hai cam kết bắt buộc
+    # 8) Hai cam kết bắt buộc
     if form.get("agree_truth") != "1":
         errors["agree_truth"] = "Cần tích vào ô cam kết thông tin đúng sự thật."
     if form.get("agree_terms") != "1":
@@ -215,28 +175,21 @@ def _parse_date(s: str):
     return None
 
 
-def first_error_step(errors: dict) -> int:
-    return min((FIELD_STEP.get(k, 5) for k in errors), default=1)
-
-
 # ── Ghi Sheet ─────────────────────────────────────────────────────────────────────────────────────────────────
 def build_field_map(c: dict, now: datetime) -> dict:
     from services import sheets as S
     return {
         S.COL_TIMESTAMP:   now.strftime("%d/%m/%Y %H:%M:%S"),
         S.COL_NAME:        c["full_name"],
-        S._COL_ADDRESS_FORM: sheet_safe(c["address"]),
         S.COL_BIRTH_YEAR:  c["birth_year"],
-        S.COL_GENDER:      c["gender"],
-        S.COL_CCCD:        as_text_cell(c["cccd"]),
         S.COL_PHONE:       as_text_cell(c["phone"]),
         S.COL_SYMPTOM:     sheet_safe(c["symptoms"]),
         S.COL_SPECIALTY:   sheet_safe(c["specialty"]),
-        S.COL_DOCTOR:      sheet_safe(c["doctor"]),
         S.COL_EXAM_DATE:   c["exam_date"].strftime("%d/%m/%Y"),    # append_field_maps đổi sang serial
         S.COL_EXAM_TIME:   c["exam_time"],
         S.COL_CONSENT_1:   "CÓ",
         S.COL_CONSENT_2:   "CÓ",
+        # ĐỊA CHỈ / GIỚI TÍNH / CCCD / BÁC SĨ không còn hỏi → để trống.
         # NGUỒN / TRẠNG THÁI / KHOA / TUỔI: để trống như dòng do Google Form tạo ra
     }
 

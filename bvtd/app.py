@@ -867,9 +867,8 @@ def _reg_render(values=None, errors=None, banner="", status=200):
     today = now.date()
     ctx = {
         "v": values or {}, "errors": errors or {}, "banner": banner,
-        "start_step": RG.first_error_step(errors) if errors else 1,
         "csrf": session.get("reg_csrf", ""),
-        "specialties": RG.SPECIALTIES, "doctors": RG.DOCTORS, "OTHER": RG.OTHER,
+        "specialties": RG.SPECIALTIES, "OTHER": RG.OTHER,
         "slots_morning": RG.SLOTS_MORNING, "slots_afternoon": RG.SLOTS_AFTERNOON,
         "today": today.isoformat(), "max_date": (today + timedelta(days=RG.MAX_DAYS_AHEAD)).isoformat(),
         "now_hm": now.strftime("%H:%M"), "max_days": RG.MAX_DAYS_AHEAD,
@@ -914,8 +913,7 @@ def register_page():
     summary = {
         "name": clean["full_name"], "birth_year": clean["birth_year"], "phone": clean["phone"],
         "exam_date": clean["exam_date"].strftime("%d/%m/%Y"), "exam_time": clean["exam_time"],
-        "specialty": next((lbl for v, lbl, _ in RG.SPECIALTIES if v == clean["specialty"]), clean["specialty"]),
-        "doctor": next((nm for v, nm, _, _ in RG.DOCTORS if v == clean["doctor"]), ""),
+        "specialty": next((lbl for v, lbl in RG.SPECIALTIES if v == clean["specialty"]), clean["specialty"]),
         "already": False,
     }
 

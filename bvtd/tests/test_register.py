@@ -28,9 +28,9 @@ class RegisterBase(AppTestCase):
         return re.search(r'name="csrf" value="([^"]+)"', html).group(1)
 
     def form(self, **over):
-        d = {"full_name": "nguyễn văn an", "birth_year": "1958", "gender": "NAM", "address": "Thôn 3, xã Trung Chính",
-             "phone": "0912 345 678", "cccd": "038 058 001 234", "symptoms": "Đau đầu, chóng mặt",
-             "specialty": "Khám Nội tổng hợp", "doctor": "", "exam_date": "2026-10-22", "exam_time": "08:30",
+        d = {"full_name": "nguyễn văn an", "birth_year": "1958",
+             "phone": "0912 345 678", "symptoms": "Đau đầu, chóng mặt",
+             "specialty": "Khám Nội tổng hợp", "exam_date": "2026-10-22", "exam_time": "08:30",
              "agree_truth": "1", "agree_terms": "1", "website": ""}
         d.update(over)
         return {k: v for k, v in d.items() if v is not None}
@@ -53,25 +53,42 @@ class PageTests(RegisterBase):
         self.assertIn("no-store", r.headers["Cache-Control"])
         html = r.get_data(as_text=True)
         self.assertNotRegex(re.sub(r'<link rel="canonical"[^>]*>|<meta property="og:[^>]*>', "", html), r"https?://(?!www\.w3)", "không phụ thuộc CDN/trang ngoài (mạng yếu ở vùng quê)")
-        for name in ("full_name", "birth_year", "gender", "address", "phone", "cccd", "symptoms", "specialty", "doctor",
+        for name in ("full_name", "birth_year", "phone", "symptoms", "specialty",
                      "exam_date", "exam_time", "agree_truth", "agree_terms", "csrf"):
             self.assertIn(f'name="{name}"', html, name)
+        for gone in ("gender", "address", "cccd", "doctor"):               # đã bỏ khỏi biểu mẫu
+            self.assertNotIn(f'name="{gone}"', html, gone)
+        for gone in ("Giới tính", "Địa chỉ", "căn cước công dân <", "Bác sĩ muốn khám"):
+            self.assertNotIn(gone, html, gone)
         self.assertIn("07:00", html); self.assertIn("16:30", html); self.assertNotIn(">12:00<", html)
         self.assertIn("Khám Nội tiết", html)
-        self.assertIn("BS Lê Đức Linh", html)
         self.assertNotIn("sz-plus", html)                               # không có nút chỉnh cỡ chữ
-        self.assertIn("ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE", html)
+        self.assertIn("ĐĂNG KÝ HẸN KHÁM ONLINE", html)
+        self.assertNotIn("LỊCH HẸN KHÁM ONLINE", html)                  # đã bỏ chữ "lịch" ở tiêu đề
+        self.assertIn("Đăng ký hẹn khám online", html)                   # <title>/mô tả cũng đổi theo
         self.assertIn('src="/static/logo.png"', html)
         self.assertEqual(self.client.get("/static/logo.png").status_code, 200)     # logo công khai, không cần đăng nhập
         self.assertNotIn("Điền lần lượt từng bước", html)
-        self.assertNotIn("Bác sĩ nào cũng được", html)
 
     def test_inputs_are_big_enough_for_the_elderly(self):
         html = self.client.get("/dang-ky").get_data(as_text=True)
-        self.assertRegex(html, r"html\{font-size:20px")
+        self.assertRegex(html, r"html\{font-size:19px")
         self.assertRegex(html, r"min-height:56px")             # ô nhập
-        self.assertRegex(html, r"min-height:62px")             # nút Tiếp tục / Gửi
+        self.assertRegex(html, r"min-height:62px")             # nút Gửi
         self.assertIn('inputmode="tel"', html)
+
+    def test_single_page_layout_works_on_phone_and_pc(self):
+        """Một trang duy nhất (không chia bước), co giãn theo màn hình: lưới 2 cột trên PC, 1 cột trên điện thoại."""
+        html = self.client.get("/dang-ky").get_data(as_text=True)
+        self.assertIn('name="viewport" content="width=device-width, initial-scale=1"', html)
+        self.assertEqual(html.count("<form "), 1)
+        self.assertNotIn("data-step", html)                               # không còn wizard nhiều bước
+        self.assertNotIn("Bước 1 /", html)
+        self.assertRegex(html, r"@media\(min-width:640px\)\{\.row2")      # 2 cột (năm sinh | SĐT) từ màn hình vừa
+        self.assertRegex(html, r"@media\(min-width:900px\)")                # bố cục PC
+        self.assertRegex(html, r"auto-fill,minmax")                       # giờ khám / chuyên khoa tự xuống dòng
+        self.assertRegex(html, r"\.bar\{position:sticky;bottom:0")         # nút Gửi luôn thấy được trên điện thoại
+        self.assertEqual(html.count('type="submit"'), 1)
 
     def test_closed_switch(self):
         A.app.config["REG_ENABLED"] = False
@@ -89,10 +106,7 @@ class SubmitTests(RegisterBase):
         c = lambda h: self.sheet.cell(2, h)
         self.assertEqual(c("1. HỌ VÀ TÊN BỆNH NHÂN"), "NGUYỄN VĂN AN")
         self.assertEqual(c("NĂM SINH"), "1958")
-        self.assertEqual(c("3. GIỚI TÍNH"), "NAM")
-        self.assertEqual(c("2. ĐỊA CHỈ (THÔN/XÃ)"), "Thôn 3, xã Trung Chính")
         self.assertEqual(c("5. SỐ ĐIÊN THOẠI"), "0912345678")                       # chuẩn hoá, giữ số 0 đầu
-        self.assertEqual(c(S.COL_CCCD), "038058001234")
         self.assertEqual(c(S.COL_SYMPTOM), "Đau đầu, chóng mặt")
         self.assertEqual(c("CHUYÊN KHOA MONG MUỐN KHÁM"), "Khám Nội tổng hợp")
         self.assertEqual(S.to_dmy(c("NGÀY KHÁM")), "22/10/2026")
@@ -100,7 +114,9 @@ class SubmitTests(RegisterBase):
         self.assertEqual(c(S.COL_CONSENT_1), "CÓ"); self.assertEqual(c(S.COL_CONSENT_2), "CÓ")
         self.assertEqual(c("Dấu thời gian"), "21/10/2026 09:00:00")
         # giống dòng do Google Form tạo ra → luồng đối chiếu coi đây là "đăng ký qua form"
-        for blank in ("NGUỒN BỆNH NHÂN", "TRẠNG THÁI", "KHOA KHÁM CHỮA BỆNH", "NGÀY THỰC KHÁM", S.COL_CREATED):
+        # các trường đã bỏ khỏi biểu mẫu (giới tính, địa chỉ, CCCD, bác sĩ) cũng để trống
+        for blank in ("NGUỒN BỆNH NHÂN", "TRẠNG THÁI", "KHOA KHÁM CHỮA BỆNH", "NGÀY THỰC KHÁM", S.COL_CREATED,
+                      "3. GIỚI TÍNH", "2. ĐỊA CHỈ (THÔN/XÃ)", S.COL_CCCD, "BÁC SĨ MONG MUỐN ( nếu có)"):
             self.assertEqual(c(blank), "", blank)
 
     def test_success_page_after_redirect_and_refresh_does_not_resubmit(self):
@@ -132,10 +148,16 @@ class SubmitTests(RegisterBase):
         self.submit(full_name="Trần Thị Bình", phone="0987654321")
         self.assertEqual([r[REG_HEADERS.index("1. HỌ VÀ TÊN BỆNH NHÂN")] for r in self.rows()], ["NGUYỄN VĂN AN", "TRẦN THỊ BÌNH"])
 
-    def test_specialty_other_and_doctor(self):
-        self.submit(specialty=RG.OTHER, specialty_other="Răng hàm mặt", doctor=RG.DOCTORS[0][0])
+    def test_specialty_other(self):
+        self.submit(specialty=RG.OTHER, specialty_other="Răng hàm mặt")
         self.assertEqual(self.sheet.cell(2, "CHUYÊN KHOA MONG MUỐN KHÁM"), "Other: Răng hàm mặt")
-        self.assertEqual(self.sheet.cell(2, "BÁC SĨ MONG MUỐN ( nếu có)"), RG.DOCTORS[0][0])
+
+    def test_removed_fields_are_ignored_even_if_a_client_still_sends_them(self):
+        """Trình duyệt mở sẵn bản cũ / bot vẫn gửi giới tính, địa chỉ, CCCD, bác sĩ: không lỗi, và KHÔNG được ghi vào Sheet."""
+        r = self.submit(gender="NAM", address="Thôn 3", cccd="038058001234", doctor="BS Bất Kỳ")
+        self.assertEqual(r.status_code, 302)
+        for h in ("3. GIỚI TÍNH", "2. ĐỊA CHỈ (THÔN/XÃ)", S.COL_CCCD, "BÁC SĨ MONG MUỐN ( nếu có)"):
+            self.assertEqual(self.sheet.cell(2, h), "", h)
 
     def test_google_failure_keeps_what_the_patient_typed(self):
         self.sheet.faults["append_rows"] = [ApiError(500)]
@@ -158,8 +180,8 @@ class ValidationTests(RegisterBase):
         return r
 
     def test_optional_fields_can_be_empty(self):
-        """Địa chỉ, CCCD, triệu chứng không bắt buộc; CCCD nếu nhập thì vẫn phải đúng định dạng."""
-        r = self.submit(address="", cccd="", symptoms="")
+        """Triệu chứng và chuyên khoa không bắt buộc."""
+        r = self.submit(symptoms="", specialty="")
         self.assertEqual(r.status_code, 302)
         self.assertEqual(len(self.rows()), 1)
 
@@ -169,12 +191,9 @@ class ValidationTests(RegisterBase):
         self.check("full_name", "chỉ được có chữ cái", full_name="An 123 Văn")
         self.check("birth_year", "4 chữ số", birth_year="58")
         self.check("birth_year", "4 chữ số", birth_year="2099")
-        self.check("gender", "chọn giới tính", gender="")
         self.check("phone", "10 chữ số", phone="12345")
-        self.check("cccd", "12 chữ số", cccd="123")
         self.check("specialty", "không hợp lệ", specialty="Khoa lạ")
         self.check("specialty_other", "ghi rõ", specialty=RG.OTHER, specialty_other="")
-        self.check("doctor", "không hợp lệ", doctor="BS Giả")
         self.check("exam_date", "đã qua", exam_date="2026-10-20")
         self.check("exam_date", "30 ngày", exam_date="2026-12-31")
         self.check("exam_date", "chọn ngày", exam_date="")
@@ -193,31 +212,30 @@ class ValidationTests(RegisterBase):
     def test_today_in_a_future_slot_is_allowed(self):
         self.assertEqual(self.submit(exam_date="2026-10-21", exam_time="09:30").status_code, 302)
 
-    def test_form_jumps_to_the_step_of_the_first_error_and_keeps_values(self):
-        html = self.submit(exam_time="12:00").get_data(as_text=True)                  # lỗi ở bước 4
-        self.assertIn('data-start="4"', html)
-        self.assertIn('value="Thôn 3, xã Trung Chính"', html)
+    def test_errors_are_shown_on_the_same_page_and_values_are_kept(self):
+        html = self.submit(exam_time="12:00", symptoms="Đau lưng").get_data(as_text=True)
+        self.assertIn("Vui lòng chọn giờ khám dự kiến", text(html))
+        self.assertIn("Đau lưng", html)                                              # giữ nguyên chữ đã điền
+        self.assertIn('value="nguyễn văn an"', html)
         html = self.submit(phone="1").get_data(as_text=True)
-        self.assertIn('data-start="2"', html)
         self.assertIn("Có 1 mục cần kiểm tra lại", text(html))
+        self.assertIn('id="err-phone"', html)
 
     def test_html_in_input_is_escaped(self):
-        html = self.submit(address='<script>alert(1)</script>', phone="1").get_data(as_text=True)
+        html = self.submit(symptoms='<script>alert(1)</script>', phone="1").get_data(as_text=True)
         self.assertNotIn("<script>alert(1)</script>", html)
         self.assertIn("&lt;script&gt;", html)
 
 
 class SecurityTests(RegisterBase):
     def test_sheet_formulas_are_neutralised(self):
-        c, errors = RG.validate(self.form(address="=HYPERLINK(\"http://x\",\"a\")", symptoms="+cmd|' /C calc'!A0",
+        c, errors = RG.validate(self.form(symptoms="+cmd|' /C calc'!A0",
                                           specialty=RG.OTHER, specialty_other="@SUM(1)"), NOW)
         self.assertEqual(errors, {})
         fm = RG.build_field_map(c, NOW)
-        self.assertTrue(fm[S._COL_ADDRESS_FORM].startswith("'="))
         self.assertTrue(fm[S.COL_SYMPTOM].startswith("'+"))
         self.assertTrue(fm[S.COL_SPECIALTY].startswith("Other:"))                     # đã có tiền tố nên không còn đứng đầu bằng @
         self.assertEqual(fm[S.COL_PHONE], "'0912345678")                              # ép chữ: giữ số 0 đầu
-        self.assertEqual(fm[S.COL_CCCD], "'038058001234")
         self.assertEqual(RG.sheet_safe("-1+1"), "'-1+1")
         self.assertEqual(RG.sheet_safe("Bình thường"), "Bình thường")
 

@@ -33,7 +33,7 @@
 <body>
 <header><div class="in">
   <img src="{{ url_for('static', filename='logo.png') }}" width="60" height="60" alt="Logo bệnh viện">
-  <div><b>ĐĂNG KÝ LỊCH HẸN KHÁM ONLINE</b><small>BVĐK Tâm Đức Cầu Quan</small></div>
+  <div><b>ĐĂNG KÝ HẸN KHÁM ONLINE</b><small>BVĐK Tâm Đức Cầu Quan</small></div>
 </div></header>
 <div class="wrap">
   <div class="ok {{ 'already' if s.already }}" role="status">
@@ -51,7 +51,6 @@
       <tr><th>Năm sinh</th><td>{{ s.birth_year }}</td></tr>
       <tr><th>Số điện thoại</th><td>{{ s.phone }}</td></tr>
       <tr><th>Chuyên khoa</th><td>{{ s.specialty or '—' }}</td></tr>
-      <tr><th>Bác sĩ</th><td>{{ s.doctor or '—' }}</td></tr>
     </table>
   </div>
 
