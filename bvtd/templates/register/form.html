@@ -16,7 +16,7 @@
 {% endif %}{% if config.GOOGLE_SITE_VERIFICATION %}<meta name="google-site-verification" content="{{ config.GOOGLE_SITE_VERIFICATION }}">
 {% endif %}{% if config.BING_SITE_VERIFICATION %}<meta name="msvalidate.01" content="{{ config.BING_SITE_VERIFICATION }}">
 {% endif %}<title>Đăng ký lịch hẹn khám online – BVĐK Tâm Đức Cầu Quan</title>
-<link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+{% include "_icons.html" %}
 <script>document.documentElement.classList.add('js');</script>
 <style>
   :root{--bg:#f2f7fb;--card:#fff;--ink:#12263a;--muted:#4a5f73;--line:#b9c8d6;--blue:#0b5ea8;--blue-d:#08457d;--green:#157a37;--green-d:#0f5c29;--red:#b3261e;--red-bg:#fdecea;--sel:#e3f1ff}

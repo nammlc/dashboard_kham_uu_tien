@@ -279,7 +279,8 @@ class SecurityTests(RegisterBase):
             self.skipTest("flask_login là bản giả trong môi trường test")
         public = {"register_page", "register_done", "static", "login", "logout", "auth_google", "auth_callback", "health",
                   "login_google", "google_callback",                       # đăng nhập Google (chưa đăng nhập thì phải vào được)
-                  "session_status", "keepalive", "robots_txt", "sitemap_xml"}   # tự kiểm tra đăng nhập, trả 401 JSON thay vì chuyển hướng
+                  "session_status", "keepalive", "robots_txt", "sitemap_xml",
+                  "favicon"}   # icon trang (công khai, Google cần lấy được); tự kiểm tra đăng nhập, trả 401 JSON thay vì chuyển hướng
         open_ones = [ep for ep, fn in A.app.view_functions.items() if ep not in public and not hasattr(fn, "__wrapped__")]
         self.assertEqual(open_ones, [])
 

@@ -39,6 +39,22 @@ class SeoTests(AppTestCase):
         self.assertIn("Disallow: /", self.get("/robots.txt", ADMIN).get_data(as_text=True))
         self.assertIn("noindex", self.get("/login", ADMIN).headers.get("X-Robots-Tag", ""))
 
+    def test_favicon_is_public_and_declared_on_every_public_page(self):
+        """Google lấy favicon từ tên miền con của bệnh nhân: /favicon.ico phải trả file thật (không 404 dù PUBLIC_ONLY)
+        và mọi trang công khai phải khai báo icon bằng file (không dùng data: URI)."""
+        r = self.get("/favicon.ico")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.get_data().startswith(b"\x00\x00\x01\x00"), "phải là file .ico thật")
+        self.assertIn("max-age", r.headers.get("Cache-Control", ""))
+        for path in ("/static/favicon-48.png", "/static/icon-192.png", "/static/apple-touch-icon.png"):
+            self.assertEqual(self.get(path).status_code, 200, path)
+        h = self.get("/dang-ky").get_data(as_text=True)
+        self.assertIn('href="/favicon.ico"', h)
+        self.assertIn("favicon-48.png", h); self.assertIn("apple-touch-icon.png", h)
+        self.assertNotIn("data:image/svg", h)
+        self.assertEqual(self.get("/favicon.ico", ADMIN).status_code, 200)     # tên miền admin cũng có icon trên tab
+        self.assertNotIn("Disallow: /static", self.get("/robots.txt").get_data(as_text=True))   # không chặn file icon
+
     def test_verification_meta_tags_from_env(self):
         self.assertNotIn("google-site-verification", self.get("/dang-ky").get_data(as_text=True))
         A.app.config.update(GOOGLE_SITE_VERIFICATION="abc123TOKEN", BING_SITE_VERIFICATION="bing456")

@@ -10,7 +10,7 @@ import os, json, time, uuid, threading
 from datetime import datetime, timedelta
 
 from flask import (Flask, render_template, redirect, url_for,
-                   session, request, flash, jsonify, g, abort)
+                   session, request, flash, jsonify, g, abort, send_from_directory)
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import (LoginManager, UserMixin,
                          login_user, logout_user, login_required, current_user)
@@ -125,7 +125,7 @@ def _norm_host(h: str) -> str:
 # Cho phép nhiều tên miền bệnh nhân, cách nhau bằng dấu phẩy
 _PATIENT_HOSTS = {_norm_host(h) for h in os.environ.get("PATIENT_HOST", "").split(",") if h.strip()}
 _PATIENT_PUBLIC_ONLY = os.environ.get("PATIENT_HOST_PUBLIC_ONLY", "0") == "1"
-_PATIENT_PUBLIC_PATHS = ("/dang-ky", "/dang-ky/xong", "/robots.txt", "/sitemap.xml")
+_PATIENT_PUBLIC_PATHS = ("/dang-ky", "/dang-ky/xong", "/robots.txt", "/sitemap.xml", "/favicon.ico")
 
 
 @app.before_request
@@ -167,7 +167,7 @@ def _inject_idle():
 
 @app.before_request
 def _admin_idle_timeout():
-    if app.config.get("LOGIN_DISABLED") or request.endpoint in (None, "static"):
+    if app.config.get("LOGIN_DISABLED") or request.endpoint in (None, "static", "favicon"):
         return None
     if not current_user.is_authenticated:
         return None
@@ -213,7 +213,7 @@ def keepalive():
 
 # ── Ghi nhật ký truy cập ─────────────────────────────────────────────────────
 # Chỉ ghi ĐƯỜNG DẪN (không ghi ?q=... vì có thể chứa tên / SĐT bệnh nhân) và không ghi nội dung form.
-_LOG_SKIP = {None, "static", "session_status", "keepalive", "robots_txt", "sitemap_xml",   # nhiễu / tự động
+_LOG_SKIP = {None, "static", "favicon", "session_status", "keepalive", "robots_txt", "sitemap_xml",   # nhiễu / tự động
              "login", "login_google", "google_callback", "logout"}                          # đã ghi riêng ở trên
 
 PAGE_NAMES = {
@@ -942,6 +942,14 @@ def register_page():
     session["reg_done"] = summary
     session.update(RG.new_form_state())
     return redirect(url_for("register_done"))                          # PRG: tải lại trang không gửi lại đơn
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Google/trình duyệt/bot hay thử /favicon.ico ở gốc tên miền. Phục vụ file thật (công khai, không cần đăng nhập)."""
+    resp = send_from_directory(app.static_folder, "favicon.ico", mimetype="image/x-icon")
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 @app.route("/robots.txt")

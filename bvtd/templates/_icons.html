@@ -1,0 +1,6 @@
+{#- Bộ icon tab/trình duyệt/Google. Dùng chung cho mọi trang: {% include "_icons.html" %}
+    Google lấy favicon từ TRANG CHỦ của từng tên miền con, cần file thật (không hỗ trợ data: URI), vuông, >= 48px. -#}
+<link rel="icon" href="{{ url_for('favicon') }}" sizes="any">
+<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
