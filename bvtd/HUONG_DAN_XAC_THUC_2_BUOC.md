@@ -14,6 +14,8 @@ Sau khi đăng nhập bằng **mật khẩu hoặc Google**, admin phải nhập
 - **Không đổi `SECRET_KEY`** sau khi triển khai: mã bí mật được mã hoá bằng khoá dẫn xuất từ `SECRET_KEY`; nếu đổi, mọi admin sẽ phải quét QR lại một lần (không bị khoá, chỉ phải thiết lập lại).
 
 ## Mất / đổi điện thoại
+Tự làm được (không cần quản trị viên) khi đã cấu hình gửi email — xem **HUONG_DAN_QUEN_MAT_KHAU.md**: đổi máy trong menu *Tài khoản & bảo mật*, hoặc bấm *Mất / đổi điện thoại?* ở trang nhập mã. Nếu chưa cấu hình email:
+
 Quản trị viên khác (hoặc người có quyền terminal máy chủ) chạy:
 ```
 flask --app app admin-2fa-reset email@benhvien.vn

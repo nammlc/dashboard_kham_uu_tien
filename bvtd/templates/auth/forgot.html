@@ -1,0 +1,15 @@
+{% extends "auth/_shell.html" %}
+{% block title %}Quên mật khẩu{% endblock %}
+{% block icon %}🔑{% endblock %}
+{% block heading %}Quên mật khẩu{% endblock %}
+{% block body %}
+    <p class="text-sm text-slate-600 mb-4">Nhập email tài khoản admin. Chúng tôi sẽ gửi liên kết để đặt mật khẩu mới (hiệu lực 30 phút).</p>
+    <form method="POST">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label for="email" class="block text-sm font-semibold text-slate-600 mb-1.5">Email</label>
+      <input type="email" id="email" name="email" required autofocus autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Gửi liên kết đặt lại</button>
+    </form>
+    <p class="text-center mt-5"><a href="{{ url_for('login') }}" class="text-xs text-slate-500 underline">← Quay lại đăng nhập</a></p>
+    <p class="text-xs text-slate-400 mt-3 text-center">Tài khoản chỉ đăng nhập bằng Google không có mật khẩu để đặt lại.</p>
+{% endblock %}

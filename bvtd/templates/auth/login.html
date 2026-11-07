@@ -98,6 +98,9 @@
         Đăng nhập
       </button>
     </form>
+    {% if mail_enabled %}
+    <p class="text-center mt-4"><a href="{{ url_for('forgot_password') }}" class="text-xs text-slate-500 underline">Quên mật khẩu?</a></p>
+    {% endif %}
 
     <p class="text-center text-xs text-slate-400 mt-6">© 2026 BVĐK Tâm Đức Cầu Quan</p>
   </div>

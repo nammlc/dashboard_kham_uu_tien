@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Đổi điện thoại xác thực{% endblock %}
+{% block page_title %}📱 Đổi điện thoại xác thực{% endblock %}
+{% block head %}<style>.qr svg{width:100%;height:auto;display:block}</style>{% endblock %}
+
+{% block content %}
+<div class="max-w-md bg-white rounded-xl border border-slate-200 px-6 py-5">
+  {% if step == 1 %}
+    <p class="text-sm font-semibold text-slate-800">Bước 1/2 · Xác nhận bằng điện thoại hiện tại</p>
+    <p class="text-sm text-slate-500 mt-1">Mở Google Authenticator trên điện thoại <b>đang dùng</b> và nhập mã 6 số của tài khoản <b>{{ email }}</b>.</p>
+    <form method="POST" autocomplete="off" class="mt-4">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="verify_old">
+      <input type="text" name="code" required autofocus inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000"
+             class="w-full border border-slate-300 rounded-lg px-3 py-3 text-center text-2xl tracking-[.35em] font-semibold focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Tiếp tục</button>
+    </form>
+  {% else %}
+    <p class="text-sm font-semibold text-slate-800">Bước 2/2 · Thêm điện thoại mới</p>
+    <ol class="text-sm text-slate-600 list-decimal pl-5 space-y-1 mt-2 mb-4">
+      <li>Trên <b>điện thoại mới</b>, mở Google Authenticator → <b>+ → Quét mã QR</b>.</li>
+      <li>Quét mã bên dưới rồi nhập mã 6 số vừa hiện ra.</li>
+    </ol>
+    <div class="qr mx-auto w-52 p-2 border border-slate-200 rounded-lg mb-3" role="img" aria-label="Mã QR thêm tài khoản vào điện thoại mới">{{ qr_svg|safe }}</div>
+    <details class="mb-4 text-sm">
+      <summary class="cursor-pointer text-[#2a7ae4] font-medium">Không quét được? Nhập khoá thủ công</summary>
+      <p class="mt-2 font-mono text-sm tracking-wider bg-slate-100 rounded px-3 py-2 break-all select-all">{{ secret_text }}</p>
+      <p class="mt-2 text-xs"><a href="{{ otp_uri }}" class="text-[#2a7ae4] underline">Đang dùng chính điện thoại mới này? Bấm để mở ứng dụng xác thực</a></p>
+    </details>
+    <form method="POST" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="confirm_new">
+      <input type="text" name="code" required autofocus inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000"
+             class="w-full border border-slate-300 rounded-lg px-3 py-3 text-center text-2xl tracking-[.35em] font-semibold focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <button type="submit" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Xác nhận & đổi sang điện thoại mới</button>
+    </form>
+    <p class="text-xs text-amber-700 mt-3">Điện thoại cũ sẽ ngừng dùng được ngay sau khi xác nhận.</p>
+  {% endif %}
+  <form method="POST" class="text-center mt-4">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="cancel">
+    <button type="submit" class="text-xs text-slate-500 underline">Huỷ</button>
+  </form>
+</div>
+{% endblock %}

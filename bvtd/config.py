@@ -25,6 +25,17 @@ class Config:
     TWO_FACTOR_ENABLED = os.environ.get("TWO_FACTOR_ENABLED", "1") != "0"
     TWO_FACTOR_ISSUER  = os.environ.get("TWO_FACTOR_ISSUER", "BVĐK Tâm Đức Cầu Quan").strip() or "BVĐK Tâm Đức Cầu Quan"
 
+    # ── Gửi email (quên mật khẩu / đổi điện thoại) — xem HUONG_DAN_QUEN_MAT_KHAU.md ──
+    # Chưa điền SMTP_HOST + SMTP_FROM (hoặc SMTP_USER) + ADMIN_BASE_URL thì các liên kết "Quên mật khẩu", "Mất điện thoại" tự ẩn.
+    SMTP_HOST     = os.environ.get("SMTP_HOST", "").strip()
+    SMTP_PORT     = int(os.environ.get("SMTP_PORT", "587") or 587)
+    SMTP_USER     = os.environ.get("SMTP_USER", "").strip()
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+    SMTP_FROM     = os.environ.get("SMTP_FROM", "").strip()                    # vd: BVĐK Tâm Đức <no-reply@benhvien.vn>
+    SMTP_SECURITY = os.environ.get("SMTP_SECURITY", "starttls").strip().lower()    # starttls | ssl | none
+    # Địa chỉ gốc của trang ADMIN, dùng dựng liên kết trong email (KHÔNG lấy từ header Host để tránh bị giả mạo địa chỉ).
+    ADMIN_BASE_URL = os.environ.get("ADMIN_BASE_URL", "").strip().rstrip("/")  # vd: https://quanly.ten-mien.vn
+
     # ── Phiên đăng nhập admin: sau N phút KHÔNG thao tác trên trang web thì tự đăng xuất ──
     SESSION_IDLE_MINUTES = int(os.environ.get("SESSION_IDLE_MINUTES", "15"))
     SESSION_COOKIE_HTTPONLY = True

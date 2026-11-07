@@ -37,7 +37,14 @@
       </button>
       <p class="text-xs text-slate-400 mt-3 text-center">Còn {{ remaining }} lần thử. Mã đổi mỗi 30 giây.</p>
     </form>
+    {% if mail_enabled %}
+    <form method="POST" action="{{ url_for('otp_recover_send') }}" class="text-center mt-4">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="text-xs text-[#2a7ae4] underline">Mất / đổi điện thoại? Gửi liên kết vào email</button>
+    </form>
+    {% else %}
     <p class="text-xs text-slate-400 mt-4 text-center">Mất điện thoại? Liên hệ quản trị viên để đặt lại.</p>
+    {% endif %}
     <p class="text-center mt-3"><a href="{{ url_for('login_otp_cancel') }}" class="text-xs text-slate-500 underline">← Đăng nhập lại</a></p>
   </div>
 <script>

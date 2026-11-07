@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Tài khoản & bảo mật{% endblock %}
+{% block page_title %}⚙️ Tài khoản & bảo mật{% endblock %}
+
+{% block content %}
+<div class="max-w-xl space-y-4">
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Tài khoản</p>
+    <p class="text-sm font-semibold text-slate-800 mt-1">{{ current_user.name }}</p>
+    <p class="text-sm text-slate-500">{{ current_user.email }}</p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Xác thực 2 bước (Google Authenticator)</p>
+    {% if not two_factor_on %}
+      <p class="text-sm text-slate-600 mt-1">Đang <b>tắt</b> trên hệ thống.</p>
+    {% elif has_totp %}
+      <p class="text-sm text-emerald-700 font-semibold mt-1">✔ Đã thiết lập{% if enabled_at %} <span class="font-normal text-slate-400">· từ {{ enabled_at }}</span>{% endif %}</p>
+      <p class="text-sm text-slate-500 mt-2">Đổi sang điện thoại mới khi vẫn còn dùng được điện thoại cũ. Nếu đã mất điện thoại, hãy đăng xuất rồi chọn “Mất / đổi điện thoại?” ở bước nhập mã.</p>
+      <a href="{{ url_for('account_change_phone') }}"
+         class="inline-block mt-3 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg px-4 py-2 text-sm transition-colors">📱 Đổi điện thoại</a>
+    {% else %}
+      <p class="text-sm text-amber-700 mt-1">Chưa thiết lập. Hãy đăng xuất và đăng nhập lại để thiết lập.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
