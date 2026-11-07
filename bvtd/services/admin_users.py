@@ -55,7 +55,8 @@ class AdminUsers:
 
     def list(self):
         return self._all("SELECT id, email, name, is_active, created_at, last_login_at, "
-                         "(password_hash <> '') AS has_password FROM admin_users ORDER BY email")
+                         "(password_hash <> '') AS has_password, (totp_secret <> '') AS has_totp "
+                         "FROM admin_users ORDER BY email")
 
     # ── ghi ────────────────────────────────────────────────────────────────
     def add(self, email, password="", name=""):
@@ -80,6 +81,24 @@ class AdminUsers:
     def touch_login(self, email, name="", picture=""):
         self._write("UPDATE admin_users SET last_login_at = now(), name = COALESCE(NULLIF(%s, ''), name), "
                     "picture = COALESCE(NULLIF(%s, ''), picture) WHERE email = %s", (name, picture, norm_email(email)))
+
+    # ── xác thực 2 bước (TOTP) ─────────────────────────────────────────────
+    def set_totp(self, email, enc_secret: str, step: int, expect_old: str = "") -> bool:
+        """Lưu mã bí mật (đã mã hoá) khi thiết lập. CHỈ ghi nếu mã bí mật hiện tại đúng bằng `expect_old` (rỗng = chưa có) —
+        không ai có thể ghi đè mã của tài khoản đã thiết lập, kể cả khi hai lượt thiết lập chạy song song."""
+        return self._write("UPDATE admin_users SET totp_secret = %s, totp_enabled_at = now(), totp_last_step = %s "
+                           "WHERE email = %s AND totp_secret = %s", (enc_secret, int(step), norm_email(email), expect_old)) > 0
+
+    def use_totp_step(self, email, step: int) -> bool:
+        """Đánh dấu mã (bước thời gian `step`) đã dùng. Trả False nếu đã có mã mới hơn/bằng được dùng → chặn dùng lại,
+        kể cả 2 yêu cầu cùng lúc (so sánh-và-ghi nằm trong 1 câu lệnh SQL)."""
+        return self._write("UPDATE admin_users SET totp_last_step = %s WHERE email = %s AND totp_last_step < %s",
+                           (int(step), norm_email(email), int(step))) > 0
+
+    def reset_totp(self, email) -> bool:
+        """Xoá thiết lập 2 bước (mất điện thoại): lần đăng nhập sau người đó phải quét QR lại."""
+        return self._write("UPDATE admin_users SET totp_secret = '', totp_enabled_at = NULL, totp_last_step = 0 "
+                           "WHERE email = %s", (norm_email(email),)) > 0
 
     # ── xác thực ───────────────────────────────────────────────────────────
     def verify(self, email, password):

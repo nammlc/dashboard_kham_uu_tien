@@ -52,7 +52,7 @@ oauth.register(
 )
 
 # ── Cơ sở dữ liệu (SQLite trên máy chủ): tài khoản admin + nhật ký truy cập ────────────────
-from services import access_log as ACL, admin_users as ADM, db as DB
+from services import access_log as ACL, admin_users as ADM, db as DB, twofa as TF
 
 
 def _admins() -> "ADM.AdminUsers":
@@ -214,7 +214,7 @@ def keepalive():
 # ── Ghi nhật ký truy cập ─────────────────────────────────────────────────────
 # Chỉ ghi ĐƯỜNG DẪN (không ghi ?q=... vì có thể chứa tên / SĐT bệnh nhân) và không ghi nội dung form.
 _LOG_SKIP = {None, "static", "favicon", "session_status", "keepalive", "robots_txt", "sitemap_xml",   # nhiễu / tự động
-             "login", "login_google", "google_callback", "logout"}                          # đã ghi riêng ở trên
+             "login", "login_google", "google_callback", "login_otp", "login_otp_setup", "login_otp_cancel", "logout"}                          # đã ghi riêng ở trên
 
 PAGE_NAMES = {
     "dashboard": "Tổng quan", "patients": "Bệnh nhân", "upcoming": "Lịch khám 3 ngày", "report": "Báo cáo",
@@ -329,13 +329,8 @@ def login():
             flash("Hệ thống chưa kết nối được cơ sở dữ liệu tài khoản. Vui lòng thử lại sau.", "error")
             return render_template("auth/login.html", expired=False)
 
-        if row:
-            u = User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"])
-            login_user(u, remember=False)                  # không "ghi nhớ" — hết 15 phút không thao tác là phải đăng nhập lại
-            session["last_active"] = time.time()
-            _admins().touch_login(row["email"])
-            _log("login_ok", email=row["email"], detail="Email + mật khẩu")
-            return redirect(_safe_next(request.args.get("next")) or url_for("dashboard"))
+        if row:                                             # đúng mật khẩu → còn bước nhập mã OTP (nếu bật) rồi mới đăng nhập
+            return _begin_second_factor(row, "Email + mật khẩu", _safe_next(request.args.get("next")))
         else:
             _log("login_fail", email=email[:120], detail="Sai email / mật khẩu hoặc tài khoản bị tắt")
             flash("Email hoặc mật khẩu không đúng.", "error")
@@ -404,9 +399,6 @@ def google_callback():
 
     try:
         row = _admins().get_active(email)                        # chỉ email có trong bảng admin_users (và đang bật) mới vào được
-        if row:
-            _admins().touch_login(email, user_info.get("name", ""), user_info.get("picture", ""))
-            row = _admins().get_active(email)
     except DB.NotConfigured:
         return _google_fail("Google: thiếu DATABASE_URL", "Hệ thống chưa được cấu hình cơ sở dữ liệu (thiếu DATABASE_URL). Vui lòng liên hệ quản trị viên.", email)
     except DB.DBError:
@@ -417,10 +409,173 @@ def google_callback():
         return _google_fail("Google: tài khoản không có trong danh sách admin",
                             f"Tài khoản {email} không được phép truy cập. Hãy nhờ quản trị viên thêm email này vào danh sách admin.", email)
 
-    login_user(User(row["email"], row["name"] or email.split("@")[0], row["picture"]), remember=False)
+    return _begin_second_factor(row, "Google", nxt, {"name": user_info.get("name", ""), "picture": user_info.get("picture", "")})
+
+
+# ── Bước 2 của đăng nhập: mã OTP (Google Authenticator) ───────────────────────────────────────────────────────
+# Qua bước 1 (mật khẩu hoặc Google) CHƯA được vào: chỉ lưu "đang chờ OTP" trong phiên (tối đa OTP_PENDING_SECONDS).
+# Chỉ khi nhập đúng mã (hoặc đúng mã lúc thiết lập lần đầu) mới login_user().
+OTP_PENDING_SECONDS = 300      # từ lúc qua bước 1 đến lúc phải nhập xong mã
+OTP_MAX_TRIES       = 5        # sai quá số lần này trong 1 lượt đăng nhập → phải đăng nhập lại từ đầu
+_otp_limiter        = TF.FailLimiter(limit=10, window=900)        # 10 lần sai / 15 phút / email → tạm khoá
+
+
+def _two_factor_on() -> bool:
+    return bool(app.config.get("TWO_FACTOR_ENABLED", True))
+
+
+def _finish_login(row, method: str, nxt: str = "", profile: dict | None = None):
+    """Đăng nhập thật sự (đã qua MỌI bước xác thực)."""
+    login_user(User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"]), remember=False)   # không "ghi nhớ"
     session["last_active"] = time.time()
-    _log("login_ok", email=email, detail="Google")
+    session.pop("otp_pending", None)
+    session.pop("otp_setup", None)
+    profile = profile or {}
+    try:
+        _admins().touch_login(row["email"], profile.get("name", ""), profile.get("picture", ""))
+    except Exception:                                            # noqa: BLE001 — chỉ là ghi giờ đăng nhập, không được chặn người dùng
+        app.logger.warning("không ghi được last_login_at", exc_info=True)
+    _log("login_ok", email=row["email"], detail=method)
     return redirect(nxt or url_for("dashboard"))
+
+
+def _begin_second_factor(row, method: str, nxt: str = "", profile: dict | None = None):
+    """Đã đúng bước 1 (mật khẩu/Google). Bật 2 bước → sang trang nhập OTP; tắt → đăng nhập luôn."""
+    if not _two_factor_on():
+        return _finish_login(row, method, nxt, profile)
+    session.pop("otp_setup", None)
+    session["otp_pending"] = {"email": row["email"], "method": method, "next": nxt, "t": time.time(), "tries": 0,
+                              "profile": {"name": (profile or {}).get("name", "")[:120], "picture": (profile or {}).get("picture", "")[:300]}}
+    return redirect(url_for("login_otp"))
+
+
+def _otp_guard():
+    """→ (pending, hàng admin, None) nếu đang ở đúng bước OTP; ngược lại (None, None, redirect)."""
+    if current_user.is_authenticated:
+        return None, None, redirect(url_for("dashboard"))
+    p = session.get("otp_pending")
+    if not isinstance(p, dict) or time.time() - float(p.get("t", 0)) > OTP_PENDING_SECONDS:
+        session.pop("otp_pending", None)
+        session.pop("otp_setup", None)
+        flash("Phiên xác thực đã hết hạn. Vui lòng đăng nhập lại.", "error")
+        return None, None, redirect(url_for("login"))
+    try:
+        row = _admins().get_active(p.get("email", ""))
+    except (DB.NotConfigured, DB.DBError):
+        app.logger.exception("lỗi cơ sở dữ liệu ở bước OTP")
+        session.pop("otp_pending", None)
+        flash("Hệ thống chưa kết nối được cơ sở dữ liệu tài khoản. Vui lòng thử lại sau.", "error")
+        return None, None, redirect(url_for("login"))
+    if not row:                                                  # bị tắt giữa chừng
+        session.pop("otp_pending", None)
+        flash("Tài khoản này không còn được phép truy cập.", "error")
+        return None, None, redirect(url_for("login"))
+    return p, row, None
+
+
+def _otp_restart(message: str):
+    session.pop("otp_pending", None)
+    session.pop("otp_setup", None)
+    flash(message, "error")
+    return redirect(url_for("login"))
+
+
+def _otp_wrong(p, email: str):
+    """Ghi nhận 1 lần nhập sai. Trả redirect nếu phải bắt đăng nhập lại, None nếu cho thử tiếp."""
+    _otp_limiter.fail(email)
+    p["tries"] = int(p.get("tries", 0)) + 1
+    session["otp_pending"] = p
+    _log("login_fail", email=email[:120], detail=f"Sai mã OTP (lần {p['tries']})")
+    if p["tries"] >= OTP_MAX_TRIES:
+        return _otp_restart(f"Nhập sai mã quá {OTP_MAX_TRIES} lần. Vui lòng đăng nhập lại.")
+    flash("Mã không đúng hoặc đã hết hạn. Hãy nhập mã MỚI NHẤT đang hiện trong ứng dụng.", "error")
+    return None
+
+
+def _otp_locked(email: str):
+    if _otp_limiter.locked(email):
+        _log("login_fail", email=email[:120], detail="OTP: tạm khoá do nhập sai nhiều lần")
+        return _otp_restart("Nhập sai mã quá nhiều lần nên tài khoản bị tạm khoá vài phút. Vui lòng thử lại sau.")
+    return None
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+def login_otp():
+    p, row, resp = _otp_guard()
+    if resp:
+        return resp
+    secret = TF.decrypt(row.get("totp_secret") or "", app.config["SECRET_KEY"])
+    if not secret:                                               # chưa thiết lập (hoặc mã cũ không giải mã được) → quét QR
+        return redirect(url_for("login_otp_setup"))
+    email = row["email"]
+    if request.method == "POST":
+        resp = _otp_locked(email)
+        if resp:
+            return resp
+        try:
+            step = TF.verify(secret, request.form.get("code"), row.get("totp_last_step") or 0)
+            ok = step is not None and _admins().use_totp_step(email, step)      # mỗi mã chỉ dùng được 1 lần
+        except DB.DBError:
+            app.logger.exception("lỗi cơ sở dữ liệu khi kiểm tra OTP")
+            flash("Chưa kiểm tra được mã do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.", "error")
+            return render_template("auth/otp.html", email=email, method=p["method"], remaining=OTP_MAX_TRIES - int(p.get("tries", 0)))
+        if ok:
+            _otp_limiter.reset(email)
+            return _finish_login(row, f"{p['method']} + OTP", p.get("next", ""), p.get("profile"))
+        resp = _otp_wrong(p, email)
+        if resp:
+            return resp
+    return render_template("auth/otp.html", email=email, method=p["method"], remaining=OTP_MAX_TRIES - int(p.get("tries", 0)))
+
+
+@app.route("/login/2fa/setup", methods=["GET", "POST"])
+def login_otp_setup():
+    """Lần đầu: hiện mã QR để thêm vào Google Authenticator, nhập thử 1 mã đúng mới bật 2 bước và đăng nhập.
+    Tài khoản ĐÃ thiết lập thì KHÔNG vào lại được đây (kẻ biết mật khẩu không thể tự thay bằng điện thoại của mình)
+    — mất điện thoại thì quản trị viên chạy: flask --app app admin-2fa-reset email"""
+    p, row, resp = _otp_guard()
+    if resp:
+        return resp
+    key, email, old_enc = app.config["SECRET_KEY"], row["email"], row.get("totp_secret") or ""
+    if TF.decrypt(old_enc, key):
+        return redirect(url_for("login_otp"))
+    enc = session.get("otp_setup")
+    secret = TF.decrypt(enc, key) if enc else None
+    if not secret:
+        secret = TF.new_secret()
+        session["otp_setup"] = TF.encrypt(secret, key)           # trong phiên cũng để dạng mã hoá
+    if request.method == "POST":
+        resp = _otp_locked(email)
+        if resp:
+            return resp
+        step = TF.verify(secret, request.form.get("code"))
+        if step is not None:
+            try:
+                saved = _admins().set_totp(email, TF.encrypt(secret, key), step, expect_old=old_enc)
+            except DB.DBError:
+                app.logger.exception("lỗi cơ sở dữ liệu khi lưu 2 bước")
+                flash("Chưa lưu được thiết lập do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.", "error")
+                saved = None
+            if saved:
+                _otp_limiter.reset(email)
+                _log("otp_setup", email=email, detail="Thiết lập xác thực 2 bước")
+                return _finish_login(row, f"{p['method']} + OTP (thiết lập lần đầu)", p.get("next", ""), p.get("profile"))
+            if saved is False:                                   # có người thiết lập trước ở lượt khác
+                return redirect(url_for("login_otp"))
+        else:
+            resp = _otp_wrong(p, email)
+            if resp:
+                return resp
+    uri = TF.provisioning_uri(secret, email, app.config.get("TWO_FACTOR_ISSUER", TF.DEFAULT_ISSUER))
+    return render_template("auth/otp_setup.html", email=email, method=p["method"], remaining=OTP_MAX_TRIES - int(p.get("tries", 0)),
+                           qr_svg=TF.qr_svg(uri), secret_text=TF.format_secret(secret), otp_uri=uri)
+
+
+@app.route("/login/2fa/cancel")
+def login_otp_cancel():
+    session.pop("otp_pending", None)
+    session.pop("otp_setup", None)
+    return redirect(url_for("login"))
 
 
 @app.route("/logout")
@@ -1583,6 +1738,7 @@ def inject_globals():
 #   flask --app app admin-add email@benhvien.vn        (hỏi mật khẩu; bỏ trống = chỉ đăng nhập bằng Google)
 #   flask --app app admin-passwd email@benhvien.vn      (đổi mật khẩu)
 #   flask --app app admin-disable email@benhvien.vn     /  admin-enable email@benhvien.vn
+#   flask --app app admin-2fa-reset email@benhvien.vn   (mất điện thoại: xoá mã OTP, lần đăng nhập sau quét QR lại)
 # ════════════════════════════════════════════════════════════════════════════════
 import click
 
@@ -1616,7 +1772,7 @@ def cli_admin_list():
     for r in rows:
         last = ACL.fmt_time(r["last_login_at"]) if r["last_login_at"] else "chưa đăng nhập"
         click.echo(f"{'BẬT ' if r['is_active'] else 'TẮT '} {r['email']:<36} "
-                   f"{'mật khẩu' if r['has_password'] else 'chỉ Google'}  · lần cuối: {last}")
+                   f"{'mật khẩu' if r['has_password'] else 'chỉ Google'}  · 2 bước: {'đã thiết lập' if r['has_totp'] else 'chưa'}  · lần cuối: {last}")
 
 
 @app.cli.command("admin-add")
@@ -1650,6 +1806,13 @@ def cli_admin_passwd(email):
 def cli_admin_disable(email):
     """Tắt tài khoản (không xoá): người đó bị đăng xuất ở lần thao tác kế tiếp."""
     click.echo("Đã tắt tài khoản." if _admins().set_active(email, False) else "Không tìm thấy tài khoản.")
+
+
+@app.cli.command("admin-2fa-reset")
+@click.argument("email")
+def cli_admin_2fa_reset(email):
+    """Xoá thiết lập xác thực 2 bước (mất/đổi điện thoại): lần đăng nhập sau người đó quét lại mã QR."""
+    click.echo("Đã đặt lại 2 bước — lần đăng nhập tới sẽ hiện mã QR mới." if _admins().reset_totp(email) else "Không tìm thấy tài khoản.")
 
 
 @app.cli.command("admin-enable")

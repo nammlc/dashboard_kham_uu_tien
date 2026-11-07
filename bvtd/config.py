@@ -20,6 +20,11 @@ class Config:
     GOOGLE_SITE_VERIFICATION = os.environ.get("GOOGLE_SITE_VERIFICATION", "").strip()
     BING_SITE_VERIFICATION   = os.environ.get("BING_SITE_VERIFICATION", "").strip()
 
+    # ── Xác thực 2 bước (mã OTP 6 số từ Google Authenticator) sau khi đăng nhập bằng mật khẩu / Google ──
+    # 1 = bắt buộc với mọi admin (lần đăng nhập đầu sẽ hiện mã QR để quét). 0 = tắt (chỉ dùng khi khẩn cấp).
+    TWO_FACTOR_ENABLED = os.environ.get("TWO_FACTOR_ENABLED", "1") != "0"
+    TWO_FACTOR_ISSUER  = os.environ.get("TWO_FACTOR_ISSUER", "BVĐK Tâm Đức Cầu Quan").strip() or "BVĐK Tâm Đức Cầu Quan"
+
     # ── Phiên đăng nhập admin: sau N phút KHÔNG thao tác trên trang web thì tự đăng xuất ──
     SESSION_IDLE_MINUTES = int(os.environ.get("SESSION_IDLE_MINUTES", "15"))
     SESSION_COOKIE_HTTPONLY = True

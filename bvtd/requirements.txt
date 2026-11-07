@@ -12,3 +12,6 @@ flask-caching==2.3.0
 tzdata
 psycopg[binary]==3.2.3
 psycopg-pool==3.2.3
+pyotp==2.9.0
+qrcode==8.0
+cryptography>=42

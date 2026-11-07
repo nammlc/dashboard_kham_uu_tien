@@ -60,9 +60,11 @@ class GoogleLoginTests(AppTestCase):
     def setUp(self):
         super().setUp()
         A.current_user = _real_flask_login().current_user                    # dùng current_user thật
-        old = {k: A.app.config.get(k) for k in ("LOGIN_DISABLED", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI")}
+        old = {k: A.app.config.get(k) for k in ("LOGIN_DISABLED", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI",
+                                                "TWO_FACTOR_ENABLED")}
+        # Ở đây chỉ kiểm tra BƯỚC 1 (Google); bước mã OTP có bộ test riêng ở test_two_factor.py
         A.app.config.update(LOGIN_DISABLED=False, GOOGLE_CLIENT_ID="id.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET="sec",
-                            GOOGLE_REDIRECT_URI="")
+                            GOOGLE_REDIRECT_URI="", TWO_FACTOR_ENABLED=False)
         self.addCleanup(lambda: A.app.config.update(old))
         self.admins = FakeAdmins([{"email": self.ADMIN, "name": "Quản trị"},
                                   {"email": "tat@bvtd.vn", "name": "Đã tắt", "active": False}])

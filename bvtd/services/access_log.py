@@ -17,6 +17,7 @@ VN = ZoneInfo("Asia/Ho_Chi_Minh")
 EVENTS = {
     "login_ok":        "Đăng nhập",
     "login_fail":      "Đăng nhập sai",
+    "otp_setup":       "Bật xác thực 2 bước",
     "logout":          "Đăng xuất",
     "session_expired": "Hết phiên (không thao tác)",
     "page":            "Xem trang",

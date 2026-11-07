@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS admin_users (
     last_login_at TIMESTAMPTZ
 );
 
+-- Xác thực 2 bước (TOTP). Chạy lại nhiều lần không sao (IF NOT EXISTS).
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_secret     TEXT        NOT NULL DEFAULT '';   -- mã bí mật đã MÃ HOÁ; rỗng = chưa thiết lập
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_enabled_at TIMESTAMPTZ;                       -- thời điểm thiết lập 2 bước
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS totp_last_step  BIGINT      NOT NULL DEFAULT 0;    -- bước thời gian của mã đã dùng gần nhất (chống dùng lại)
+
 CREATE TABLE IF NOT EXISTS access_log (
     id     BIGSERIAL   PRIMARY KEY,
     ts     TIMESTAMPTZ NOT NULL DEFAULT now(),
