@@ -35,9 +35,7 @@
     </div>
     <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 leading-relaxed">
       📅 Danh sách gốc: BN <b>từ khoa/tái khám</b>, BN <b>đăng ký Form</b> (nguồn trống) và BN gắn nhãn <b>vãng lai</b>, có NGÀY KHÁM từ
-      <b>{{ range_start.strftime('%d/%m/%Y') }}</b> đến <b>{{ today.strftime('%d/%m/%Y') }}</b> ({{ LOOKBACK }} ngày) và đang <b>CHƯA KHÁM</b>.<br>
-      🔍 Mỗi BN chỉ chấp nhận lượt đến nằm trong <b>[Ngày hẹn − {{ WB }}, min(Ngày hẹn + {{ WA }}, Hôm nay)]</b> — cửa sổ tự thu hẹp khi ngày hẹn gần hôm nay để không nhầm sang đợt khám cũ của cùng người.<br>
-      🏷️ BN đăng ký Form (nguồn trống) <b>đã đến</b> hoặc <b>chưa đến</b> khám đều được tự gán <b>NGUỒN = "BỆNH NHÂN VÃNG LAI"</b> khi ghi vào Sheet.
+      <b>{{ range_start.strftime('%d/%m/%Y') }}</b> đến <b>{{ today.strftime('%d/%m/%Y') }}</b> ({{ LOOKBACK }} ngày) và đang <b>CHƯA KHÁM</b>.
     </div>
     <p class="text-xs text-slate-500">Sẽ kiểm tra <b>{{ scope_n }}</b> bệnh nhân chưa khám
       ({{ scope_cnt.khoa }} từ khoa/tái khám · {{ scope_cnt.blank }} đăng ký Form · {{ scope_cnt.vl }} đã gắn nhãn vãng lai).</p>
