@@ -1,4 +1,4 @@
-"""Khoảng ngày: Import chỉ nhận ngày hẹn trong 30 ngày kể từ hôm nay; Đối chiếu lấy danh sách chưa khám trong 14 ngày trước tính từ hôm nay.
+"""Khoảng ngày: Import hướng dẫn xuất file theo NGÀY VÀO VIỆN lùi 30 ngày (không loại bản ghi nào); Đối chiếu lấy danh sách chưa khám trong 14 ngày trước tính từ hôm nay.
 Và các câu chú thích đã được gỡ khỏi giao diện."""
 import datetime as dt
 import io
@@ -14,72 +14,51 @@ text = lambda h: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", h))
 fmt = lambda d: d.strftime("%d/%m/%Y")
 
 
-class SplitByWindowTests(unittest.TestCase):
-    def rec(self, hen):
-        return {"HỌ TÊN": "A", "NGÀY HẸN": hen}
+class ExportRangeTests(unittest.TestCase):
+    def test_range_is_the_30_days_back_from_today_inclusive(self):
+        self.assertEqual(IM.EXPORT_LOOKBACK_DAYS, 30)
+        self.assertEqual(IM.export_range(TODAY), (dt.date(2026, 9, 21), TODAY))
+        self.assertEqual(IM.export_range(dt.date(2027, 1, 10)), (dt.date(2026, 12, 11), dt.date(2027, 1, 10)))      # qua năm
+        self.assertEqual(IM.export_range(dt.date(2028, 3, 1)), (dt.date(2028, 1, 31), dt.date(2028, 3, 1)))         # năm nhuận
 
-    def test_boundaries_are_inclusive_and_cover_30_days(self):
-        lo, hi = IM.import_window(TODAY)
-        self.assertEqual((lo, hi), (TODAY, TODAY + dt.timedelta(days=30)))
-        cases = {"20/10/2026": False, "21/10/2026": True, "20/11/2026": True, "21/11/2026": False, "5/11/2026": True, "2026-11-05": True}
-        for hen, kept in cases.items():
-            keep, drop = IM.split_by_window([self.rec(hen)], TODAY)
-            self.assertEqual(bool(keep), kept, hen)
-            self.assertEqual(bool(drop), not kept, hen)
-
-    def test_unreadable_dates_are_kept_not_lost_silently(self):
-        keep, drop = IM.split_by_window([self.rec(""), self.rec("không phải ngày"), self.rec(None), {"HỌ TÊN": "B"}], TODAY)
-        self.assertEqual((len(keep), len(drop)), (4, 0))
-
-    def test_year_end_and_leap_day(self):
-        keep, _ = IM.split_by_window([self.rec("15/01/2027")], dt.date(2026, 12, 20))
-        self.assertEqual(len(keep), 1)
-        keep, drop = IM.split_by_window([self.rec("29/02/2028"), self.rec("01/03/2028")], dt.date(2028, 2, 20))
-        self.assertEqual((len(keep), len(drop)), (2, 0))
+    def test_the_importer_has_no_record_filter_by_date_any_more(self):
+        """Minh Lộ liệt kê theo NGÀY VÀO VIỆN nên ngày lập/ngày hẹn trong file có thể bất kỳ — không được loại bản ghi theo khoảng ngày."""
+        self.assertFalse(hasattr(IM, "split_by_window"))
 
 
-class ImportWindowFlow(AppTestCase):
+class ImportRangeGuidance(AppTestCase):
     TODAY = TODAY
 
     def upload(self, content):
         return self.client.post("/import", data={"excel_file": (io.BytesIO(content), "04-4.xlsx")},
                                 content_type="multipart/form-data", follow_redirects=True)
 
-    def test_import_page_shows_the_window_and_no_mapping_box(self):
+    def test_import_page_tells_to_export_by_admission_date_30_days_back(self):
         t = text(self.client.get("/import").get_data(as_text=True))
-        self.assertIn("ngày hẹn từ 21/10/2026 (hôm nay) đến 20/11/2026", t)
-        self.assertIn("30 ngày kể từ hôm nay", t)
+        self.assertIn("ngày vào viện từ 21/09/2026 đến 21/10/2026 (hôm nay)", t)
+        self.assertIn("lùi 30 ngày tính từ hôm nay", t)
+        self.assertIn("không theo ngày lập lịch hẹn", t)
         self.assertNotIn("Quy tắc mapping", t)
         self.assertNotIn("Họ tên → HỌ VÀ TÊN", t)
-        self.assertIn("Đúng file cần upload", t)                                   # ô cảnh báo file 04-4 vẫn còn
+        self.assertIn("Đúng file cần upload", t)                                          # ô cảnh báo file 04-4 vẫn còn
 
-    def test_out_of_window_appointments_are_dropped_reported_and_never_written(self):
-        # NGUYỄN THỊ PHƯƠNG hôm qua · TRẦN VĂN BÌNH hôm nay · LÊ HOÀNG NAM +30 · PHẠM THỊ HOA +31 · ĐỖ THỊ NGA +15
-        r = self.upload(build_04_4(TODAY, {1: -1, 2: 0, 3: 30, 4: 31, 5: 15}))
-        t = text(r.get_data(as_text=True))
-        self.assertIn("Đọc được 3 bệnh nhân", t)
-        self.assertIn("Đã bỏ qua 2 lịch hẹn", t)
-        self.assertIn("ngoài khoảng 21/10/2026 – 20/11/2026", t)
-        self.assertIn("NGUYỄN THỊ PHƯƠNG", t)                                       # người dùng thấy ai bị bỏ
-        self.assertIn("PHẠM THỊ HOA", t)
-        laps = [d for d in re.findall(r'name="lap" value="([^"]+)"', r.get_data(as_text=True))]
-        res = self.post_json("/import/confirm", {"lap": sorted(set(laps))}).get_json()
-        self.assertTrue(res["ok"], res)
-        self.assertEqual(res["count"], 3)
-        self.assertEqual(set(self.sheet.names()), {"TRẦN VĂN BÌNH", "LÊ HOÀNG NAM", "ĐỖ THỊ NGA"})
-
-    def test_nothing_in_window_explains_and_keeps_the_page_clean(self):
-        r = self.upload(build_04_4(TODAY, {i: 60 for i in range(1, 6)}))
-        t = text(r.get_data(as_text=True))
-        self.assertIn("File có 5 lịch hẹn nhưng không có lịch nào có ngày hẹn trong khoảng 21/10/2026 – 20/11/2026", t)
-        self.assertNotIn("Xem trước import", t)
-        self.assertEqual(self.client.get("/import/preview").status_code, 302)       # không có file chờ xử lý
-        self.assertEqual(self.sheet.names(), [])
-
-    def test_everything_in_window_shows_no_dropped_notice(self):
-        t = text(self.upload(build_04_4(TODAY)).get_data(as_text=True))
+    def test_no_record_is_dropped_whatever_its_lap_or_appointment_date(self):
+        """Lập 45 ngày trước, lập hôm nay, hẹn 90 ngày sau, hẹn hôm qua… — tất cả vẫn được đọc và chọn được theo ngày lập."""
+        r = self.upload(build_04_4(TODAY, hen={1: -3, 2: 90, 3: 0, 4: 400, 5: 15}, lap={1: -45, 2: 0, 3: -31, 4: -60, 5: -1}))
+        raw = r.get_data(as_text=True)
+        t = text(raw)
         self.assertIn("Đọc được 5 bệnh nhân", t)
         self.assertNotIn("Đã bỏ qua", t)
+        laps = set(re.findall(r'name="lap" value="([^"]+)"', raw))
+        self.assertEqual(laps, {fmt(TODAY + dt.timedelta(days=d)) for d in (-45, 0, -31, -60, -1)})
+        res = self.post_json("/import/confirm", {"lap": sorted(laps)}).get_json()
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["count"], 5)
+        self.assertEqual(len(self.sheet.names()), 5)
+
+    def test_default_selection_is_still_todays_lap(self):
+        t = text(self.upload(build_04_4(TODAY)).get_data(as_text=True))
+        self.assertIn("Đọc được 5 bệnh nhân", t)
 
 
 class ReconcileWindowTests(AppTestCase):

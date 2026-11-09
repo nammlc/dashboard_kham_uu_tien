@@ -1452,7 +1452,6 @@ def _import_context(selected_arg: list[str] | None, has_sel: bool, fresh: bool =
         "filename": data["filename"], "records": records, "total": len(records),
         "order": order, "counts": counts, "selected": selected, "progress": progress,
         "today_str": today_str, "UNKNOWN_LAP": UNKNOWN_LAP,
-        "window": data.get("window"), "dropped": data.get("dropped", []), "dropped_n": data.get("dropped_n", 0),
         "filtered": filtered, "new": new_records, "dup": dup_records, "file_dup": file_dups,
         "backfill": backfill, "diag": diag,
         "sheet_rows": stats["rows"], "sheet_valid": stats["valid"],
@@ -1478,7 +1477,6 @@ def import_excel():
             return redirect(url_for("import_excel"))
 
         from services.excel_parser import parse_minh_lo_excel
-        from services.importer import import_window, split_by_window, IMPORT_WINDOW_DAYS
         from services.sheets import vn_today
         records, err = parse_minh_lo_excel(f.read(), current_year=vn_today().year)
         if err:
@@ -1487,31 +1485,19 @@ def import_excel():
         if not records:
             flash("⚠️ Không tìm thấy dữ liệu bệnh nhân trong file. Kiểm tra lại định dạng file.", "warning")
             return redirect(url_for("import_excel"))
-        # Chỉ nhận ngày hẹn trong 30 ngày kể từ hôm nay; phần ngoài khoảng được ghi lại để báo ở bước xem trước
-        w_from, w_to = import_window(vn_today())
-        wf, wt = w_from.strftime("%d/%m/%Y"), w_to.strftime("%d/%m/%Y")
-        total_in_file = len(records)
-        records, dropped = split_by_window(records, vn_today())
-        if not records:
-            flash(f"⚠️ File có {total_in_file} lịch hẹn nhưng không có lịch nào có ngày hẹn trong khoảng {wf} – {wt} "
-                  f"({IMPORT_WINDOW_DAYS} ngày kể từ hôm nay). Hãy xuất lại file 04-4 với ngày hẹn trong khoảng này.", "warning")
-            return redirect(url_for("import_excel"))
 
         from services.importer import save_import, delete_import
         delete_import(session.get("import_token", ""))
         token = uuid.uuid4().hex
-        save_import(token, records, f.filename, extra={
-            "window": {"from": wf, "to": wt, "days": IMPORT_WINDOW_DAYS},
-            "dropped": [{"name": r.get("HỌ TÊN", ""), "hen": r.get("NGÀY HẸN", ""), "lap": r.get("NGÀY LẬP", "")} for r in dropped[:500]],
-            "dropped_n": len(dropped)})
+        save_import(token, records, f.filename)
         session["import_token"] = token
         cache.delete("main_df")        # bắt đầu phiên import bằng dữ liệu Sheet mới nhất
         return redirect(url_for("import_preview_page"))
 
-    from services.importer import import_window, IMPORT_WINDOW_DAYS
+    from services.importer import export_range, EXPORT_LOOKBACK_DAYS
     from services.sheets import vn_today
-    w_from, w_to = import_window(vn_today())
-    return render_template("dashboard/import.html", has_pending=_import_data() is not None, WIN_DAYS=IMPORT_WINDOW_DAYS,
+    w_from, w_to = export_range(vn_today())
+    return render_template("dashboard/import.html", has_pending=_import_data() is not None, WIN_DAYS=EXPORT_LOOKBACK_DAYS,
                            win_from=w_from.strftime("%d/%m/%Y"), win_to=w_to.strftime("%d/%m/%Y"))
 
 
