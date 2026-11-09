@@ -16,8 +16,7 @@
     <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 leading-relaxed">
       <b>📋 Hướng dẫn:</b> Minh Lộ → Báo cáo → <b>ĐK Khám Chữa Bệnh</b> → chọn khoảng ngày
       <b>từ {{ range_start.strftime('%d/%m/%Y') }} đến {{ today.strftime('%d/%m/%Y') }}</b>
-      (<b>{{ LOOKBACK }} ngày trước tính từ hôm nay</b>) → Export Excel → upload vào đây. Hệ thống dò từng bệnh nhân
-      <b>chưa khám</b> có ngày khám trong {{ LOOKBACK }} ngày đó xem có trong log không — <b>không cần đúng 1 ngày</b> (đến sớm/muộn vẫn bắt được).
+      (<b>{{ LOOKBACK }} ngày trước tính từ hôm nay</b>) → Export Excel → upload vào đây.
     </div>
     <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
       ⚠️ <b>Đúng file cần upload:</b> file <b>01-1</b> (Báo cáo ĐK KCB — nhật ký BN thực tế đến khám), không nhầm với file 04-4 ở trang Import.
