@@ -3,13 +3,35 @@
 {% block icon %}🔑{% endblock %}
 {% block heading %}Quên mật khẩu{% endblock %}
 {% block body %}
-    <p class="text-sm text-slate-600 mb-4">Nhập email tài khoản admin. Chúng tôi sẽ gửi liên kết để đặt mật khẩu mới (hiệu lực 30 phút).</p>
-    <form method="POST">
+  {% if mail_on %}
+    <form method="POST" class="mb-2">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-      <label for="email" class="block text-sm font-semibold text-slate-600 mb-1.5">Email</label>
-      <input type="email" id="email" name="email" required autofocus autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <input type="hidden" name="action" value="email">
+      <p class="text-sm font-semibold text-slate-700 mb-1">Cách 1 · Gửi liên kết qua email</p>
+      <p class="text-xs text-slate-500 mb-3">Liên kết đặt mật khẩu mới có hiệu lực 30 phút, dùng 1 lần.</p>
+      <label for="email1" class="block text-sm font-semibold text-slate-600 mb-1.5">Email</label>
+      <input type="email" id="email1" name="email" required autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
       <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Gửi liên kết đặt lại</button>
     </form>
+  {% endif %}
+  {% if mail_on and otp_on %}<div class="flex items-center gap-3 my-5"><div class="flex-1 h-px bg-slate-200"></div><span class="text-xs text-slate-400">hoặc</span><div class="flex-1 h-px bg-slate-200"></div></div>{% endif %}
+  {% if otp_on %}
+    <form method="POST" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="otp">
+      <p class="text-sm font-semibold text-slate-700 mb-1">{{ 'Cách 2' if mail_on else 'Đặt lại' }} · Dùng mã Google Authenticator</p>
+      <p class="text-xs text-slate-500 mb-3">Nhập email, mã 6 số đang hiện trong ứng dụng và mật khẩu mới (≥ 8 ký tự).</p>
+      <label for="email2" class="block text-sm font-semibold text-slate-600 mb-1.5">Email</label>
+      <input type="email" id="email2" name="email" required autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <label for="code" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Mã 6 số</label>
+      <input type="text" id="code" name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-center text-xl tracking-[.3em] font-semibold focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <label for="pw" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Mật khẩu mới</label>
+      <input type="password" id="pw" name="password" required minlength="8" autocomplete="new-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <label for="pw2" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Nhập lại mật khẩu mới</label>
+      <input type="password" id="pw2" name="password2" required minlength="8" autocomplete="new-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Đặt mật khẩu mới</button>
+    </form>
+  {% endif %}
     <p class="text-center mt-5"><a href="{{ url_for('login') }}" class="text-xs text-slate-500 underline">← Quay lại đăng nhập</a></p>
-    <p class="text-xs text-slate-400 mt-3 text-center">Tài khoản chỉ đăng nhập bằng Google không có mật khẩu để đặt lại.</p>
+    <p class="text-xs text-slate-400 mt-3 text-center">Mất cả mật khẩu lẫn điện thoại? Liên hệ quản trị viên. Tài khoản chỉ đăng nhập bằng Google không có mật khẩu để đặt lại.</p>
 {% endblock %}

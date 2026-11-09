@@ -103,6 +103,19 @@ class Admins(FakeAdmins):
         r = self.get_active(email)
         return r if r and r.get("password_hash") and password == self.password else None
 
+    def get(self, email):
+        r = self.rows.get(email)
+        return dict(r) if r else None
+
+    def change_email(self, old, new):
+        new = A.ADM.check_email(new)
+        if new in self.rows or old not in self.rows:
+            return False
+        r = self.rows.pop(old)
+        r["email"] = new
+        self.rows[new] = r
+        return True
+
     def set_password(self, email, pw):
         if len(pw) < 8:
             raise ValueError("Mật khẩu phải có ít nhất 8 ký tự.")
@@ -116,14 +129,14 @@ class RecoveryBase(AppTestCase):
     def setUp(self):
         super().setUp()
         A.current_user = _real_flask_login().current_user
-        keys = ("LOGIN_DISABLED", "TWO_FACTOR_ENABLED", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_BASE_URL", *CFG)
+        keys = ("LOGIN_DISABLED", "TWO_FACTOR_ENABLED", "PASSWORD_RESET_VIA_OTP", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_BASE_URL", *CFG)
         old = {k: A.app.config.get(k) for k in keys}
-        A.app.config.update(LOGIN_DISABLED=False, TWO_FACTOR_ENABLED=True, GOOGLE_CLIENT_ID="id", GOOGLE_CLIENT_SECRET="s",
+        A.app.config.update(LOGIN_DISABLED=False, TWO_FACTOR_ENABLED=True, PASSWORD_RESET_VIA_OTP=True, GOOGLE_CLIENT_ID="id", GOOGLE_CLIENT_SECRET="s",
                             ADMIN_BASE_URL=BASE, **CFG)
         self.addCleanup(lambda: A.app.config.update(old))
         self.key = A.app.config["SECRET_KEY"]
         self.admins, self.events, self.mails = Admins(), [], []
-        for lim in (A._otp_limiter, A._reset_email_limiter, A._reset_ip_limiter):
+        for lim in (A._otp_limiter, A._reset_email_limiter, A._reset_ip_limiter, A._pw_limiter):
             lim.reset()
             self.addCleanup(lim.reset)
         self.google = FakeGoogle(info={"email": GG_EMAIL, "email_verified": True, "name": "G", "picture": ""})
@@ -175,9 +188,11 @@ class RecoveryBase(AppTestCase):
 
 
 class ForgotPasswordTests(RecoveryBase):
-    def test_link_is_hidden_when_mail_is_not_configured(self):
+    def test_link_is_hidden_only_when_no_recovery_method_is_available(self):
         self.assertIn("Quên mật khẩu?", self.client.get("/login").get_data(as_text=True))
-        A.app.config.update(SMTP_HOST="")
+        A.app.config.update(SMTP_HOST="")                                           # hết email nhưng còn đặt lại bằng mã OTP
+        self.assertIn("Quên mật khẩu?", self.client.get("/login").get_data(as_text=True))
+        A.app.config.update(PASSWORD_RESET_VIA_OTP=False)                           # hết cả hai
         self.assertNotIn("Quên mật khẩu?", self.client.get("/login").get_data(as_text=True))
         r = self.client.get("/quen-mat-khau")
         self.assertTrue(r.headers["Location"].endswith("/login"))

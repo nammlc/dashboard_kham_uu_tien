@@ -5,9 +5,53 @@
 {% block content %}
 <div class="max-w-xl space-y-4">
   <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
-    <p class="text-xs text-slate-400">Tài khoản</p>
-    <p class="text-sm font-semibold text-slate-800 mt-1">{{ current_user.name }}</p>
-    <p class="text-sm text-slate-500">{{ current_user.email }}</p>
+    <p class="text-xs text-slate-400">Email đăng nhập</p>
+    <p class="text-sm font-semibold text-slate-800 mt-1 break-all">{{ current_user.email }}</p>
+    <p class="text-sm text-slate-500">{{ current_user.name }}</p>
+    {% if mail_enabled %}
+      <a href="{{ url_for('account_change_email') }}"
+         class="inline-block mt-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg px-4 py-2 text-sm transition-colors">✉️ Đổi email</a>
+    {% else %}
+      <p class="text-xs text-slate-400 mt-2">Đổi email cần bật gửi email (SMTP). Hiện có thể nhờ quản trị viên chạy <code>admin-email</code>.</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Mật khẩu</p>
+    {% if row and row.password_hash %}
+      <p class="text-sm text-slate-500 mt-1">Đổi mật khẩu sẽ đăng xuất tất cả thiết bị khác.</p>
+      <a href="{{ url_for('account_change_password') }}"
+         class="inline-block mt-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg px-4 py-2 text-sm transition-colors">🔑 Đổi mật khẩu</a>
+    {% else %}
+      <p class="text-sm text-slate-500 mt-1">Tài khoản này chỉ đăng nhập bằng Google (chưa đặt mật khẩu).</p>
+      <a href="{{ url_for('account_change_password') }}"
+         class="inline-block mt-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg px-4 py-2 text-sm transition-colors">🔑 Đặt mật khẩu</a>
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <p class="text-xs text-slate-400">Gửi email (lấy lại mật khẩu, đổi email, đổi điện thoại)</p>
+    {% if mail.smtp_ok and mail.base_ok %}
+      <p class="text-sm text-emerald-700 font-semibold mt-1">✔ Đã bật{% if mail.gmail %} · Gmail{% endif %}</p>
+      <p class="text-xs text-slate-500 mt-1 break-all">Gửi từ: {{ mail.sender }}</p>
+      <form method="POST" action="{{ url_for('account_mail_test') }}" class="mt-3">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg px-4 py-2 text-sm transition-colors">📨 Gửi email thử tới {{ current_user.email }}</button>
+      </form>
+    {% else %}
+      <p class="text-sm text-amber-700 mt-1">Chưa bật. Thiếu:</p>
+      <ul class="text-sm text-slate-600 list-disc pl-5 mt-1 space-y-1">
+        {% if not mail.smtp_ok %}<li><code>GMAIL_USER</code> và <code>GMAIL_APP_PASSWORD</code> (Mật khẩu ứng dụng Gmail 16 ký tự)</li>{% endif %}
+        {% if not mail.base_ok %}<li><code>ADMIN_BASE_URL</code>{% if mail.suggest_base %} = <code class="select-all break-all">{{ mail.suggest_base }}</code> (địa chỉ trang này){% endif %}</li>{% endif %}
+      </ul>
+      <p class="text-xs text-slate-400 mt-2">Điền trên máy chủ (Coolify → Environment Variables) rồi redeploy. Hướng dẫn: HUONG_DAN_QUEN_MAT_KHAU.md.</p>
+      {% if mail.smtp_ok %}
+      <form method="POST" action="{{ url_for('account_mail_test') }}" class="mt-3">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg px-4 py-2 text-sm transition-colors">📨 Gửi email thử</button>
+      </form>
+      {% endif %}
+    {% endif %}
   </div>
 
   <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">

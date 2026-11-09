@@ -6,8 +6,10 @@ services/admin_users.py — tài khoản admin lưu trong PostgreSQL (bảng adm
 • Lần chạy đầu (bảng còn trống) tự tạo tài khoản từ biến môi trường ALLOWED_EMAILS + ADMIN_PASSWORD để không gián đoạn;
   sau đó cơ sở dữ liệu là nguồn đúng duy nhất (đổi ADMIN_PASSWORD trong .env không còn tác dụng — dùng `flask admin-passwd`).
 """
+import re
 import threading
 
+from psycopg import errors as pg_errors
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import db
@@ -23,6 +25,17 @@ def norm_email(e) -> str:
 def _check_password_rules(password: str):
     if len(password or "") < 8:
         raise ValueError("Mật khẩu phải có ít nhất 8 ký tự.")
+
+
+check_password_rules = _check_password_rules                  # dùng ở nơi cần kiểm tra TRƯỚC khi ghi (vd. trước khi tiêu thụ mã OTP)
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def check_email(email: str) -> str:
+    e = norm_email(email)
+    if len(e) > 120 or not _EMAIL_RE.fullmatch(e):
+        raise ValueError("Email không hợp lệ.")
+    return e
 
 
 class AdminUsers:
@@ -77,6 +90,15 @@ class AdminUsers:
 
     def set_active(self, email, active: bool) -> bool:
         return self._write("UPDATE admin_users SET is_active = %s WHERE email = %s", (bool(active), norm_email(email))) > 0
+
+    def change_email(self, old, new) -> bool:
+        """Đổi email đăng nhập của 1 tài khoản (giữ nguyên mật khẩu, 2 bước, trạng thái). False nếu email mới đã thuộc tài khoản khác
+        hoặc không tìm thấy tài khoản cũ. Email không hợp lệ → ValueError."""
+        new = check_email(new)
+        try:
+            return self._write("UPDATE admin_users SET email = %s WHERE email = %s", (new, norm_email(old))) > 0
+        except pg_errors.UniqueViolation:
+            return False
 
     def touch_login(self, email, name="", picture=""):
         self._write("UPDATE admin_users SET last_login_at = now(), name = COALESCE(NULLIF(%s, ''), name), "

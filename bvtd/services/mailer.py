@@ -15,6 +15,10 @@ class MailError(RuntimeError):
     """Gửi email không thành công (lý do đã được viết gọn, không chứa mật khẩu)."""
 
 
+def _is_gmail(host: str) -> bool:
+    return str(host).lower().endswith(("gmail.com", "googlemail.com"))
+
+
 def sender(cfg) -> str:
     return (cfg.get("SMTP_FROM") or cfg.get("SMTP_USER") or "").strip()
 
@@ -49,6 +53,12 @@ def send(cfg, to: str, subject: str, body: str) -> None:
                 server.login(cfg["SMTP_USER"], cfg.get("SMTP_PASSWORD", ""))
             server.send_message(msg)
     except smtplib.SMTPAuthenticationError:
+        if _is_gmail(host):
+            raise MailError("Gmail từ chối đăng nhập. Hãy dùng “Mật khẩu ứng dụng” 16 ký tự (không phải mật khẩu Gmail): "
+                            "bật xác minh 2 bước cho tài khoản Google rồi tạo tại myaccount.google.com/apppasswords. "
+                            "GMAIL_USER phải đúng là địa chỉ Gmail đó.") from None
         raise MailError("Máy chủ email từ chối tên đăng nhập / mật khẩu SMTP.") from None
     except (smtplib.SMTPException, OSError, ValueError) as e:
-        raise MailError(f"Không gửi được email ({type(e).__name__}: {e}).") from None
+        hint = (" Nếu máy chủ chặn cổng 587, thử SMTP_SECURITY=ssl và SMTP_PORT=465."
+                if _is_gmail(host) and isinstance(e, (OSError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected)) else "")
+        raise MailError(f"Không gửi được email ({type(e).__name__}: {e}).{hint}") from None

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Xác nhận đổi email{% endblock %}
+{% block page_title %}✉️ Xác nhận đổi email{% endblock %}
+
+{% block content %}
+<div class="max-w-md bg-white rounded-xl border border-slate-200 px-6 py-5">
+  <p class="text-sm text-slate-600">Đổi email đăng nhập từ</p>
+  <p class="text-sm font-semibold text-slate-800 break-all">{{ old }}</p>
+  <p class="text-sm text-slate-600 mt-2">sang</p>
+  <p class="text-sm font-semibold text-emerald-700 break-all">{{ new }}</p>
+  <form method="POST" class="mt-4">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Xác nhận đổi email</button>
+  </form>
+  <p class="text-center mt-3"><a href="{{ url_for('account_page') }}" class="text-xs text-slate-500 underline">Không phải tôi / Huỷ</a></p>
+</div>
+{% endblock %}

@@ -104,7 +104,17 @@ def load_user(user_id: str):
     except Exception:                            # noqa: BLE001
         app.logger.warning("không đọc được bảng admin_users", exc_info=True)
         return None
-    return User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"]) if row else None
+    if not row:
+        return None
+    # Đổi / đặt lại mật khẩu là đăng xuất MỌI phiên cũ: mỗi phiên nhớ "vân tay" của băm mật khẩu lúc đăng nhập.
+    # Phiên tạo trước bản nâng cấp (chưa có vân tay) được nhận và ghi nhớ từ lần này.
+    fp = TK.fingerprint(row.get("password_hash"))
+    have = session.get("pwv")
+    if have is None:
+        session["pwv"] = fp
+    elif not hmac.compare_digest(str(have), fp):
+        return None
+    return User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"])
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -351,7 +361,8 @@ def _google_enabled() -> bool:
 
 @app.context_processor
 def _inject_auth_ctx():
-    return {"google_login_enabled": _google_enabled(), "mail_enabled": _mail_enabled(), "csrf_token": _csrf_token}
+    return {"google_login_enabled": _google_enabled(), "mail_enabled": _mail_enabled(), "csrf_token": _csrf_token,
+            "forgot_enabled": _forgot_enabled()}
 
 
 def _google_fail(event_detail: str, message: str, email: str = ""):
@@ -410,7 +421,7 @@ def google_callback():
         return _google_fail("Google: tài khoản không có trong danh sách admin",
                             f"Tài khoản {email} không được phép truy cập. Hãy nhờ quản trị viên thêm email này vào danh sách admin.", email)
 
-    return _begin_second_factor(row, "Google", nxt, {"name": user_info.get("name", ""), "picture": user_info.get("picture", "")})
+    return _begin_second_factor(row, "Google", nxt, {"name": user_info.get("name", ""), "picture": user_info.get("picture", "")}, proof=True)
 
 
 # ── Bước 2 của đăng nhập: mã OTP (Google Authenticator) ───────────────────────────────────────────────────────
@@ -425,10 +436,14 @@ def _two_factor_on() -> bool:
     return bool(app.config.get("TWO_FACTOR_ENABLED", True))
 
 
-def _finish_login(row, method: str, nxt: str = "", profile: dict | None = None):
-    """Đăng nhập thật sự (đã qua MỌI bước xác thực)."""
+def _finish_login(row, method: str, nxt: str = "", profile: dict | None = None, proof: bool = False):
+    """Đăng nhập thật sự (đã qua MỌI bước xác thực).
+    proof=True: bước 1 là Google / liên kết email (đã chứng minh danh tính không cần mật khẩu) → được đặt mật khẩu mới
+    mà không phải nhập mật khẩu cũ (dành cho người quên mật khẩu)."""
     login_user(User(row["email"], row["name"] or row["email"].split("@")[0], row["picture"]), remember=False)   # không "ghi nhớ"
     session["last_active"] = time.time()
+    session["pwv"] = TK.fingerprint(row.get("password_hash"))
+    session["identity_proof"] = bool(proof)
     for k in ("otp_pending", "otp_setup", "otp_reenroll"):
         session.pop(k, None)
     profile = profile or {}
@@ -440,13 +455,13 @@ def _finish_login(row, method: str, nxt: str = "", profile: dict | None = None):
     return redirect(nxt or url_for("dashboard"))
 
 
-def _begin_second_factor(row, method: str, nxt: str = "", profile: dict | None = None):
+def _begin_second_factor(row, method: str, nxt: str = "", profile: dict | None = None, proof: bool = False):
     """Đã đúng bước 1 (mật khẩu/Google). Bật 2 bước → sang trang nhập OTP; tắt → đăng nhập luôn."""
     if not _two_factor_on():
-        return _finish_login(row, method, nxt, profile)
+        return _finish_login(row, method, nxt, profile, proof)
     session.pop("otp_setup", None)
     session.pop("otp_reenroll", None)
-    session["otp_pending"] = {"email": row["email"], "method": method, "next": nxt, "t": time.time(), "tries": 0,
+    session["otp_pending"] = {"email": row["email"], "method": method, "next": nxt, "t": time.time(), "tries": 0, "proof": bool(proof),
                               "profile": {"name": (profile or {}).get("name", "")[:120], "picture": (profile or {}).get("picture", "")[:300]}}
     return redirect(url_for("login_otp"))
 
@@ -523,7 +538,7 @@ def login_otp():
             return render_template("auth/otp.html", email=email, method=p["method"], remaining=OTP_MAX_TRIES - int(p.get("tries", 0)))
         if ok:
             _otp_limiter.reset(email)
-            return _finish_login(row, f"{p['method']} + OTP", p.get("next", ""), p.get("profile"))
+            return _finish_login(row, f"{p['method']} + OTP", p.get("next", ""), p.get("profile"), bool(p.get("proof")))
         resp = _otp_wrong(p, email)
         if resp:
             return resp
@@ -564,7 +579,7 @@ def login_otp_setup():
                 _otp_limiter.reset(email)
                 _log("otp_setup", email=email, detail="Đổi điện thoại (qua liên kết email)" if reenroll else "Thiết lập xác thực 2 bước")
                 return _finish_login(row, f"{p['method']} + OTP ({'đổi điện thoại' if reenroll else 'thiết lập lần đầu'})",
-                                     p.get("next", ""), p.get("profile"))
+                                     p.get("next", ""), p.get("profile"), bool(p.get("proof")))
             if saved is False:                                   # có người thiết lập trước ở lượt khác
                 return redirect(url_for("login_otp"))
         else:
@@ -644,36 +659,106 @@ def _db_down(message="Hệ thống chưa kết nối được cơ sở dữ li�
 
 
 # ── Quên mật khẩu ──────────────────────────────────────────────────────────────────────────────────────────────
+def _otp_reset_enabled() -> bool:
+    return _two_factor_on() and bool(app.config.get("PASSWORD_RESET_VIA_OTP", True))
+
+
+def _forgot_enabled() -> bool:
+    return _mail_enabled() or _otp_reset_enabled()
+
+
+def _notify_security(email: str, subject: str, text: str) -> None:
+    """Báo qua email cho chủ tài khoản khi mật khẩu/email đăng nhập bị đổi (chỉ khi đã cấu hình gửi email)."""
+    if _mail_enabled():
+        _send_mail_async(email, subject, f"Xin chào,\n\n{text}\n\nNếu không phải bạn, hãy liên hệ quản trị viên ngay.\n")
+
+
+def _generic_reset_failure():
+    flash("Email hoặc mã xác thực không đúng. Vui lòng kiểm tra lại.", "error")
+    return redirect(url_for("forgot_password"))
+
+
 @app.route("/quen-mat-khau", methods=["GET", "POST"])
 def forgot_password():
+    """Hai cách lấy lại mật khẩu: (1) liên kết gửi qua email; (2) mã OTP 6 số của Google Authenticator (không cần email)."""
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
-    if not _mail_enabled():
-        flash("Chức năng gửi email chưa được bật. Vui lòng nhờ quản trị viên đặt lại mật khẩu cho bạn.", "error")
+    mail_on, otp_on = _mail_enabled(), _otp_reset_enabled()
+    if not (mail_on or otp_on):
+        flash("Chức năng lấy lại mật khẩu chưa được bật. Vui lòng nhờ quản trị viên đặt lại mật khẩu cho bạn.", "error")
         return redirect(url_for("login"))
     if request.method == "POST":
         if not _csrf_ok():
             flash("Phiên làm việc đã hết hạn. Vui lòng thử lại.", "error")
             return redirect(url_for("forgot_password"))
+        action = request.form.get("action", "email")
         email = request.form.get("email", "").strip().lower()[:120]
-        throttled = _reset_throttled("pw", email)
-        try:
-            row = _admins().get_active(email) if email and not throttled else None
-        except (DB.NotConfigured, DB.DBError):
-            _db_down()
-            return redirect(url_for("forgot_password"))
-        if row and row.get("password_hash"):                         # tài khoản "chỉ Google" không có mật khẩu để đặt lại
-            token = TK.make(app.config["SECRET_KEY"], TK.PASSWORD_RESET, email, row["password_hash"])
-            _send_mail_async(email, "Đặt lại mật khẩu — BVĐK Tâm Đức Cầu Quan",
-                             f"Xin chào {row['name'] or email},\n\nBạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu trang quản trị.\n"
-                             f"Bấm liên kết dưới đây để đặt mật khẩu mới (có hiệu lực {RESET_LINK_MINUTES} phút, chỉ dùng được 1 lần):\n\n"
-                             f"{_admin_link('reset_password', token=token)}\n\n"
-                             "Nếu không phải bạn, hãy bỏ qua email này — mật khẩu hiện tại vẫn giữ nguyên.\n")
-        _log("reset_request", email=email, detail="Quên mật khẩu")
-        # Trả lời GIỐNG HỆT dù email có tồn tại hay không (không cho dò xem email nào là admin)
-        flash("Nếu email này thuộc một tài khoản dùng mật khẩu, chúng tôi đã gửi liên kết đặt lại. Hãy kiểm tra hộp thư (cả mục thư rác).", "info")
+        if action == "otp" and otp_on:
+            return _forgot_by_otp(email)
+        if action == "email" and mail_on:
+            return _forgot_by_email(email)
+        flash("Cách lấy lại mật khẩu này đang tắt.", "error")
         return redirect(url_for("forgot_password"))
-    return render_template("auth/forgot.html")
+    return render_template("auth/forgot.html", mail_on=mail_on, otp_on=otp_on)
+
+
+def _forgot_by_email(email: str):
+    throttled = _reset_throttled("pw", email)
+    try:
+        row = _admins().get_active(email) if email and not throttled else None
+    except (DB.NotConfigured, DB.DBError):
+        _db_down()
+        return redirect(url_for("forgot_password"))
+    if row and row.get("password_hash"):                         # tài khoản "chỉ Google" không có mật khẩu để đặt lại
+        token = TK.make(app.config["SECRET_KEY"], TK.PASSWORD_RESET, email, row["password_hash"])
+        _send_mail_async(email, "Đặt lại mật khẩu — BVĐK Tâm Đức Cầu Quan",
+                         f"Xin chào {row['name'] or email},\n\nBạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu trang quản trị.\n"
+                         f"Bấm liên kết dưới đây để đặt mật khẩu mới (có hiệu lực {RESET_LINK_MINUTES} phút, chỉ dùng được 1 lần):\n\n"
+                         f"{_admin_link('reset_password', token=token)}\n\n"
+                         "Nếu không phải bạn, hãy bỏ qua email này — mật khẩu hiện tại vẫn giữ nguyên.\n")
+    _log("reset_request", email=email, detail="Quên mật khẩu")
+    # Trả lời GIỐNG HỆT dù email có tồn tại hay không (không cho dò xem email nào là admin)
+    flash("Nếu email này thuộc một tài khoản dùng mật khẩu, chúng tôi đã gửi liên kết đặt lại. Hãy kiểm tra hộp thư (cả mục thư rác).", "info")
+    return redirect(url_for("forgot_password"))
+
+
+def _forgot_by_otp(email: str):
+    """Email + mã OTP hiện tại + mật khẩu mới trong MỘT lần gửi. Kiểm tra mật khẩu mới TRƯỚC khi tiêu thụ mã OTP
+    (nhập mật khẩu quá ngắn không làm mất mã). Mọi lý do thất bại đều trả cùng một câu."""
+    ekey, ip = f"reset:{email}", _client_ip()
+    if _otp_limiter.locked(ekey) or _reset_ip_limiter.locked(ip):
+        flash("Thử quá nhiều lần. Vui lòng đợi khoảng 15 phút rồi thử lại.", "error")
+        return redirect(url_for("forgot_password"))
+    pw1, pw2 = request.form.get("password", ""), request.form.get("password2", "")
+    if pw1 != pw2:
+        flash("Hai lần nhập mật khẩu chưa giống nhau.", "error")
+        return redirect(url_for("forgot_password"))
+    try:
+        ADM.check_password_rules(pw1)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("forgot_password"))
+    try:
+        row = _admins().get_active(email) if email else None
+        secret = TF.decrypt((row or {}).get("totp_secret") or "", app.config["SECRET_KEY"]) if (row and row.get("password_hash")) else None
+        step = TF.verify(secret, request.form.get("code"), (row or {}).get("totp_last_step") or 0) if secret else None
+        ok = step is not None and _admins().use_totp_step(row["email"], step)           # mỗi mã chỉ dùng 1 lần
+        if ok:
+            _admins().set_password(row["email"], pw1)
+    except (DB.NotConfigured, DB.DBError):
+        _db_down("Chưa đặt lại được mật khẩu do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.")
+        return redirect(url_for("forgot_password"))
+    if not ok:
+        _otp_limiter.fail(ekey)
+        _reset_ip_limiter.fail(ip)
+        _log("login_fail", email=email[:120], detail="Quên mật khẩu: email/mã OTP không đúng")
+        return _generic_reset_failure()
+    _otp_limiter.reset(ekey)
+    _log("password_reset", email=row["email"], detail="Đặt lại mật khẩu bằng mã OTP")
+    _notify_security(row["email"], "Mật khẩu tài khoản quản trị vừa được đặt lại — BVĐK Tâm Đức Cầu Quan",
+                     "Mật khẩu tài khoản quản trị của bạn vừa được đặt lại bằng mã xác thực 2 bước.")
+    flash("Đã đặt mật khẩu mới. Hãy đăng nhập bằng mật khẩu mới.", "info")
+    return redirect(url_for("login"))
 
 
 @app.route("/dat-lai-mat-khau/<token>", methods=["GET", "POST"])
@@ -706,6 +791,8 @@ def reset_password(token):
                 _db_down("Chưa lưu được mật khẩu mới do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.")
             else:
                 _log("password_reset", email=row["email"], detail="Đặt lại mật khẩu qua email")
+                _notify_security(row["email"], "Mật khẩu tài khoản quản trị vừa được đặt lại — BVĐK Tâm Đức Cầu Quan",
+                                 "Mật khẩu tài khoản quản trị của bạn vừa được đặt lại bằng liên kết gửi qua email.")
                 flash("Đã đặt mật khẩu mới. Hãy đăng nhập bằng mật khẩu mới.", "info")
                 return redirect(url_for("login"))
     return render_template("auth/reset.html", email=row["email"], token=token)
@@ -780,7 +867,8 @@ def otp_recover_confirm(token):
         else:                                                        # chỉ-Google và chưa đăng nhập Google ở trình duyệt này
             flash("Hãy đăng nhập bằng Google trên trình duyệt này trước, rồi mở lại liên kết trong email.", "error")
             return redirect(url_for("login"))
-        session["otp_pending"] = {"email": email, "method": method, "next": nxt, "t": time.time(), "tries": 0, "profile": profile or {}}
+        session["otp_pending"] = {"email": email, "method": method, "next": nxt, "t": time.time(), "tries": 0, "profile": profile or {},
+                                  "proof": True}                      # đã có email + (mật khẩu | Google) → đủ để đặt mật khẩu mới
         session["otp_reenroll"] = TK.fingerprint(enc)
         session.pop("otp_setup", None)
         return redirect(url_for("login_otp_setup"))
@@ -800,9 +888,34 @@ def account_page():
         _db_down()
         row = None
     enabled_at = (row or {}).get("totp_enabled_at")
+    base_set = str(app.config.get("ADMIN_BASE_URL", "")).startswith(("http://", "https://"))
+    mail = {"smtp_ok": MAIL.configured(app.config), "base_ok": base_set, "sender": MAIL.sender(app.config),
+            "gmail": MAIL._is_gmail(app.config.get("SMTP_HOST", "")),
+            "suggest_base": "" if base_set else request.host_url.rstrip("/")}     # chỉ GỢI Ý cho admin đang đăng nhập, không tự dùng
     return render_template("account/account.html", row=row, two_factor_on=_two_factor_on(),
-                           has_totp=bool((row or {}).get("totp_secret")),
+                           has_totp=bool((row or {}).get("totp_secret")), mail=mail,
                            enabled_at=ACL.fmt_time(enabled_at) if enabled_at else "")
+
+
+@app.route("/tai-khoan/thu-email", methods=["POST"])
+@login_required
+def account_mail_test():
+    """Gửi thử 1 email tới chính email của người đang đăng nhập để kiểm tra cấu hình Gmail/SMTP (gửi ngay, báo rõ lỗi)."""
+    if not _csrf_ok():
+        flash("Phiên làm việc đã hết hạn. Vui lòng thử lại.", "error")
+    elif not MAIL.configured(app.config):
+        flash("Chưa cấu hình gửi email. Cần GMAIL_USER + GMAIL_APP_PASSWORD (hoặc SMTP_*).", "error")
+    elif _reset_throttled("mailtest", current_user.email):
+        flash("Bạn đã gửi thử quá nhiều lần. Vui lòng thử lại sau khoảng 1 giờ.", "error")
+    else:
+        try:
+            MAIL.send(app.config, current_user.email, "Email thử — BVĐK Tâm Đức Cầu Quan",
+                      "Nếu bạn đọc được email này thì cấu hình gửi email đã đúng.\n"
+                      "Chức năng Quên mật khẩu / Đổi email / Đổi điện thoại sẽ gửi thư tới hộp thư này.\n")
+            flash(f"Đã gửi email thử tới {_mask_email(current_user.email)}. Hãy kiểm tra hộp thư (cả mục thư rác).", "info")
+        except MAIL.MailError as e:
+            flash(str(e), "error")
+    return redirect(url_for("account_page"))
 
 
 @app.route("/tai-khoan/doi-dien-thoai", methods=["GET", "POST"])
@@ -880,6 +993,168 @@ def _render_phone_change(email, new_secret):
         uri = TF.provisioning_uri(new_secret, email, app.config.get("TWO_FACTOR_ISSUER", TF.DEFAULT_ISSUER))
         ctx.update(qr_svg=TF.qr_svg(uri), secret_text=TF.format_secret(new_secret), otp_uri=uri)
     return render_template("account/change_phone.html", **ctx)
+
+
+# ── Đổi mật khẩu (đã đăng nhập) ───────────────────────────────────────────────────────────────────────────────
+_pw_limiter = TF.FailLimiter(limit=5, window=900)            # 5 lần nhập sai mật khẩu hiện tại / 15 phút / email
+
+
+def _account_row():
+    """Hàng admin của người đang đăng nhập; lỗi DB → None (đã báo lỗi cho người dùng)."""
+    try:
+        return _admins().get_active(current_user.email)
+    except (DB.NotConfigured, DB.DBError):
+        _db_down()
+        return None
+
+
+@app.route("/tai-khoan/doi-mat-khau", methods=["GET", "POST"])
+@login_required
+def account_change_password():
+    row = _account_row()
+    if not row:
+        return redirect(url_for("account_page"))
+    email = row["email"]
+    # Phải nhập mật khẩu hiện tại — TRỪ khi phiên này vào bằng Google / liên kết email (người quên mật khẩu) hoặc tài khoản chưa có mật khẩu
+    need_old = bool(row.get("password_hash")) and not session.get("identity_proof")
+    if request.method == "POST":
+        if not _csrf_ok():
+            flash("Phiên làm việc đã hết hạn. Vui lòng thử lại.", "error")
+            return redirect(url_for("account_change_password"))
+        if _pw_limiter.locked(email):
+            flash("Nhập sai mật khẩu hiện tại quá nhiều lần nên tạm khoá vài phút. Vui lòng thử lại sau.", "error")
+            return redirect(url_for("account_page"))
+        old, pw1, pw2 = request.form.get("old_password", ""), request.form.get("password", ""), request.form.get("password2", "")
+        try:
+            if need_old and not _admins().verify(email, old):
+                _pw_limiter.fail(email)
+                _log("login_fail", email=email[:120], detail="Đổi mật khẩu: sai mật khẩu hiện tại")
+                flash("Mật khẩu hiện tại không đúng.", "error")
+            elif pw1 != pw2:
+                flash("Hai lần nhập mật khẩu mới chưa giống nhau.", "error")
+            elif need_old and pw1 == old:
+                flash("Mật khẩu mới phải khác mật khẩu hiện tại.", "error")
+            else:
+                _admins().set_password(email, pw1)                      # ValueError nếu quá ngắn
+                fresh = _admins().get_active(email)
+                session["pwv"] = TK.fingerprint((fresh or {}).get("password_hash"))   # phiên này ở lại; mọi phiên khác bị đăng xuất
+                _pw_limiter.reset(email)
+                _log("password_change", email=email, detail="Đổi mật khẩu (đã đăng nhập)")
+                _notify_security(email, "Mật khẩu tài khoản quản trị vừa được đổi — BVĐK Tâm Đức Cầu Quan",
+                                 "Mật khẩu tài khoản quản trị của bạn vừa được đổi. Các thiết bị khác đã bị đăng xuất.")
+                flash("Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất.", "info")
+                return redirect(url_for("account_page"))
+        except ValueError as e:
+            flash(str(e), "error")
+        except (DB.NotConfigured, DB.DBError):
+            _db_down("Chưa đổi được mật khẩu do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.")
+        return redirect(url_for("account_change_password"))
+    return render_template("account/change_password.html", need_old=need_old, has_pw=bool(row.get("password_hash")))
+
+
+# ── Đổi email đăng nhập (đã đăng nhập): xác nhận bằng liên kết gửi tới EMAIL MỚI ─────────────────────────────────
+@app.route("/tai-khoan/doi-email", methods=["GET", "POST"])
+@login_required
+def account_change_email():
+    row = _account_row()
+    if not row:
+        return redirect(url_for("account_page"))
+    email, key = row["email"], app.config["SECRET_KEY"]
+    has_pw = bool(row.get("password_hash"))
+    secret = TF.decrypt(row.get("totp_secret") or "", key) if _two_factor_on() else None
+    if not _mail_enabled():
+        return render_template("account/change_email.html", email=email, mail_off=True, has_pw=has_pw, need_otp=bool(secret))
+    if request.method == "POST":
+        if not _csrf_ok():
+            flash("Phiên làm việc đã hết hạn. Vui lòng thử lại.", "error")
+            return redirect(url_for("account_change_email"))
+        if not (has_pw or secret):                                  # không có gì để chứng minh đúng chủ tài khoản
+            flash("Tài khoản cần có mật khẩu hoặc xác thực 2 bước để đổi email.", "error")
+            return redirect(url_for("account_page"))
+        if _pw_limiter.locked(email) or _otp_limiter.locked(email):
+            flash("Nhập sai quá nhiều lần nên tạm khoá vài phút. Vui lòng thử lại sau.", "error")
+            return redirect(url_for("account_page"))
+        try:
+            new = ADM.check_email(request.form.get("new_email", ""))
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("account_change_email"))
+        try:
+            # Chứng minh đúng chủ: mật khẩu hiện tại (nếu có) VÀ mã OTP hiện tại (nếu bật 2 bước)
+            if has_pw and not _admins().verify(email, request.form.get("password", "")):
+                _pw_limiter.fail(email)
+                _log("login_fail", email=email[:120], detail="Đổi email: sai mật khẩu")
+                flash("Mật khẩu hiện tại không đúng.", "error")
+                return redirect(url_for("account_change_email"))
+            if secret:
+                step = TF.verify(secret, request.form.get("code"), row.get("totp_last_step") or 0)
+                if step is None or not _admins().use_totp_step(email, step):
+                    _otp_limiter.fail(email)
+                    _log("login_fail", email=email[:120], detail="Đổi email: sai mã OTP")
+                    flash("Mã OTP không đúng hoặc đã dùng rồi. Hãy nhập mã MỚI NHẤT trong ứng dụng.", "error")
+                    return redirect(url_for("account_change_email"))
+            if new == email:
+                flash("Email mới trùng với email hiện tại.", "error")
+            elif _admins().get(new):
+                flash("Email này không dùng được (đã gắn với một tài khoản khác).", "error")
+            elif _reset_throttled("email", email):
+                flash("Bạn đã yêu cầu quá nhiều lần. Vui lòng thử lại sau khoảng 1 giờ.", "error")
+            else:
+                token = TK.make(key, TK.EMAIL_CHANGE, email, f"{row.get('password_hash')}|{row.get('totp_secret')}", extra=new)
+                _send_mail_async(new, "Xác nhận email đăng nhập mới — BVĐK Tâm Đức Cầu Quan",
+                                 f"Tài khoản quản trị {email} vừa yêu cầu đổi email đăng nhập sang địa chỉ này.\n"
+                                 f"Mở liên kết dưới đây trên trình duyệt đang đăng nhập tài khoản đó để xác nhận "
+                                 f"(có hiệu lực {RESET_LINK_MINUTES} phút, chỉ dùng được 1 lần):\n\n"
+                                 f"{_admin_link('account_confirm_email', token=token)}\n\n"
+                                 "Nếu không phải bạn, hãy bỏ qua email này.\n")
+                _log("reset_request", email=email, detail="Đổi email đăng nhập")
+                flash(f"Đã gửi liên kết xác nhận tới {_mask_email(new)}. Mở email (hiệu lực {RESET_LINK_MINUTES} phút) rồi bấm liên kết.", "info")
+                return redirect(url_for("account_page"))
+        except (DB.NotConfigured, DB.DBError):
+            _db_down("Chưa xử lý được do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.")
+        return redirect(url_for("account_change_email"))
+    return render_template("account/change_email.html", email=email, mail_off=False, has_pw=has_pw, need_otp=bool(secret))
+
+
+@app.route("/tai-khoan/xac-nhan-email/<token>", methods=["GET", "POST"])
+@login_required
+def account_confirm_email(token):
+    """GET chỉ HIỂN THỊ nút xác nhận (trình quét thư/xem trước liên kết không vô tình đổi email); POST mới thực hiện."""
+    d = TK.read_ex(app.config["SECRET_KEY"], TK.EMAIL_CHANGE, token)
+    row = _account_row()
+    if not row:
+        return redirect(url_for("account_page"))
+    new = d[2] if d else ""
+    # liên kết phải do CHÍNH tài khoản đang đăng nhập yêu cầu, và chưa bị vô hiệu (đổi mật khẩu / điện thoại / email sau đó)
+    if not (d and d[0] == row["email"] and new and TK.matches(d[1], f"{row.get('password_hash')}|{row.get('totp_secret')}")):
+        flash("Liên kết không hợp lệ, đã hết hạn hoặc không thuộc tài khoản đang đăng nhập. Hãy yêu cầu đổi email lại.", "error")
+        return redirect(url_for("account_page"))
+    if request.method == "POST":
+        if not _csrf_ok():
+            flash("Phiên làm việc đã hết hạn. Vui lòng mở lại liên kết trong email.", "error")
+            return redirect(url_for("account_confirm_email", token=token))
+        old = row["email"]
+        try:
+            changed = _admins().change_email(old, new)
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("account_page"))
+        except (DB.NotConfigured, DB.DBError):
+            _db_down("Chưa đổi được email do lỗi cơ sở dữ liệu. Vui lòng thử lại sau ít phút.")
+            return redirect(url_for("account_confirm_email", token=token))
+        if not changed:
+            flash("Không đổi được: email này đã gắn với một tài khoản khác.", "error")
+            return redirect(url_for("account_page"))
+        _log("email_change", email=old, detail=f"{old} → {new}")
+        _send_mail_async(old, "Email đăng nhập quản trị đã được đổi — BVĐK Tâm Đức Cầu Quan",
+                         f"Email đăng nhập tài khoản quản trị {old} vừa được đổi sang {new}.\n"
+                         "Nếu không phải bạn, hãy liên hệ quản trị viên ngay.\n")
+        fresh = _admins().get_active(new) or row
+        login_user(User(fresh["email"], fresh["name"] or new.split("@")[0], fresh.get("picture", "")), remember=False)   # id phiên theo email mới
+        session["last_active"] = time.time()
+        flash(f"Đã đổi email đăng nhập sang {new}. Từ nay đăng nhập bằng email mới.", "info")
+        return redirect(url_for("account_page"))
+    return render_template("account/confirm_email.html", old=row["email"], new=new, token=token)
 
 
 @app.route("/logout")
@@ -2044,6 +2319,7 @@ def inject_globals():
 #   flask --app app admin-disable email@benhvien.vn     /  admin-enable email@benhvien.vn
 #   flask --app app admin-2fa-reset email@benhvien.vn   (mất điện thoại: xoá mã OTP, lần đăng nhập sau quét QR lại)
 #   flask --app app mail-test email@benhvien.vn         (gửi thử email để kiểm tra SMTP)
+#   flask --app app admin-email cu@benhvien.vn moi@benhvien.vn   (đổi email đăng nhập, không cần SMTP)
 # ════════════════════════════════════════════════════════════════════════════════
 import click
 
@@ -2111,6 +2387,19 @@ def cli_admin_passwd(email):
 def cli_admin_disable(email):
     """Tắt tài khoản (không xoá): người đó bị đăng xuất ở lần thao tác kế tiếp."""
     click.echo("Đã tắt tài khoản." if _admins().set_active(email, False) else "Không tìm thấy tài khoản.")
+
+
+@app.cli.command("admin-email")
+@click.argument("old_email")
+@click.argument("new_email")
+def cli_admin_email(old_email, new_email):
+    """Đổi email đăng nhập của 1 admin (không cần gửi email xác nhận — dùng khi chưa cấu hình SMTP)."""
+    try:
+        ok = _admins().change_email(old_email, new_email)
+    except ValueError as e:
+        click.echo(f"LỖI: {e}")
+        return
+    click.echo("Đã đổi email đăng nhập." if ok else "Không đổi được: không thấy tài khoản cũ hoặc email mới đã có người dùng.")
 
 
 @app.cli.command("mail-test")

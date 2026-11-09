@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Đổi email đăng nhập{% endblock %}
+{% block page_title %}✉️ Đổi email đăng nhập{% endblock %}
+
+{% block content %}
+<div class="max-w-md bg-white rounded-xl border border-slate-200 px-6 py-5">
+  {% if mail_off %}
+    <p class="text-sm text-slate-600">Đổi email cần bật gửi email (cấu hình <code>SMTP_*</code> và <code>ADMIN_BASE_URL</code>) để xác nhận địa chỉ mới.</p>
+    <p class="text-sm text-slate-500 mt-2">Cách khác: nhờ quản trị viên chạy <code>flask --app app admin-email {{ email }} email-moi@...</code>.</p>
+  {% else %}
+    <p class="text-xs text-slate-500 mb-3">Email hiện tại: <b class="break-all">{{ email }}</b>. Chúng tôi gửi liên kết xác nhận tới <b>email mới</b>; chỉ khi bạn bấm liên kết đó email mới được đổi.</p>
+    <form method="POST" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label for="new_email" class="block text-sm font-semibold text-slate-600 mb-1.5">Email mới</label>
+      <input type="email" id="new_email" name="new_email" required autofocus autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      {% if has_pw %}
+        <label for="password" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Mật khẩu hiện tại</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      {% endif %}
+      {% if need_otp %}
+        <label for="code" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Mã OTP 6 số hiện tại</label>
+        <input type="text" id="code" name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-center text-xl tracking-[.3em] font-semibold focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      {% endif %}
+      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Gửi liên kết xác nhận</button>
+    </form>
+    <p class="text-xs text-slate-400 mt-3">Lưu ý: đăng nhập bằng Google chỉ dùng được nếu email mới cũng là tài khoản Google của bạn.</p>
+  {% endif %}
+  <p class="text-center mt-3"><a href="{{ url_for('account_page') }}" class="text-xs text-slate-500 underline">Huỷ</a></p>
+</div>
+{% endblock %}

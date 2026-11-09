@@ -20,6 +20,8 @@ EVENTS = {
     "otp_setup":       "Bật / đổi điện thoại xác thực 2 bước",
     "reset_request":   "Yêu cầu đặt lại (gửi email)",
     "password_reset":  "Đặt lại mật khẩu",
+    "password_change": "Đổi mật khẩu",
+    "email_change":    "Đổi email đăng nhập",
     "logout":          "Đăng xuất",
     "session_expired": "Hết phiên (không thao tác)",
     "page":            "Xem trang",

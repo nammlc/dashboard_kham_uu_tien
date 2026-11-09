@@ -167,13 +167,19 @@ class TwoFactorFlowTests(AppTestCase):
         self.assertEqual(self.admins.touched, [])
         self.assertEqual(self.client.get("/").status_code, 302)                   # trang admin vẫn bị chặn
 
-    def test_login_user_is_called_from_one_place_only(self):
-        """Không có đường tắt: mọi cách đăng nhập đều đi qua _finish_login (sau bước OTP)."""
+    def test_login_user_is_called_only_where_expected(self):
+        """Không có đường tắt: đăng nhập chỉ xảy ra ở _finish_login (sau OTP). Ngoại lệ DUY NHẤT: đổi email khi ĐÃ đăng nhập
+        (account_confirm_email, có @login_required) phải cấp lại phiên theo email mới."""
         tree = ast.parse((Path(A.__file__).parent / "app.py").read_text(encoding="utf-8"))
-        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "login_user"]
-        self.assertEqual(len(calls), 1)
-        fn = next(f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and calls[0] in list(ast.walk(f)))
-        self.assertEqual(fn.name, "_finish_login")
+        owners = []
+        for fn in (f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)):
+            for n in ast.walk(fn):
+                if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "login_user":
+                    owners.append(fn.name)
+        self.assertEqual(sorted(set(owners)), ["_finish_login", "account_confirm_email"])
+        self.assertEqual(owners.count("_finish_login"), 1)
+        confirm = next(f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name == "account_confirm_email")
+        self.assertIn("login_required", [getattr(d, "id", "") for d in confirm.decorator_list])
 
     def test_enrolled_user_logs_in_with_correct_code(self):
         secret = self.enroll()

@@ -25,14 +25,23 @@ class Config:
     TWO_FACTOR_ENABLED = os.environ.get("TWO_FACTOR_ENABLED", "1") != "0"
     TWO_FACTOR_ISSUER  = os.environ.get("TWO_FACTOR_ISSUER", "BVĐK Tâm Đức Cầu Quan").strip() or "BVĐK Tâm Đức Cầu Quan"
 
+    # Cho phép "Quên mật khẩu" bằng mã OTP của Google Authenticator (không cần email). 0 = chỉ cho đặt lại qua liên kết email.
+    PASSWORD_RESET_VIA_OTP = os.environ.get("PASSWORD_RESET_VIA_OTP", "1") != "0"
+
     # ── Gửi email (quên mật khẩu / đổi điện thoại) — xem HUONG_DAN_QUEN_MAT_KHAU.md ──
     # Chưa điền SMTP_HOST + SMTP_FROM (hoặc SMTP_USER) + ADMIN_BASE_URL thì các liên kết "Quên mật khẩu", "Mất điện thoại" tự ẩn.
-    SMTP_HOST     = os.environ.get("SMTP_HOST", "").strip()
+    # LỐI TẮT GMAIL: chỉ cần GMAIL_USER + GMAIL_APP_PASSWORD (+ ADMIN_BASE_URL) — tự dùng smtp.gmail.com:587.
+    # GMAIL_APP_PASSWORD là "Mật khẩu ứng dụng" 16 ký tự do Google cấp (KHÔNG phải mật khẩu Gmail); dấu cách Google hiển thị được tự bỏ.
+    GMAIL_USER         = os.environ.get("GMAIL_USER", "").strip()
+    GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
+    # SMTP_* tự điền theo Gmail nếu có GMAIL_USER; đặt SMTP_* riêng thì ưu tiên giá trị đó (dùng cho nhà cung cấp email khác).
+    SMTP_HOST     = os.environ.get("SMTP_HOST", "").strip() or ("smtp.gmail.com" if GMAIL_USER else "")
     SMTP_PORT     = int(os.environ.get("SMTP_PORT", "587") or 587)
-    SMTP_USER     = os.environ.get("SMTP_USER", "").strip()
-    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-    SMTP_FROM     = os.environ.get("SMTP_FROM", "").strip()                    # vd: BVĐK Tâm Đức <no-reply@benhvien.vn>
+    SMTP_USER     = os.environ.get("SMTP_USER", "").strip() or GMAIL_USER
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "") or GMAIL_APP_PASSWORD
+    SMTP_FROM     = os.environ.get("SMTP_FROM", "").strip() or (f"{TWO_FACTOR_ISSUER} <{GMAIL_USER}>" if GMAIL_USER else "")   # vd: BVĐK Tâm Đức <no-reply@benhvien.vn>
     SMTP_SECURITY = os.environ.get("SMTP_SECURITY", "starttls").strip().lower()    # starttls | ssl | none
+
     # Địa chỉ gốc của trang ADMIN, dùng dựng liên kết trong email (KHÔNG lấy từ header Host để tránh bị giả mạo địa chỉ).
     ADMIN_BASE_URL = os.environ.get("ADMIN_BASE_URL", "").strip().rstrip("/")  # vd: https://quanly.ten-mien.vn
 

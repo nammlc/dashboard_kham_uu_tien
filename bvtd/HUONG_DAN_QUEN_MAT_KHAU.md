@@ -1,37 +1,68 @@
-# Quên mật khẩu · Mất / đổi điện thoại (admin)
+# Mật khẩu · email đăng nhập · điện thoại xác thực (admin)
+
+## ⚡ Bật "Lấy lại mật khẩu bằng Gmail" (3 bước, ~5 phút)
+1. **Bật xác minh 2 bước** cho tài khoản Gmail dùng để gửi thư: <https://myaccount.google.com/security>. (Nên dùng 1 Gmail riêng của bệnh viện thay vì Gmail cá nhân.)
+2. **Tạo “Mật khẩu ứng dụng”**: <https://myaccount.google.com/apppasswords> → đặt tên (vd. *Dashboard khám*) → Google hiện **16 ký tự** (dạng `abcd efgh ijkl mnop`) → copy. *Đây không phải mật khẩu Gmail.*
+3. **Khai báo trên máy chủ** (Coolify → Environment Variables) rồi **Redeploy**:
+```
+GMAIL_USER=ten-gmail-cua-ban@gmail.com
+GMAIL_APP_PASSWORD=abcd efgh ijkl mnop
+ADMIN_BASE_URL=https://dangkyhenkham.admin.tracuuduoc-bvdktamduccauquan.com
+```
+4. Đăng nhập → **Tài khoản & bảo mật → thẻ “Gửi email” → 📨 Gửi email thử**. Thấy thư trong hộp thư (xem cả *Thư rác*) là xong; nút **Quên mật khẩu?** sẽ gửi liên kết qua Gmail.
+
+Gặp lỗi? Nút gửi thử báo rõ nguyên nhân: *Gmail từ chối đăng nhập* → sai Mật khẩu ứng dụng / chưa bật xác minh 2 bước / `GMAIL_USER` không khớp; *không gửi được ... 465* → máy chủ chặn cổng 587, thêm `SMTP_SECURITY=ssl` và `SMTP_PORT=465`.
+Gmail miễn phí cho gửi tối đa khoảng 500 thư/ngày — thừa cho việc lấy lại mật khẩu. Tài khoản Google Workspace do quản trị tổ chức tắt “Mật khẩu ứng dụng” thì dùng SMTP của nhà cung cấp khác (`SMTP_*` bên dưới).
+
+Chức năng nằm ở **menu tên người dùng (góc dưới trái) → Tài khoản & bảo mật** và ở trang đăng nhập.
 
 ## Người dùng làm gì
 | Tình huống | Cách làm |
 |---|---|
-| **Quên mật khẩu** | Trang đăng nhập → **Quên mật khẩu?** → nhập email → mở email, bấm liên kết (hiệu lực **30 phút**, dùng **1 lần**) → đặt mật khẩu mới (≥ 8 ký tự). Sau đó đăng nhập như thường (vẫn cần mã OTP). |
-| **Đổi điện thoại, còn dùng được máy cũ** | Đăng nhập → menu tên người dùng (góc dưới trái) → **Tài khoản & bảo mật → Đổi điện thoại** → nhập mã OTP của máy cũ → quét QR bằng máy mới → nhập mã mới. Máy cũ ngừng dùng được ngay. |
-| **Mất điện thoại** | Đăng nhập bước 1 (mật khẩu hoặc Google) → ở trang nhập mã OTP bấm **Mất / đổi điện thoại? Gửi liên kết vào email** → mở liên kết → quét QR bằng máy mới. Mở email ở máy khác thì phải nhập mật khẩu; tài khoản chỉ dùng Google phải đăng nhập Google ở đúng trình duyệt đó trước. |
-| Không có email / SMTP chưa cấu hình | Quản trị viên chạy `flask --app app admin-passwd email` (đổi mật khẩu) hoặc `admin-2fa-reset email` (xoá 2 bước, lần sau quét QR lại). |
+| **Quên mật khẩu — cách 1 (cần email)** | Trang đăng nhập → *Quên mật khẩu?* → nhập email → mở email, bấm liên kết (hiệu lực **30 phút**, **1 lần**) → đặt mật khẩu mới. |
+| **Quên mật khẩu — cách 2 (không cần email)** | *Quên mật khẩu?* → nhập email + **mã 6 số trong Google Authenticator** + mật khẩu mới → xong. Dùng được ngay cả khi chưa cấu hình SMTP. |
+| Quên mật khẩu, đã đăng nhập được bằng Google | Đăng nhập Google (+ mã OTP) → *Tài khoản & bảo mật → Đổi mật khẩu* → **không phải nhập mật khẩu cũ**. |
+| **Đổi mật khẩu** | *Tài khoản & bảo mật → Đổi mật khẩu* → nhập mật khẩu hiện tại + mật khẩu mới. **Mọi thiết bị khác bị đăng xuất**, thiết bị đang dùng ở lại. Tài khoản chỉ-Google dùng nút này để *đặt* mật khẩu lần đầu. |
+| **Đổi email đăng nhập** | *Tài khoản & bảo mật → Đổi email* → nhập email mới + mật khẩu hiện tại + mã OTP hiện tại → mở **email MỚI**, bấm liên kết → bấm *Xác nhận đổi email*. Mật khẩu, 2 bước, nhật ký giữ nguyên; email cũ nhận thông báo. |
+| **Đổi điện thoại, còn máy cũ** | *Tài khoản & bảo mật → Đổi điện thoại* (nhập mã máy cũ → quét QR máy mới). |
+| **Mất điện thoại** | Đăng nhập bước 1 → ở trang nhập mã bấm *Mất / đổi điện thoại?* → liên kết vào email → quét QR máy mới. |
+| Không có email/SMTP, mất cả mật khẩu và điện thoại | Quản trị viên chạy lệnh bên dưới. |
 
-## Bật gửi email (làm 1 lần trên Coolify → Environment Variables)
+## Lệnh cho quản trị viên (terminal của container)
 ```
+flask --app app admin-passwd  email                     # đổi mật khẩu
+flask --app app admin-2fa-reset email                   # xoá 2 bước (lần sau quét QR lại)
+flask --app app admin-email  cu@... moi@...             # đổi email đăng nhập, không cần SMTP
+flask --app app mail-test    email-cua-ban@...          # thử cấu hình gửi email
+flask --app app admin-list                              # xem tài khoản (có cột 2 bước)
+```
+
+## Cấu hình
+```
+# Gửi email (cho: liên kết quên mật khẩu, mất điện thoại, ĐỔI EMAIL, thông báo bảo mật) — điền đủ cả 3 nhóm:
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=tai-khoan@benhvien.vn
 SMTP_PASSWORD=<mật khẩu ứng dụng>
 SMTP_FROM=BVĐK Tâm Đức <no-reply@benhvien.vn>
-SMTP_SECURITY=starttls          # starttls (587) | ssl (465) | none
+SMTP_SECURITY=starttls            # starttls (587) | ssl (465) | none
 ADMIN_BASE_URL=https://quanly.ten-mien-cua-ban.vn
+
+# Quên mật khẩu bằng mã OTP (mặc định bật; cần TWO_FACTOR_ENABLED=1)
+PASSWORD_RESET_VIA_OTP=1
 ```
-- **Phải có cả `SMTP_HOST`, người gửi (`SMTP_FROM` hoặc `SMTP_USER` dạng email) và `ADMIN_BASE_URL`**, thiếu một thì các liên kết "Quên mật khẩu" / "Mất điện thoại" tự ẩn (không báo lỗi).
-- `ADMIN_BASE_URL` là địa chỉ trang **admin** — liên kết trong email luôn dựng từ giá trị này, không lấy từ header `Host` (chống giả mạo địa chỉ để đánh cắp liên kết).
-- Gmail: bật xác minh 2 bước rồi tạo **Mật khẩu ứng dụng** (App password); Google Workspace / Brevo / SendGrid / Mailgun dùng thông tin SMTP họ cấp.
-- Thử: `flask --app app mail-test email-cua-ban@gmail.com` (báo rõ lỗi đăng nhập / kết nối nếu có).
+- Thiếu cấu hình email: các liên kết gửi email tự ẩn; nút *Quên mật khẩu?* vẫn hiện nếu còn cách dùng mã OTP.
+- `ADMIN_BASE_URL` là địa chỉ trang **admin**; liên kết trong email luôn dựng từ đây, không lấy từ header `Host`.
+- Gmail: bật xác minh 2 bước rồi tạo *Mật khẩu ứng dụng*. Thử bằng `mail-test`.
 
-## Cơ chế bảo vệ
-- Liên kết do hệ thống **ký bằng `SECRET_KEY`**, không lưu trong DB, hiệu lực 30 phút. Dùng xong (mật khẩu hoặc mã 2 bước đổi) thì **mọi liên kết cũ tự vô hiệu**. Liên kết đặt mật khẩu không dùng được cho đổi điện thoại và ngược lại.
-- **Không lộ email nào là admin**: trả lời luôn giống nhau dù email có hay không; email gửi ở luồng nền nên thời gian phản hồi cũng không khác nhau. Tài khoản chỉ-Google và tài khoản bị tắt không nhận email.
-- Giới hạn **3 yêu cầu / giờ / email** và **20 / giờ / IP** cho mỗi loại.
-- Các biểu mẫu đổi thông tin đăng nhập đều có **mã CSRF**.
-- Đặt lại mật khẩu **không bỏ qua** mã OTP; đổi điện thoại khi mất máy cần **cả email lẫn bước 1** (mật khẩu/Google).
-- Đổi điện thoại khi đã đăng nhập luôn bắt nhập **mã OTP hiện tại** (mỗi mã dùng 1 lần), rồi nhập thử mã của máy mới mới đổi.
-- Nhật ký truy cập ghi: yêu cầu gửi email, đặt lại mật khẩu, đổi điện thoại, nhập sai mật khẩu/mã.
+## Bảo mật
+- **Mã OTP chỉ dùng 1 lần**; khi đặt lại mật khẩu bằng OTP, mật khẩu mới được kiểm tra **trước** nên nhập sai độ dài không làm mất mã.
+- Mọi lý do thất bại ở "quên mật khẩu" đều báo **cùng một câu** — không lộ email nào là admin. Giới hạn: 10 lần sai/15 phút/email, 20/giờ/IP; đổi mật khẩu sai mật khẩu hiện tại 5 lần/15 phút.
+- **Đổi hoặc đặt lại mật khẩu đăng xuất mọi phiên cũ** (mỗi phiên ghi nhớ "vân tay" băm mật khẩu lúc đăng nhập). Phiên tạo trước bản nâng cấp được nhận một lần rồi theo dõi như bình thường.
+- **Đổi email**: bắt buộc chứng minh đúng chủ (mật khẩu + OTP), liên kết gửi tới **email mới**, ký bằng `SECRET_KEY`, 30 phút, 1 lần, mất hiệu lực nếu mật khẩu/điện thoại đổi trước đó; trang xác nhận **không đổi khi chỉ mở liên kết** (tránh trình quét thư bấm hộ), phải bấm nút. Liên kết phải mở trên trình duyệt đang đăng nhập đúng tài khoản đó.
+- Mọi biểu mẫu có **CSRF**; mọi bước ghi vào nhật ký truy cập (đổi mật khẩu, đổi email, đặt lại, sai mật khẩu/mã...). Đặt lại/đổi mật khẩu và đổi email gửi **thông báo** tới chủ tài khoản khi đã cấu hình email.
 
-## Lưu ý
-- Đặt lại mật khẩu **không đăng xuất** các phiên đang mở ở máy khác (phiên tự hết sau 15 phút không thao tác). Nghi bị lộ tài khoản thì đổi `SECRET_KEY` (mọi phiên và liên kết đang có đều mất hiệu lực; mọi admin quét lại QR 2 bước một lần).
-- Bộ đếm giới hạn nằm trong bộ nhớ của tiến trình (đủ cho 1 container).
+## Đánh đổi cần biết
+- **Quên mật khẩu bằng OTP** nghĩa là ai cầm điện thoại đã mở khoá (có Google Authenticator) thì đặt lại được mật khẩu và đăng nhập được. Nếu bệnh viện muốn bắt buộc cả "biết mật khẩu + cầm điện thoại", đặt `PASSWORD_RESET_VIA_OTP=0` (chỉ còn đặt lại qua email hoặc quản trị viên).
+- Đăng nhập Google chỉ dùng được nếu email đăng nhập **cũng là tài khoản Google** của người đó — đổi sang email không phải Google thì dùng mật khẩu.
+- Bộ đếm giới hạn nằm trong bộ nhớ tiến trình (đủ cho 1 container).
