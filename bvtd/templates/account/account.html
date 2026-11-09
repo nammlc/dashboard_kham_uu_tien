@@ -60,7 +60,6 @@
       <p class="text-sm text-slate-600 mt-1">Đang <b>tắt</b> trên hệ thống.</p>
     {% elif has_totp %}
       <p class="text-sm text-emerald-700 font-semibold mt-1">✔ Đã thiết lập{% if enabled_at %} <span class="font-normal text-slate-400">· từ {{ enabled_at }}</span>{% endif %}</p>
-      <p class="text-sm text-slate-500 mt-2">Đổi sang điện thoại mới khi vẫn còn dùng được điện thoại cũ. Nếu đã mất điện thoại, hãy đăng xuất rồi chọn “Mất / đổi điện thoại?” ở bước nhập mã.</p>
       <a href="{{ url_for('account_change_phone') }}"
          class="inline-block mt-3 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg px-4 py-2 text-sm transition-colors">📱 Đổi điện thoại</a>
     {% else %}

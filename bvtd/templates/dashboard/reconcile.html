@@ -14,9 +14,10 @@
     </h2>
 
     <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 leading-relaxed">
-      <b>📋 Hướng dẫn:</b> Minh Lộ → Báo cáo → <b>ĐK Khám Chữa Bệnh</b> → chọn <b>khoảng ngày rộng</b>
-      (cả tháng, hoặc từ ngày hẹn sớm nhất tới nay) → Export Excel → upload vào đây. Hệ thống dò từng bệnh nhân
-      <b>chưa khám</b> trên Sheet xem có trong log không — <b>không cần đúng 1 ngày</b> (đến sớm/muộn vẫn bắt được).
+      <b>📋 Hướng dẫn:</b> Minh Lộ → Báo cáo → <b>ĐK Khám Chữa Bệnh</b> → chọn khoảng ngày
+      <b>từ {{ range_start.strftime('%d/%m/%Y') }} đến {{ today.strftime('%d/%m/%Y') }}</b>
+      (<b>{{ LOOKBACK }} ngày trước tính từ hôm nay</b>) → Export Excel → upload vào đây. Hệ thống dò từng bệnh nhân
+      <b>chưa khám</b> có ngày khám trong {{ LOOKBACK }} ngày đó xem có trong log không — <b>không cần đúng 1 ngày</b> (đến sớm/muộn vẫn bắt được).
     </div>
     <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
       ⚠️ <b>Đúng file cần upload:</b> file <b>01-1</b> (Báo cáo ĐK KCB — nhật ký BN thực tế đến khám), không nhầm với file 04-4 ở trang Import.
@@ -241,11 +242,6 @@
   <!-- ═════════ LỌC TRÙNG ═════════ -->
   <section id="trung" class="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
     <h2 class="font-semibold text-slate-800 text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-violet-500"></span>🔁 Đối chiếu trùng — Tái khám (từ khoa) ↔ Đăng ký Form</h2>
-    <div class="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-xs text-violet-900 leading-relaxed">
-      Quét BN <b>đã có lịch tái khám (từ khoa)</b> nhưng gần ngày hẹn lại <b>tự đăng ký thêm qua Form</b> (nguồn trống hoặc "vãng lai") cho CÙNG 1 đợt khám —
-      khớp Tên (trùng hẳn) + SĐT / Năm sinh, <b>không mâu thuẫn năm sinh &amp; giới tính</b>, ngày hẹn lệch tối đa <b>{{ DUPWIN }} ngày</b>, trong {{ LOOKBACK }} ngày gần nhất, <b>bất kể đã/chưa khám</b> (tránh đếm 1 lượt khám thành 2).<br>
-      🗑️ Sau khi xem 2 bên và xác nhận, dòng Form nghi trùng bị <b>xoá HẲN khỏi Google Sheet</b>, luôn giữ dòng tái khám. <b>Không thể hoàn tác.</b>
-    </div>
 
     {% if legacy %}
     <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 space-y-2">

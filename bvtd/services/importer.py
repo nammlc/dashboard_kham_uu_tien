@@ -6,7 +6,7 @@ nhiều ngày lập, người dùng chọn ngày nào thì chỉ ghi các BN có
 """
 import json, os, re, tempfile, time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 IMPORT_VERSION = "import-04-4 · v4 · 24/10/2026"
 _DIR = os.path.join(tempfile.gettempdir(), "bvtd_import")
@@ -14,6 +14,30 @@ _TTL = 3600                                    # giữ file đã upload 1 giờ
 _TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 
 UNKNOWN_LAP = "__unknown__"
+
+# Chỉ nhận lịch hẹn có NGÀY HẸN từ HÔM NAY đến HÔM NAY + 30 ngày (xuất file Minh Lộ đúng khoảng này; ngoài khoảng bị bỏ qua).
+IMPORT_WINDOW_DAYS = 30
+
+
+def import_window(today, days: int = IMPORT_WINDOW_DAYS):
+    """→ (ngày đầu, ngày cuối) — gồm cả hai đầu."""
+    return today, today + timedelta(days=days)
+
+
+def split_by_window(records: list[dict], today, days: int = IMPORT_WINDOW_DAYS):
+    """Chia theo NGÀY HẸN → (giữ, bỏ). Ngày hẹn nằm ngoài [hôm nay, hôm nay + days] thì bỏ.
+    Bản ghi KHÔNG đọc được ngày hẹn được GIỮ (như trước đây) để người dùng thấy và xử lý ở bước xem trước, không mất lặng lẽ."""
+    from services.sheets import to_dmy
+    lo, hi = import_window(today, days)
+    keep, drop = [], []
+    for r in records:
+        d = to_dmy(r.get("NGÀY HẸN"))
+        try:
+            when = datetime.strptime(d, "%d/%m/%Y").date() if d else None
+        except ValueError:
+            when = None
+        (drop if (when is not None and not (lo <= when <= hi)) else keep).append(r)
+    return keep, drop
 
 
 def _dmy(s: str) -> datetime:
@@ -72,13 +96,13 @@ def _cleanup():
         pass
 
 
-def save_import(token: str, records: list[dict], filename: str) -> None:
+def save_import(token: str, records: list[dict], filename: str, extra: dict | None = None) -> None:
     os.makedirs(_DIR, exist_ok=True)
     _cleanup()
     fp = _path(token)
     tmp = fp + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"records": records, "filename": filename}, f, ensure_ascii=False)
+        json.dump({"records": records, "filename": filename, **(extra or {})}, f, ensure_ascii=False)
     os.replace(tmp, fp)
 
 

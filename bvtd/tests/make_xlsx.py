@@ -7,7 +7,8 @@ import zipfile
 import openpyxl
 
 
-def build_04_4(today: dt.date) -> bytes:
+def build_04_4(today: dt.date, hen: dict | None = None) -> bytes:
+    """hen: {stt: số ngày lệch so với hôm nay} để ghi đè NGÀY HẸN của từng bệnh nhân (mặc định giữ như cũ)."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws["A1"], ws["A2"] = "SỞ Y TẾ", "DANH SÁCH BỆNH NHÂN HẸN KHÁM LẠI"
@@ -26,14 +27,16 @@ def build_04_4(today: dt.date) -> bytes:
         (4, "MYT004", ["PHẠM THỊ HOA"], None, "60 tuổi", ["Xã Thiệu Hóa"], d(7), d(-2), "0905111222", "Khoa Nội Thần Kinh"),
         (5, "MYT005", ["ĐỖ THỊ NGA"], None, "51 tuổi", ["Xã Đông Hưng"], d(15), d(0), "0372984602", "Khoa Sản"),
     ]
+    if hen:
+        pts = [p[:6] + (d(hen[p[0]]) if p[0] in hen else p[6],) + p[7:] for p in pts]
     r = 6
-    for stt, ma, tens, nam, nu, dcs, hen, lap, sdt, khoa in pts:
+    for stt, ma, tens, nam, nu, dcs, hen_d, lap, sdt, khoa in pts:
         for k in range(max(len(tens), len(dcs))):
             if k == 0:
                 ws.cell(r, 1, stt); ws.cell(r, 2, ma)
                 if nam: ws.cell(r, 4, nam)
                 if nu: ws.cell(r, 5, nu)
-                ws.cell(r, 11, hen); ws.cell(r, 12, lap); ws.cell(r, 13, sdt); ws.cell(r, 14, khoa)
+                ws.cell(r, 11, hen_d); ws.cell(r, 12, lap); ws.cell(r, 13, sdt); ws.cell(r, 14, khoa)
             if k < len(tens): ws.cell(r, 3, tens[k])
             if k < len(dcs): ws.cell(r, 6, dcs[k])
             r += 1

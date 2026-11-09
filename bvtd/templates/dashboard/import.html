@@ -10,18 +10,10 @@
     <p class="font-bold mb-1">📋 Hướng dẫn:</p>
     <ol class="space-y-0.5 list-none">
       <li>1. Vào Minh Lộ → Báo cáo → <b>Danh sách bệnh nhân hẹn khám lại</b></li>
-      <li>2. Chọn ngày cần xuất → Export ra <b>Excel (.xlsx)</b></li>
+      <li>2. Chọn <b>ngày hẹn từ {{ win_from }} (hôm nay) đến {{ win_to }}</b> ({{ WIN_DAYS }} ngày kể từ hôm nay) → Export ra <b>Excel (.xlsx)</b></li>
       <li>3. Upload file vào đây → Chọn ngày lập → Kiểm tra preview → Nhấn <b>Import vào Google Sheet</b></li>
-      <li>4. Dữ liệu sẽ được <b>thêm vào sheet chính</b> với đầy đủ các trường đã mapping</li>
+      <li>4. Dữ liệu sẽ được <b>thêm vào sheet chính</b>. Lịch hẹn có ngày hẹn ngoài khoảng trên sẽ <b>tự bị bỏ qua</b> (có thống kê ở bước xem trước)</li>
     </ol>
-  </div>
-
-  <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-xs text-emerald-800 leading-relaxed">
-    <b>✅ Quy tắc mapping:</b>
-    Họ tên → HỌ VÀ TÊN · Địa chỉ → ĐỊA CHỈ · Ngày hẹn → NGÀY KHÁM · <b>Ngày lập → NGÀY TẠO LỊCH HẸN KHÁM</b> · Điện thoại → SỐ ĐIÊN THOẠI ·
-    Khoa hẹn → KHOA KHÁM CHỮA BỆNH · Nguồn BN → "BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM" ·
-    Trạng thái → "BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM" · Thời gian đăng ký → Thời điểm import ·
-    Cam kết &amp; Đồng ý → "CÓ"
   </div>
 
   <div class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">

@@ -24,7 +24,7 @@ from services.sheets import (
     STATUS_ATTENDED, norm_name, norm_phone_key, accent_compare,
 )
 
-RECONCILE_LOOKBACK_DAYS = 7    # danh sách gốc: BN có NGÀY KHÁM trong X ngày gần đây
+RECONCILE_LOOKBACK_DAYS = 14   # danh sách gốc: BN có NGÀY KHÁM trong 14 ngày gần đây (tính từ hôm nay)
 RECONCILE_WINDOW_BEFORE = 2    # chấp nhận đến SỚM hơn hẹn tối đa 2 ngày
 RECONCILE_WINDOW_AFTER  = 3    # và MUỘN hơn hẹn tối đa 3 ngày — nhưng KHÔNG BAO GIỜ vượt quá HÔM NAY
 DUPLICATE_WINDOW_DAYS   = 5    # lệch ngày hẹn tối đa giữa dòng tái khám và dòng Form

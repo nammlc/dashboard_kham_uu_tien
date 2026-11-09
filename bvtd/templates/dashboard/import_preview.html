@@ -10,6 +10,19 @@
     <a href="{{ url_for('import_excel') }}" class="px-3 py-1.5 border border-emerald-300 rounded-lg text-xs text-emerald-700 hover:bg-white">← Chọn file khác</a>
   </div>
 
+  {% if c.dropped_n %}
+  <div class="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900">
+    ⛔ Đã bỏ qua <b>{{ c.dropped_n }}</b> lịch hẹn có ngày hẹn <b>ngoài khoảng {{ c.window.from }} – {{ c.window.to }}</b>
+    ({{ c.window.days }} ngày kể từ hôm nay) — các lịch này <b>không được import</b>.
+    <details class="mt-2 text-xs">
+      <summary class="cursor-pointer font-semibold">Xem danh sách bị bỏ qua{% if c.dropped_n > c.dropped|length %} ({{ c.dropped|length }} đầu tiên){% endif %}</summary>
+      <ul class="mt-1 space-y-0.5 max-h-48 overflow-y-auto">
+        {% for d in c.dropped %}<li>{{ d.name or '—' }} · ngày hẹn <b>{{ d.hen or '—' }}</b>{% if d.lap %} · lập {{ d.lap }}{% endif %}</li>{% endfor %}
+      </ul>
+    </details>
+  </div>
+  {% endif %}
+
   <!-- ═════ Chọn NGÀY LẬP ═════ -->
   <div class="bg-white rounded-xl border border-slate-200 p-5">
     <h2 class="font-semibold text-slate-800 text-sm mb-1">🗓️ Chọn Ngày Lập Để Ghi Vào Google Sheet</h2>
