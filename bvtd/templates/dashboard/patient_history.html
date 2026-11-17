@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Lịch sử bệnh nhân{% endblock %}
+{% block page_title %}🕘 Lịch sử thay đổi{% if patient %} — {{ patient.full_name }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl border border-slate-200 max-w-4xl">
+  <div class="px-5 py-4 border-b border-slate-100 flex items-center gap-3 text-sm">
+    {% if patient %}<a href="{{ url_for('patient_edit', pid=pid) }}" class="text-blue-600 hover:underline">← Về trang sửa</a>
+    {% else %}<span class="text-amber-700">Bệnh nhân này đã bị xoá (xoá mềm).</span>{% endif %}
+    <span class="ml-auto text-xs text-slate-400">{{ history|length }} thay đổi gần nhất</span>
+  </div>
+  <div class="divide-y divide-slate-100">
+    {% for h in history %}
+    <div class="px-5 py-3 text-sm">
+      <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span class="font-semibold text-slate-700">{{ h.at.strftime('%d/%m/%Y %H:%M:%S') if h.at else '' }}</span>
+        <span>· {{ h.by or '—' }}</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100">{{ {'insert':'Thêm mới','update':'Sửa','delete':'Xoá','restore':'Khôi phục','import':'Nhập từ Sheet'}.get(h.action, h.action) }}</span>
+      </div>
+      {% if h.action in ('update', 'import') and h.changes %}
+      <ul class="mt-1 space-y-0.5">
+        {% for col, ch in h.changes.items() %}
+        <li class="text-xs"><b class="text-slate-600">{{ col }}</b>:
+          <span class="text-red-500 line-through">{{ ch[0] if ch[0] not in (None, '') else '∅' }}</span> →
+          <span class="text-emerald-600 font-semibold">{{ ch[1] if ch[1] not in (None, '') else '∅' }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="px-5 py-8 text-center text-slate-400 text-sm">Chưa có lịch sử.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

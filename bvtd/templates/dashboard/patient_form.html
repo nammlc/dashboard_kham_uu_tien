@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'new' %}Thêm bệnh nhân{% else %}Sửa bệnh nhân{% endif %}{% endblock %}
+{% block page_title %}{% if mode == 'new' %}➕ Thêm bệnh nhân{% else %}✏️ Sửa bệnh nhân #{{ patient.stt or pid }}{% endif %}{% endblock %}
+
+{% macro field(name, label, type='text', required=False, hint='', list_id='') -%}
+<div>
+  <label for="f_{{ name }}" class="block text-xs font-semibold text-slate-500 mb-1">{{ label }}{% if required %} <span class="text-red-500">*</span>{% endif %}</label>
+  <input id="f_{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ vals[name] }}" {% if required %}required{% endif %}
+         {% if list_id %}list="{{ list_id }}"{% endif %} autocomplete="off"
+         class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400">
+  {% if hint %}<p class="text-[11px] text-slate-400 mt-1">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% block content %}
+<div class="max-w-4xl">
+  {% if errors %}
+  <div class="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">
+    <b>Chưa lưu được:</b>
+    <ul class="list-disc ml-5 mt-1">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if dups %}
+  <div class="mb-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm px-4 py-3">
+    <p class="font-semibold">⚠️ Có thể bệnh nhân này đã được nhập trước đó ({{ dups|length }} dòng giống):</p>
+    <div class="mt-2 space-y-2">
+      {% for d in dups %}
+      <div class="rounded-lg bg-white border border-amber-200 px-3 py-2">
+        <b>{{ d.name }}</b> · STT {{ d.stt }} · khám {{ d.date }} · SĐT {{ d.phone or '—' }} · {{ d.status or 'chưa có trạng thái' }}
+        <a href="{{ url_for('patient_edit', pid=d.id) }}" target="_blank" class="text-blue-600 hover:underline ml-2">xem / sửa dòng này ↗</a>
+        {% for n in d.notes %}<p class="text-xs text-amber-700 mt-0.5">❓ {{ n }}</p>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="mt-2 text-xs">Nếu đúng là <b>người khác</b> hoặc <b>lượt khám khác</b>, bấm «Vẫn thêm» ở cuối form.</p>
+  </div>
+  {% endif %}
+
+  <form method="POST" class="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    {% if mode == 'edit' %}<input type="hidden" name="version" value="{{ version }}">{% endif %}
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="md:col-span-2">{{ field('full_name', 'Họ và tên', required=True) }}</div>
+      {{ field('phone', 'Số điện thoại', type='tel', hint='10 số, bắt đầu bằng 0. Để trống nếu không có.') }}
+      {{ field('birth_year', 'Năm sinh', type='number') }}
+      <div>
+        <label for="f_gender" class="block text-xs font-semibold text-slate-500 mb-1">Giới tính</label>
+        <select id="f_gender" name="gender" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+          <option value="">—</option>
+          <option value="Nam" {% if vals.gender == 'Nam' %}selected{% endif %}>Nam</option>
+          <option value="Nữ" {% if vals.gender == 'Nữ' %}selected{% endif %}>Nữ</option>
+        </select>
+      </div>
+      {{ field('cccd', 'Số CCCD (nếu có)') }}
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      {{ field('exam_date', 'Ngày khám (ngày hẹn)', type='date', required=True) }}
+      {{ field('exam_time', 'Giờ khám dự kiến', hint='Ví dụ 07:00 — để trống nếu chưa rõ.') }}
+      <div>
+        <label for="f_source" class="block text-xs font-semibold text-slate-500 mb-1">Nguồn bệnh nhân</label>
+        <select id="f_source" name="source" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+          {% set cur = vals.source %}
+          <option value="">— chưa ghi —</option>
+          <option value="BỆNH NHÂN VÃNG LAI" {% if cur == 'BỆNH NHÂN VÃNG LAI' %}selected{% endif %}>Bệnh nhân vãng lai</option>
+          <option value="BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM" {% if cur == 'BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM' %}selected{% endif %}>Tái khám (từ khoa)</option>
+          {% if cur and cur not in ['BỆNH NHÂN VÃNG LAI', 'BỆNH NHÂN ĐIỀU TRỊ NỘI KHOA TÁI KHÁM'] %}<option value="{{ cur }}" selected>{{ cur }}</option>{% endif %}
+        </select>
+      </div>
+      {{ field('khoa', 'Khoa khám chữa bệnh', list_id='khoa_list', hint='Để trống = chưa phân khoa.') }}
+      {{ field('specialty', 'Chuyên khoa mong muốn') }}
+      {{ field('doctor', 'Bác sĩ mong muốn') }}
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      {{ field('address', 'Địa chỉ (thôn/xã)') }}
+      {{ field('symptom', 'Triệu chứng chính') }}
+    </div>
+
+    {% if mode == 'edit' %}
+    <div class="max-w-xs">
+      <label for="f_status" class="block text-xs font-semibold text-slate-500 mb-1">Trạng thái</label>
+      <select id="f_status" name="status" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+        <option value="">— chưa có —</option>
+        <option value="BỆNH NHÂN ĐÃ KHÁM" {% if vals.status == 'BỆNH NHÂN ĐÃ KHÁM' %}selected{% endif %}>Đã khám</option>
+        <option value="BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM" {% if vals.status == 'BỆNH NHÂN CHƯA KHÁM/BỎ KHÁM' %}selected{% endif %}>Chưa khám / bỏ khám</option>
+      </select>
+    </div>
+    {% endif %}
+
+    <datalist id="khoa_list">{% for k in khoas %}<option value="{{ k }}">{% endfor %}</datalist>
+
+    <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100">
+      <button type="submit" class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">
+        💾 {% if mode == 'new' %}Lưu bệnh nhân{% else %}Lưu thay đổi{% endif %}
+      </button>
+      {% if dups %}
+      <button type="submit" name="confirm_dup" value="1" class="bg-amber-500 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-amber-600">
+        Vẫn thêm (đây là người / lượt khám khác)
+      </button>
+      {% endif %}
+      <a href="{{ url_for('patients') }}" class="text-sm text-slate-500 hover:underline">Huỷ</a>
+      {% if mode == 'edit' %}
+      <a href="{{ url_for('patient_history', pid=pid) }}" class="text-sm text-slate-500 hover:underline ml-auto">🕘 Lịch sử thay đổi</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if mode == 'edit' %}
+  <form method="POST" action="{{ url_for('patient_delete', pid=pid) }}" class="mt-4 text-right"
+        onsubmit="return confirm('Xoá bệnh nhân này khỏi danh sách? (xoá mềm, quản trị viên khôi phục được)');">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="text-xs text-red-500 hover:underline">🗑️ Xoá bệnh nhân</button>
+  </form>
+  <p class="text-[11px] text-slate-400 mt-2">Phiên bản dữ liệu {{ version }} · sửa lần cuối {{ patient.updated_at }} bởi {{ patient.updated_by or '—' }}</p>
+  {% endif %}
+</div>
+{% endblock %}

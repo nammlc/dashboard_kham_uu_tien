@@ -235,6 +235,8 @@ PAGE_NAMES = {
     "reconcile_run": "Đối chiếu: chạy", "reconcile_apply": "Đối chiếu: cập nhật trạng thái", "reconcile_one": "Đối chiếu: xử lý từng ca",
     "reconcile_csv": "Đối chiếu: tải CSV", "dup_scan": "Quét trùng", "dup_delete": "Xoá bản ghi trùng",
     "dup_clean_legacy": "Dọn bản ghi cũ", "api_update_status": "Cập nhật trạng thái", "refresh_cache": "Làm mới dữ liệu",
+    "patient_new": "Thêm bệnh nhân", "patient_edit": "Sửa bệnh nhân", "patient_history": "Lịch sử bệnh nhân",
+    "patient_delete": "Xoá bệnh nhân",
     "access_log": "Nhật ký truy cập", "register_page": "Đăng ký khám", "register_done": "Đăng ký xong",
 }
 
@@ -1173,7 +1175,9 @@ def logout():
 def _get_df(fresh=False, max_age=None):
     """DataFrame của Sheet, có cache. `fresh=True`: luôn đọc lại Sheet. `max_age`: chỉ dùng bản cache nếu
     chưa quá N giây tuổi (dùng cho kiểm tra trùng khi import — không để dữ liệu cũ hàng phút)."""
-    from services.sheets import load_dataframe
+    from services.sheets import load_dataframe, USE_POSTGRES
+    if USE_POSTGRES:                       # dữ liệu nằm trong PostgreSQL: đọc trực tiếp, luôn mới, không cần cache
+        return load_dataframe()
     df = cache.get("main_df")
     age = time.time() - (cache.get("main_df_ts") or 0)
     if fresh or df is None or (max_age is not None and age > max_age):
@@ -1367,7 +1371,10 @@ def patients():
 
     total   = len(filtered)
     start   = (page - 1) * per_page
-    records = filtered.iloc[start:start + per_page].to_dict("records")
+    page_df = filtered.iloc[start:start + per_page]
+    records = page_df.to_dict("records")
+    for _r, _idx in zip(records, page_df.index):
+        _r["_id"] = int(_idx) + 2          # = patients.id khi dùng PostgreSQL (sheet_row = index + 2)
     from services.sheets import created_fields
     for r in records:                                  # ngày/giờ tạo hẹn: trống thì lấy từ Dấu thời gian
         r["_created_date"], r["_created_time"] = created_fields(r)
@@ -1379,6 +1386,164 @@ def patients():
                            scope=scope, scope_label=DASH_SCOPES.get(scope, ""),
                            date_from=d_from.isoformat() if d_from else "",
                            date_to=d_to.isoformat() if d_to else "")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# THÊM / SỬA / LỊCH SỬ BỆNH NHÂN (chỉ khi STORAGE_BACKEND=postgres — dữ liệu gốc nằm trong PostgreSQL)
+# ════════════════════════════════════════════════════════════════════════════════
+def _pg_only():
+    from services.sheets import USE_POSTGRES
+    if USE_POSTGRES:
+        return None
+    flash("Chức năng này chỉ có khi dữ liệu nằm trong cơ sở dữ liệu (đặt STORAGE_BACKEND=postgres).", "error")
+    return redirect(url_for("patients"))
+
+
+def _patient_form_values():
+    from services import patient_db as PD
+    return {k: request.form.get(k, "").strip() for k in PD.FORM_FIELDS}
+
+
+def _patient_to_form(p: dict) -> dict:
+    from services import patient_db as PD
+    v = {k: "" for k in PD.FORM_FIELDS}
+    for k in v:
+        x = p.get(k)
+        if x is None:
+            continue
+        v[k] = PD._as_date(x).isoformat() if k == "exam_date" else str(x)
+    return v
+
+
+def _form_choices():
+    """Gợi ý khoa/nguồn lấy từ dữ liệu đang có."""
+    from services.sheets import COL_KHOA
+    df = _get_df()
+    khoas = sorted({str(k).strip() for k in df[COL_KHOA]} - {""}) if (not df.empty and COL_KHOA in df.columns) else []
+    return {"khoas": khoas}
+
+
+def _find_dup_patients(vals: dict, exclude_id=None, window_days=5):
+    """Cảnh báo trùng khi nhập: cùng người (tên + SĐT/năm sinh, không mâu thuẫn) có ngày khám lệch ≤ 5 ngày."""
+    import pandas as pd
+    from services import patient_db as PD, reconcile as R
+    cols, _, errs = PD.validate_form(vals)
+    if errs or not cols.get("exam_date"):
+        return []
+    df = _get_df()
+    if df.empty or "_date" not in df.columns:
+        return []
+    d0 = pd.Timestamp(cols["exam_date"])
+    near = df[(df["_date"] >= d0 - pd.Timedelta(days=window_days)) & (df["_date"] <= d0 + pd.Timedelta(days=window_days))]
+    me = R.person_view({"name": cols["full_name"], "phone": cols["phone"], "birth_year": cols["birth_year"],
+                        "gender": cols["gender"]})
+    if not me["key"]:
+        return []
+    out = []
+    for idx, row in near.iterrows():
+        if exclude_id is not None and int(idx) + 2 == int(exclude_id):
+            continue
+        other = R.person_view(R._row_to_patient(idx, row))
+        if other["key"] != me["key"]:
+            continue
+        c = R.compare_person(me, other)
+        if c:
+            out.append({"id": int(idx) + 2, "stt": row.get("STT", ""), "name": row.get("1. HỌ VÀ TÊN BỆNH NHÂN", ""),
+                        "date": row.get("NGÀY KHÁM", ""), "phone": row.get("5. SỐ ĐIÊN THOẠI", ""),
+                        "status": row.get("TRẠNG THÁI", ""), "tier": c["tier"], "notes": c["notes"]})
+    return sorted(out, key=lambda x: x["tier"])[:5]
+
+
+@app.route("/benh-nhan/them", methods=["GET", "POST"])
+@login_required
+def patient_new():
+    redir = _pg_only()
+    if redir:
+        return redir
+    from services import patient_db as PD
+    from services.sheets import vn_today
+    vals = {k: "" for k in PD.FORM_FIELDS}
+    vals["exam_date"] = vn_today().isoformat()
+    errors, dups = [], []
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400)
+        vals = _patient_form_values()
+        _, _, errors = PD.validate_form(vals)
+        if not errors:
+            dups = _find_dup_patients(vals)
+            if not dups or request.form.get("confirm_dup") == "1":
+                try:
+                    pid = PD.create_patient(vals)
+                    flash(f"✅ Đã thêm bệnh nhân {vals['full_name']} (mã nội bộ {pid}).", "success")
+                    return redirect(url_for("patients", q=vals["full_name"]))
+                except PD.Invalid as e:
+                    errors, dups = [str(e)], []
+    return render_template("dashboard/patient_form.html", mode="new", vals=vals, errors=errors, dups=dups,
+                           pid=None, version=None, patient=None, **_form_choices())
+
+
+@app.route("/benh-nhan/<int:pid>/sua", methods=["GET", "POST"])
+@login_required
+def patient_edit(pid):
+    redir = _pg_only()
+    if redir:
+        return redir
+    from services import patient_db as PD
+    p = PD.get_patient(pid)
+    if p is None:
+        flash("Không tìm thấy bệnh nhân (có thể đã bị xoá).", "error")
+        return redirect(url_for("patients"))
+    vals, errors, dups, version = _patient_to_form(p), [], [], p["version"]
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400)
+        vals = _patient_form_values()
+        try:
+            version = int(request.form.get("version", "0"))
+        except ValueError:
+            version = 0
+        try:
+            changes = PD.update_patient(pid, vals, version)
+            flash("✅ Đã lưu thay đổi." if changes else "Không có gì thay đổi.", "success")
+            return redirect(url_for("patient_edit", pid=pid))
+        except PD.Conflict as e:
+            flash(str(e), "error")
+            return redirect(url_for("patient_edit", pid=pid))
+        except PD.Invalid as e:
+            errors = [str(e)]
+    return render_template("dashboard/patient_form.html", mode="edit", vals=vals, errors=errors, dups=dups,
+                           pid=pid, version=version, patient=p, **_form_choices())
+
+
+@app.route("/benh-nhan/<int:pid>/lich-su")
+@login_required
+def patient_history(pid):
+    redir = _pg_only()
+    if redir:
+        return redir
+    from services import patient_db as PD
+    p = PD.get_patient(pid)
+    return render_template("dashboard/patient_history.html", pid=pid, patient=p, history=PD.get_history(pid))
+
+
+@app.route("/benh-nhan/<int:pid>/xoa", methods=["POST"])
+@login_required
+def patient_delete(pid):
+    redir = _pg_only()
+    if redir:
+        return redir
+    if not _csrf_ok():
+        abort(400)
+    from services import patient_db as PD
+    p = PD.get_patient(pid)
+    if p is None:
+        flash("Không tìm thấy bệnh nhân.", "error")
+        return redirect(url_for("patients"))
+    n, err = PD.delete_rows([{"sheet_row": pid, "stt": str(p["stt"] or ""), "name": p["full_name"]}])
+    flash(f"🗑️ Đã xoá {p['full_name']} (xoá mềm, khôi phục được qua lệnh restore-patient)." if n else f"❌ {err}",
+          "success" if n else "error")
+    return redirect(url_for("patients"))
 
 
 @app.route("/lich-kham")
@@ -1697,7 +1862,7 @@ def register_page():
     clean, errors = RG.validate(request.form)
     if errors:                                                        # lỗi nhập liệu KHÔNG tính vào giới hạn (nhiều bệnh nhân dùng chung wifi/máy ở bệnh viện)
         return _reg_render(values, errors, f"Có {len(errors)} mục cần kiểm tra lại (hiện chữ đỏ bên dưới).", 422)
-    if RG.rate_limited(_reg_ip()):                                    # chỉ đơn HỢP LỆ mới đụng tới Sheet → giới hạn ở đây
+    if RG.rate_limited(_reg_ip()):                                    # chỉ đơn HỢP LỆ mới ghi dữ liệu → giới hạn ở đây
         return _reg_render(values, {}, "Hệ thống đang nhận quá nhiều đăng ký từ thiết bị này. Vui lòng đợi vài phút rồi thử lại.", 429)
 
     summary = {
@@ -1721,7 +1886,7 @@ def register_page():
         else:
             ok, err = RG.submit(clean)
             if not ok:
-                app.logger.error(f"register: ghi Sheet lỗi: {err}")
+                app.logger.error(f"register: ghi dữ liệu lỗi: {err}")
                 return _reg_render(values, {}, "Hệ thống đang bận, chưa ghi được đăng ký. Vui lòng bấm Gửi lại sau ít phút. "
                                    "Nếu vẫn lỗi, xin gọi điện cho bệnh viện.", 503)
             RG.remember_submitted(clean)
@@ -2308,6 +2473,7 @@ def inject_globals():
     return {
         "import_version": IMPORT_VERSION,
         "current_user": current_user,
+        "storage_pg":   __import__("services.sheets", fromlist=["USE_POSTGRES"]).USE_POSTGRES,
         "today_str":    datetime.now().strftime("%A, %d/%m/%Y"),
     }
 
@@ -2317,6 +2483,9 @@ def inject_globals():
 # ════════════════════════════════════════════════════════════════════════════════
 # LỆNH QUẢN LÝ TÀI KHOẢN ADMIN (chạy trong terminal của máy chủ / container)
 #   flask --app app init-db                              (kiểm tra kết nối + tạo bảng)
+#   flask --app app import-sheet [--commit] [--resync]   (nhập bệnh nhân từ Google Sheet; không có --commit = chạy thử)
+#   flask --app app export-sheet                         (ghi 1 chiều DB → tab bản sao trên Sheet)
+#   flask --app app restore-patient 123                  (khôi phục bệnh nhân đã xoá mềm)
 #   flask --app app admin-list
 #   flask --app app admin-add email@benhvien.vn        (hỏi mật khẩu; bỏ trống = chỉ đăng nhập bằng Google)
 #   flask --app app admin-passwd email@benhvien.vn      (đổi mật khẩu)
@@ -2338,7 +2507,7 @@ def cli_init_db():
         with DB.pool(url).connection() as c:
             ver = c.execute("SELECT version() AS v").fetchone()["v"]
             tables = [r["tablename"] for r in c.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('admin_users','access_log') "
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('admin_users','access_log','patients','patient_history') "
                 "ORDER BY tablename").fetchall()]
     except DB.DBError as e:
         raise click.ClickException(f"Không kết nối được PostgreSQL: {e}")
@@ -2346,6 +2515,61 @@ def cli_init_db():
     click.echo(f"Các bảng đã có: {', '.join(tables)}")
     n = _admins().count()
     click.echo(f"Số tài khoản admin: {n}" + ("  → thêm bằng: flask --app app admin-add email@..." if n == 0 else ""))
+
+
+@app.cli.command("import-sheet")
+@click.option("--commit", is_flag=True, help="Ghi thật vào PostgreSQL. Mặc định chỉ CHẠY THỬ và in báo cáo đối soát.")
+@click.option("--resync", is_flag=True, help="Bảng đã có dữ liệu: thêm dòng mới và cập nhật dòng CHƯA từng sửa trong DB.")
+@click.option("--report", "report_path", default="", help="Lưu báo cáo đầy đủ ra file JSON.")
+def cli_import_sheet(commit, resync, report_path):
+    """Nhập dữ liệu bệnh nhân từ Google Sheet vào PostgreSQL (chạy lại được, có báo cáo đối soát)."""
+    from services import patient_db as PD
+    try:
+        records, headers = PD.read_sheet_records()
+    except Exception as e:
+        raise click.ClickException(f"Không đọc được Google Sheet: {e}")
+    plan, rep = PD.plan_import(records)
+    try:
+        stats = PD.run_import(plan, commit=commit, resync=resync)
+    except PD.Invalid as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Đọc {rep['rows']} dòng từ Sheet · {len(headers)} cột có tiêu đề")
+    click.echo(f"  không có họ tên: {rep['no_name']} · không có/sai ngày khám: {rep['no_exam_date']} · STT trùng: {rep['n_dup_stt']}")
+    if rep["unknown_columns"]:
+        click.echo(f"  cột lạ (giữ trong cột extra): {rep['unknown_columns']}")
+    click.echo("  Trạng thái: " + ", ".join(f"{k}={v}" for k, v in rep["status"].items()))
+    click.echo("  Theo tháng: " + ", ".join(f"{k}={v}" for k, v in rep["by_month"].items()))
+    if rep["warnings"]:
+        click.echo("Cảnh báo dữ liệu (giá trị bị bỏ khỏi cột chuẩn, vẫn giữ bản gốc trong extra):")
+        for k, v in list(rep["warnings"].items())[:15]:
+            click.echo(f"  [{v['count']:>5}] {k}   vd: {v['examples'][0]}")
+    click.echo(f"So với DB: thêm mới {stats['insert']} · cập nhật {stats['update']} · giống hệt {stats['same']} · "
+               f"bỏ qua vì đã sửa trong DB {stats['skipped_edited']} · chỉ có trong DB {stats['only_in_db']}")
+    if report_path:
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump({"report": rep, "stats": stats}, f, ensure_ascii=False, indent=2, default=str)
+        click.echo(f"Đã lưu báo cáo: {report_path}")
+    click.echo("ĐÃ GHI vào PostgreSQL." if commit else "CHẠY THỬ — chưa ghi gì. Thêm --commit để ghi thật.")
+
+
+@app.cli.command("export-sheet")
+@click.option("--tab", default="", help="Tên tab bản sao (mặc định: «Bản sao từ CSDL (chỉ đọc)»).")
+def cli_export_sheet(tab):
+    """Ghi MỘT CHIỀU từ PostgreSQL sang một tab bản sao trên Google Sheet (không bao giờ ghi đè tab gốc)."""
+    from services import patient_db as PD
+    try:
+        n, name = PD.export_to_sheet_mirror(tab or None)
+    except PD.Invalid as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Đã ghi {n} bệnh nhân vào tab «{name}».")
+
+
+@app.cli.command("restore-patient")
+@click.argument("pid", type=int)
+def cli_restore_patient(pid):
+    """Khôi phục bệnh nhân đã xoá mềm (PID = mã nội bộ, xem trong lịch sử)."""
+    from services import patient_db as PD
+    click.echo("Đã khôi phục." if PD.restore_patient(pid) else "Không có bệnh nhân đã xoá với mã này.")
 
 
 @app.cli.command("admin-list")

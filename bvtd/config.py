@@ -64,6 +64,10 @@ class Config:
     # ── Google Sheets ─────────────────────────────────────────────────────────
     SHEET_ID   = os.environ.get("SHEET_ID", "1EYiRA3ar41aue8DlbWA7JTKoLL0M2tiLTcZINhdMfTs")
     SHEET_NAME = os.environ.get("SHEET_NAME", "Câu trả lời biểu mẫu 1")
+    # Nơi lưu dữ liệu bệnh nhân: "sheets" (Google Sheet, mặc định) hoặc "postgres" (đọc trong services/sheets.py)
+    STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "sheets")
+    # Tab bản sao chỉ-đọc mà lệnh export-sheet ghi (KHÔNG bao giờ là tab gốc)
+    SHEET_MIRROR_NAME = os.environ.get("SHEET_MIRROR_NAME", "Bản sao từ CSDL (chỉ đọc)")
 
     # ── Trang đăng ký khám công khai (/dang-ky). Đặt REG_ENABLED=0 để tạm đóng ──────────
     REG_ENABLED = os.environ.get("REG_ENABLED", "1") != "0"

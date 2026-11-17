@@ -197,8 +197,10 @@ def build_field_map(c: dict, now: datetime) -> dict:
 def submit(c: dict, now: datetime | None = None):
     """Ghi 1 đăng ký. Trả về (ok, thông báo lỗi | None)."""
     from services.sheets import append_field_maps
+    from services import patient_db
     now = now or vn_now()
-    n, err = append_field_maps([build_field_map(c, now)])
+    with patient_db.actor("dang-ky-online"):             # lịch sử thay đổi ghi rõ: bệnh nhân tự đăng ký (chỉ có tác dụng với PostgreSQL)
+        n, err = append_field_maps([build_field_map(c, now)])
     return (n == 1 and not err), err
 
 

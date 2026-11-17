@@ -125,7 +125,10 @@ def parse_sheet_dates(series: pd.Series) -> pd.Series:
     for idx in out.index[miss]:
         d = to_dmy(txt.at[idx])
         if d:
-            out.at[idx] = pd.Timestamp(datetime.strptime(d, "%d/%m/%Y"))
+            try:
+                out.at[idx] = pd.Timestamp(datetime.strptime(d, "%d/%m/%Y"))
+            except ValueError:                           # ngày không có thật (31/02/2026): để NaT thay vì làm sập cả trang
+                pass
             continue
         try:
             n = float(txt.at[idx])
@@ -1149,3 +1152,31 @@ def backfill_created(items):
         first = errors[min(errors)]
         return len(done), first + (f" (và {len(errors) - 1} ca khác cũng lỗi)" if len(errors) > 1 else "")
     return len(done), None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHỌN NƠI LƯU DỮ LIỆU BỆNH NHÂN
+#   STORAGE_BACKEND=sheets   (mặc định) — Google Sheet như trước.
+#   STORAGE_BACKEND=postgres — PostgreSQL (services/patient_db.py): các hàm đọc/ghi bên dưới được thay bằng bản DB có CÙNG
+#   chữ ký, nên báo cáo, đối chiếu, nhập Minh Lộ, đăng ký online… không cần sửa. Quay lại Sheet = đổi biến môi trường.
+#   (write_cells, backfill_created, append_patients ở trên gọi các tên này lúc chạy nên cũng tự chuyển theo.)
+# ══════════════════════════════════════════════════════════════════════════════
+STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "sheets").strip().lower()
+USE_POSTGRES = STORAGE_BACKEND in ("postgres", "postgresql", "pg", "db")
+
+def _pg_fn(name):
+    """Hàm trung gian nạp patient_db khi GỌI (không phải khi import) → tránh import vòng giữa sheets ↔ patient_db."""
+    def call(*args, **kwargs):
+        from services import patient_db
+        return getattr(patient_db, name)(*args, **kwargs)
+    call.__name__ = name
+    call.__doc__ = f"patient_db.{name} (PostgreSQL)"
+    return call
+
+
+if USE_POSTGRES:
+    load_dataframe = _pg_fn("load_dataframe")
+    update_status = _pg_fn("update_status")
+    append_field_maps = _pg_fn("append_field_maps")
+    write_cells_ex = _pg_fn("write_cells_ex")
+    delete_rows = _pg_fn("delete_rows")
