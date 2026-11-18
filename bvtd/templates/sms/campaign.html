@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set sms_section = 'mobile' if k.kind == 'mobile' else 'appointment' %}
 {% block title %}Chiến dịch SMS{% endblock %}
 {% block page_title %}💬 {{ k.name }}{% endblock %}
 

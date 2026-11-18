@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set sms_section = 'appointment' %}
 {% block title %}Tin nhắn SMS{% endblock %}
 {% block page_title %}💬 Tin nhắn SMS · Nhắc lịch hẹn khám{% endblock %}
 
@@ -6,7 +7,7 @@
 {% from "sms/_tabs.html" import tabs %}
 {{ tabs('appointment') }}
 <div class="mb-4 flex flex-wrap gap-2">
-  <a href="{{ url_for('sms_compose', kind='appointment') }}" class="inline-flex items-center gap-2 bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">✉️ Soạn &amp; gửi tin nhắc lịch</a>
+  <a href="{{ url_for('sms_compose', kind='appointment') }}" class="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">✉️ Soạn &amp; gửi tin nhắc lịch</a>
   <button type="button" id="tplToggle" aria-expanded="{{ 'true' if open_tpl else 'false' }}" aria-controls="tplPanel"
           class="inline-flex items-center gap-2 border border-slate-300 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-50">✏️ Sửa mẫu tin</button>
 </div>
@@ -25,7 +26,7 @@
   </div>
   <p class="text-xs text-slate-500">Mẫu này áp dụng cho tin tự động 18:30, nút «Tạo &amp; gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch. Tin đã gửi trước đó không đổi.</p>
   <div class="flex flex-wrap gap-2">
-    <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">💾 Lưu mẫu tin</button>
+    <button class="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">💾 Lưu mẫu tin</button>
     {% if not tpl_is_default %}
     <button name="reset" value="1" formnovalidate onclick="return confirm('Quay về mẫu tin gốc?')" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">↺ Khôi phục mẫu gốc</button>
     {% endif %}
@@ -65,7 +66,7 @@
       <input type="number" name="daily_cap" min="0" value="{{ settings.daily_cap }}" class="w-32 text-sm border border-slate-300 rounded-lg px-3 py-2">
       <span class="text-xs text-slate-400 ml-2">đã gửi hôm nay: <b>{{ sent_today }}</b></span>
     </div>
-    <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">💾 Lưu cài đặt</button>
+    <button class="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">💾 Lưu cài đặt</button>
 
     <ul class="text-xs space-y-1.5 pt-3 border-t border-slate-100">
       <li>{% if provider and provider.real %}✅ Nhà cung cấp: <b>{{ provider.name }}</b>

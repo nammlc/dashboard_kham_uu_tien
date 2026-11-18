@@ -1,13 +1,17 @@
-{# Thanh 2 tab con của mục Tin nhắn SMS — bấm chuyển qua lại. Dùng: {% from "sms/_tabs.html" import tabs %}{{ tabs('appointment') }} #}
+{# Dải tiêu đề của mục SMS đang mở — đúng màu của mục (xanh dương = nhắc lịch hẹn, tím = khám lưu động), khớp với mục sáng ở menu trái.
+   Dùng: {% from "sms/_tabs.html" import tabs %}{{ tabs('appointment') }} #}
 {% macro tabs(active) -%}
-<div class="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Loại tin nhắn">
-  <a href="{{ url_for('sms_index') }}" role="tab" aria-selected="{{ 'true' if active == 'appointment' else 'false' }}"
-     class="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors
-            {% if active == 'appointment' %}bg-[#0f2642] text-white border-[#0f2642] shadow-sm{% else %}bg-white text-slate-600 border-slate-300 hover:bg-slate-50{% endif %}">
-    📅 Nhắc lịch hẹn khám</a>
-  <a href="{{ url_for('sms_events') }}" role="tab" aria-selected="{{ 'true' if active == 'mobile' else 'false' }}"
-     class="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl border transition-colors
-            {% if active == 'mobile' %}bg-[#0f2642] text-white border-[#0f2642] shadow-sm{% else %}bg-white text-slate-600 border-slate-300 hover:bg-slate-50{% endif %}">
-    🚑 Nhắc lịch khám lưu động</a>
+{% if active == 'mobile' %}
+<div class="mb-5 flex items-center gap-3 rounded-xl border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50 px-4 py-3">
+  <span class="w-10 h-10 shrink-0 rounded-lg bg-violet-600 text-white flex items-center justify-center text-xl" aria-hidden="true">🚑</span>
+  <div><p class="text-sm font-bold text-violet-900">Nhắc lịch khám lưu động</p>
+    <p class="text-xs text-violet-800/80">Thông báo đợt khám tại xã / trường học / công ty cho danh bạ của đợt và bệnh nhân cũ theo vùng.</p></div>
 </div>
+{% else %}
+<div class="mb-5 flex items-center gap-3 rounded-xl border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50 px-4 py-3">
+  <span class="w-10 h-10 shrink-0 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xl" aria-hidden="true">📅</span>
+  <div><p class="text-sm font-bold text-blue-900">Nhắc lịch hẹn khám</p>
+    <p class="text-xs text-blue-800/80">Nhắc bệnh nhân đã có lịch hẹn: tự động 18:30 mỗi ngày hoặc gửi thủ công.</p></div>
+</div>
+{% endif %}
 {%- endmacro %}

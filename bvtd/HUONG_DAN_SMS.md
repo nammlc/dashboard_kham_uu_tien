@@ -8,9 +8,9 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
 - Chiến dịch: xem từng người nhận, trạng thái, lý do loại; nút **gửi lại tin lỗi**.
 - Danh sách **từ chối nhận tin**; **gửi thử** 1 tin tới số của bạn.
 - **Chế độ thử (sandbox)**: chạy trọn luồng nhưng **không gửi gì ra ngoài** — dùng cho tới khi chọn xong nhà cung cấp.
-- **Mục SMS chia 2 tab con**, bấm qua lại ở đầu trang:
-  - **📅 Nhắc lịch hẹn khám**: cài đặt gửi tin, xem trước nhắc ngày mai, **✏️ Sửa mẫu tin**, **✉️ Soạn & gửi tin nhắc lịch**, lịch sử gửi.
-  - **🚑 Nhắc lịch khám lưu động**: **➕ Tạo đợt khám mới**, danh sách đợt (👥 Danh bạ / ✉️ Soạn tin), lịch sử gửi.
+- **Menu trái có 2 mục riêng** (nhóm «Tin Nhắn SMS»), trang nào thì mục đó sáng và có dải tiêu đề cùng màu:
+  - **📅 Nhắc lịch hẹn khám** (màu xanh dương): cài đặt gửi tin, xem trước nhắc ngày mai, **✏️ Sửa mẫu tin**, **✉️ Soạn & gửi tin nhắc lịch**, lịch sử gửi.
+  - **🚑 Nhắc lịch khám lưu động** (màu tím): **➕ Tạo đợt khám mới**, danh sách đợt (👥 Danh bạ / ✉️ Soạn tin), lịch sử gửi.
 - **Sửa mẫu tin** (tab Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
   Mẫu mới áp dụng cho tin tự động 18:30, nút «Tạo & gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch (tin đã gửi không đổi). Mẫu lưu trong DB (bảng `sms_settings`), không cần đổi biến môi trường.
 - **Mỗi loại tin một quy trình riêng**, có thanh tiến trình «Bước n/N» và dải «Đã chọn» nhắc lại lựa chọn của các bước trước:

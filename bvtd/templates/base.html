@@ -159,20 +159,27 @@
         <span class="text-sm">Làm mới dữ liệu</span>
       </a>
 
-      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Hệ Thống</p>
-
       {% if sms_admin %}
-      <a href="{{ url_for('sms_index') }}"
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Tin Nhắn SMS</p>
+      {# trang con khai báo mình thuộc mục nào bằng  {% set sms_section = 'appointment' | 'mobile' %}  #}
+      <a href="{{ url_for('sms_index') }}" {% if sms_section|default('') == 'appointment' %}aria-current="page"{% endif %}
          class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
-                {% if request.endpoint in ('sms_index', 'sms_campaign', 'sms_optout', 'sms_events', 'sms_event', 'sms_compose', 'sms_template_save') %}
-                  border-navy-light bg-white/10 text-white font-semibold
-                {% else %}
-                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
-                {% endif %}">
-        <span class="text-base w-5">💬</span>
-        <span class="text-sm">Tin nhắn SMS</span>
+                {% if sms_section|default('') == 'appointment' %}border-blue-400 bg-blue-500/25 text-white font-semibold
+                {% else %}border-transparent text-white/65 hover:bg-white/5 hover:text-white{% endif %}">
+        <span class="text-base w-5">📅</span>
+        <span class="text-sm">Nhắc lịch hẹn khám</span>
+      </a>
+      <a href="{{ url_for('sms_events') }}" {% if sms_section|default('') == 'mobile' %}aria-current="page"{% endif %}
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if sms_section|default('') == 'mobile' %}border-violet-400 bg-violet-500/25 text-white font-semibold
+                {% else %}border-transparent text-white/65 hover:bg-white/5 hover:text-white{% endif %}">
+        <span class="text-base w-5">🚑</span>
+        <span class="text-sm">Nhắc lịch khám lưu động</span>
       </a>
       {% endif %}
+
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Hệ Thống</p>
+
       <a href="{{ url_for('access_log') }}"
          class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
                 {% if request.endpoint == 'access_log' %}

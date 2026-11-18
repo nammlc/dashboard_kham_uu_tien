@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set sms_section = kind %}
 {% from "sms/_tabs.html" import tabs %}
 {% block title %}Soạn & gửi SMS{% endblock %}
 {% block page_title %}✉️ {{ 'Gửi tin khám lưu động' if kind == 'mobile' else 'Gửi tin nhắc lịch hẹn khám' }}{% endblock %}
@@ -23,7 +24,7 @@
 {# Tiêu đề bước: «Bước 2/4 · …» + 1 câu hướng dẫn #}
 {% macro head(title, hint) -%}
 <div class="mb-4">
-  <p class="text-[11px] font-bold uppercase tracking-wider text-blue-700">Bước {{ step_no }}/{{ flow|length }}</p>
+  <p class="text-[11px] font-bold uppercase tracking-wider {{ 'text-blue-700' if kind == 'appointment' else 'text-violet-700' }}">Bước {{ step_no }}/{{ flow|length }}</p>
   <h2 class="text-lg font-bold text-slate-800">{{ title }}</h2>
   <p class="text-sm text-slate-500 mt-0.5">{{ hint }}</p>
 </div>
@@ -42,13 +43,14 @@
 {%- endmacro %}
 
 {% block content %}
+{% set acc_bg = 'bg-blue-600' if kind == 'appointment' else 'bg-violet-600' %}{% set acc_hover = 'hover:bg-blue-700' if kind == 'appointment' else 'hover:bg-violet-700' %}
 {{ tabs(kind) }}
 
 <!-- Thanh tiến trình: riêng cho từng loại tin -->
 <ol class="flex flex-wrap items-center gap-y-2 text-xs mb-5" aria-label="Các bước">
   {% for name, label in flow %}
   <li class="flex items-center gap-2" {% if loop.index == step_no %}aria-current="step"{% endif %}>
-    <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold {% if step_no == loop.index %}bg-[#0f2642] text-white{% elif step_no > loop.index %}bg-emerald-500 text-white{% else %}bg-slate-200 text-slate-500{% endif %}">{{ '✓' if step_no > loop.index else loop.index }}</span>
+    <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold {% if step_no == loop.index %}{{ acc_bg }} text-white{% elif step_no > loop.index %}bg-emerald-500 text-white{% else %}bg-slate-200 text-slate-500{% endif %}">{{ '✓' if step_no > loop.index else loop.index }}</span>
     <span class="{% if step_no == loop.index %}font-semibold text-slate-800{% else %}text-slate-400{% endif %}">{{ label }}</span>
     {% if not loop.last %}<span class="text-slate-300 mx-1">──</span>{% endif %}
   </li>
@@ -83,10 +85,10 @@
   <div>
     <p class="text-sm font-semibold text-slate-700 mb-1.5">② Gửi cho ai? <span class="font-normal text-slate-400">(tích một hoặc cả hai)</span></p>
     <div class="grid md:grid-cols-2 gap-3">
-      <label class="flex items-start gap-3 border rounded-xl p-3 cursor-pointer {% if 'contacts' in auds %}border-blue-500 bg-blue-50{% else %}border-slate-200{% endif %}">
+      <label class="flex items-start gap-3 border rounded-xl p-3 cursor-pointer {% if 'contacts' in auds %}border-violet-500 bg-violet-50{% else %}border-slate-200{% endif %}">
         <input type="checkbox" name="aud" value="contacts" class="mt-1" {% if 'contacts' in auds %}checked{% endif %}>
         <span><b class="text-sm">Danh bạ của đợt</b><span class="block text-xs text-slate-500 mt-0.5">Những người đã nhập vào danh bạ (đã có đồng ý nhận tin).</span></span></label>
-      <label class="flex items-start gap-3 border rounded-xl p-3 cursor-pointer {% if 'patients' in auds %}border-blue-500 bg-blue-50{% else %}border-slate-200{% endif %}">
+      <label class="flex items-start gap-3 border rounded-xl p-3 cursor-pointer {% if 'patients' in auds %}border-violet-500 bg-violet-50{% else %}border-slate-200{% endif %}">
         <input type="checkbox" name="aud" value="patients" class="mt-1" {% if 'patients' in auds %}checked{% endif %}>
         <span><b class="text-sm">Bệnh nhân cũ theo vùng</b><span class="block text-xs text-slate-500 mt-0.5">Bệnh nhân đã từng đăng ký khám — lọc theo xã/phường ở bước sau.</span></span></label>
     </div>
@@ -96,7 +98,7 @@
 
   <div class="flex flex-wrap items-center gap-3 pt-1">
     <a href="{{ url_for('sms_events') }}" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Về danh sách đợt</a>
-    <button type="submit" name="step" value="recipients" class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">Tiếp tục: chọn người nhận →</button>
+    <button type="submit" name="step" value="recipients" class="{{ acc_bg }} text-white text-sm font-semibold px-5 py-2.5 rounded-lg {{ acc_hover }}">Tiếp tục: chọn người nhận →</button>
   </div>
 </form>
 {% endif %}
@@ -154,7 +156,7 @@
       <div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
         <span class="text-slate-500">Vùng đã lưu (bấm để lọc ngay):</span>
         {% for rg in regions %}
-        <span class="inline-flex items-center bg-blue-50 text-blue-700 rounded-full pl-3 pr-1 py-0.5">
+        <span class="inline-flex items-center {{ 'bg-blue-50 text-blue-700' if kind == 'appointment' else 'bg-violet-50 text-violet-700' }} rounded-full pl-3 pr-1 py-0.5">
           <button type="button" class="region-chip font-semibold" data-communes='{{ rg.communes | tojson }}'>{{ rg.name }} ({{ rg.communes|length }})</button>
           <button type="submit" name="step" value="region_del" onclick="document.getElementById('region_id').value={{ rg.id }}" class="ml-1 w-5 h-5 text-blue-400 hover:text-red-500" title="Xoá vùng «{{ rg.name }}»">×</button></span>
         {% endfor %}
@@ -179,7 +181,7 @@
   <div class="bg-white rounded-xl border border-slate-200">
     <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-slate-100 text-sm">
       <label class="flex items-center gap-2 font-semibold"><input type="checkbox" id="checkAll"> Chọn tất cả người đủ điều kiện</label>
-      <span class="text-slate-500">Đã chọn <b id="selCount" class="text-blue-700">0</b> / {{ rows|selectattr('ok')|list|length }} người gửi được ({{ rows|length }} dòng)</span>
+      <span class="text-slate-500">Đã chọn <b id="selCount" class="{{ 'text-blue-700' if kind == 'appointment' else 'text-violet-700' }}">0</b> / {{ rows|selectattr('ok')|list|length }} người gửi được ({{ rows|length }} dòng)</span>
     </div>
     <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
       <table class="w-full text-sm" style="min-width:760px">
@@ -209,7 +211,7 @@
   <div class="flex flex-wrap items-center gap-3">
     {% if kind == 'mobile' %}<button type="submit" name="step" value="event" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Đổi đợt / đối tượng</button>
     {% else %}<a href="{{ url_for('sms_index') }}" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Về trang Nhắc lịch</a>{% endif %}
-    <button type="submit" name="step" value="content" class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">Tiếp tục: soạn nội dung →</button>
+    <button type="submit" name="step" value="content" class="{{ acc_bg }} text-white text-sm font-semibold px-5 py-2.5 rounded-lg {{ acc_hover }}">Tiếp tục: soạn nội dung →</button>
   </div>
 </form>
 <script>
@@ -279,7 +281,7 @@
 
   <div class="flex flex-wrap items-center gap-3">
     <button type="submit" name="step" value="recipients" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Chọn lại người nhận</button>
-    <button type="submit" name="step" value="send" class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">Tiếp tục: xem trước &amp; gửi →</button>
+    <button type="submit" name="step" value="send" class="{{ acc_bg }} text-white text-sm font-semibold px-5 py-2.5 rounded-lg {{ acc_hover }}">Tiếp tục: xem trước &amp; gửi →</button>
   </div>
 </form>
 <script>

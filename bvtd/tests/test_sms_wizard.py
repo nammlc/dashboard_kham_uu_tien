@@ -228,16 +228,39 @@ class Wizard(AppTestCase, Base):
         self.assertFalse(SMS.delete_event(eid))
 
     # ── Bố cục 2 tab con ────────────────────────────────────────────────────────────────────────────────────
-    def test_two_tabs_switch_back_and_forth(self):
-        a = self.client.get("/sms").get_data(as_text=True)
-        m = self.client.get("/sms/su-kien").get_data(as_text=True)
-        for h in (a, m):
+    def test_two_separate_menu_items_with_correct_highlight(self):
+        def active(html):
+            return re.findall(r'<a href="([^"]+)" aria-current="page"', html)                       # mục menu trái đang sáng
+        pages = {"/sms": "/sms", "/sms/su-kien": "/sms/su-kien", "/sms/gui?kind=appointment": "/sms", "/sms/gui?kind=mobile": "/sms/su-kien"}
+        for url, want in pages.items():
+            h = self.client.get(url).get_data(as_text=True)
+            self.assertIn('href="/sms"', h); self.assertIn('href="/sms/su-kien"', h)                # 2 mục riêng ở menu trái, trang nào cũng thấy
             self.assertIn("Nhắc lịch hẹn khám", h); self.assertIn("Nhắc lịch khám lưu động", h)
-            self.assertIn('href="/sms"', h); self.assertIn('href="/sms/su-kien"', h)               # bấm qua lại giữa 2 tab
-        self.assertRegex(a, r'href="/sms"[^>]*aria-selected="true"')
-        self.assertRegex(m, r'href="/sms/su-kien"[^>]*aria-selected="true"')
-        self.assertIn("Tạo đợt khám mới", m)                                                       # nút tạo đợt nằm trong tab lưu động
-        self.assertIn("Sửa mẫu tin", a); self.assertNotIn("Sửa mẫu tin", m)                       # nút sửa mẫu tin nằm trong tab nhắc lịch
+            self.assertEqual(active(h), [want], url)                                                  # đúng 1 mục sáng, đúng mục
+        a = self.client.get("/sms").get_data(as_text=True); m = self.client.get("/sms/su-kien").get_data(as_text=True)
+        self.assertIn("border-blue-400", a); self.assertNotIn("border-violet-400", a)               # mỗi mục một màu: xanh dương / tím
+        self.assertIn("border-violet-400", m); self.assertNotIn("border-blue-400", m)
+        self.assertIn("bg-blue-50", a); self.assertIn("bg-violet-50", m)                            # dải tiêu đề cùng màu với mục
+        self.assertNotIn('role="tablist"', a + m)                                                   # không còn thanh tab nhỏ gây nhầm với nút
+        self.assertIn("Tạo đợt khám mới", m)                                                       # nút tạo đợt nằm ở mục lưu động
+        self.assertIn("Sửa mẫu tin", a); self.assertNotIn("Sửa mẫu tin", m)                       # nút sửa mẫu tin nằm ở mục nhắc lịch
+        eid = self._event()
+        self.assertEqual(active(self.client.get(f"/sms/su-kien/{eid}").get_data(as_text=True)), ["/sms/su-kien"])
+        for step_url_kind, want in (("appointment", "/sms"), ("mobile", "/sms/su-kien")):           # đang ở giữa quy trình (trang ?w=…) cũng sáng đúng mục
+            r = self.client.post("/sms/gui", data=dict(csrf="tok", step="recipients", kind=step_url_kind, aud="contacts", event_id=str(eid), body=""))
+            self.assertEqual(active(self.client.get(r.headers["Location"]).get_data(as_text=True)), [want])
+
+    def test_campaign_page_highlights_its_own_section(self):
+        self.enable()
+        eid = self._event()
+        self.post(f"/sms/su-kien/{eid}", act="add", consent_source="giay", c_name=["An"], c_phone=["0912345678"], c_commune=[""], c_org=[""])
+        self.post(step="do_send", kind="mobile", aud="contacts", event_id=str(eid), body=SMS.PRESETS["mobile"], sel=["c:1"], confirm="1", token="m1")
+        self.post(step="do_send", kind="appointment", aud="patients", body="", sel=["p:2"], confirm="1", token="a1")
+        with PD._conn() as c:
+            ids = {r["kind"]: r["id"] for r in c.execute("SELECT id, kind FROM sms_campaigns").fetchall()}
+        for kind, want in (("mobile", "/sms/su-kien"), ("appointment", "/sms")):
+            h = self.client.get(f"/sms/chien-dich/{ids[kind]}").get_data(as_text=True)
+            self.assertEqual(re.findall(r'<a href="([^"]+)" aria-current="page"', h), [want])
 
     def test_compose_has_no_kind_picker_and_both_audiences_tickable(self):
         h = self.client.get("/sms/gui?kind=mobile").get_data(as_text=True)
