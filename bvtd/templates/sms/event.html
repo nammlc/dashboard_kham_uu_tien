@@ -4,7 +4,7 @@
 {% block title %}{{ ev.name }}{% endblock %}
 {% block page_title %}🚑 {{ ev.name }}{% endblock %}
 {% block content %}
-{{ tabs('mobile') }}
+{{ tabs('mobile', 'overview') }}
 <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
   <a href="{{ url_for('sms_events') }}" class="text-blue-600 hover:underline">← Các đợt khám lưu động</a>
   <span class="text-slate-500">{{ audiences.get(ev.audience, ev.audience) }} · {{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }}</span>

@@ -4,6 +4,8 @@
 {% block page_title %}💬 {{ k.name }}{% endblock %}
 
 {% block content %}
+{% from "sms/_tabs.html" import tabs %}
+{{ tabs(sms_section, 'overview') }}
 {% set label = {'queued':'Chờ gửi','sending':'Đang gửi','sent':'Đã gửi','delivered':'Đã nhận','failed':'Lỗi','skipped':'Bị loại','unknown':'Không rõ kết quả'} %}
 <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
   <a href="{{ url_for('sms_index') }}" class="text-blue-600 hover:underline">← Về trang SMS</a>

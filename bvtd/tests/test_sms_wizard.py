@@ -241,7 +241,6 @@ class Wizard(AppTestCase, Base):
         self.assertIn("border-blue-400", a); self.assertNotIn("border-violet-400", a)               # mỗi mục một màu: xanh dương / tím
         self.assertIn("border-violet-400", m); self.assertNotIn("border-blue-400", m)
         self.assertIn("bg-blue-50", a); self.assertIn("bg-violet-50", m)                            # dải tiêu đề cùng màu với mục
-        self.assertNotIn('role="tablist"', a + m)                                                   # không còn thanh tab nhỏ gây nhầm với nút
         self.assertIn("Tạo đợt khám mới", m)                                                       # nút tạo đợt nằm ở mục lưu động
         self.assertIn("Sửa mẫu tin", a); self.assertNotIn("Sửa mẫu tin", m)                       # nút sửa mẫu tin nằm ở mục nhắc lịch
         eid = self._event()
@@ -249,6 +248,41 @@ class Wizard(AppTestCase, Base):
         for step_url_kind, want in (("appointment", "/sms"), ("mobile", "/sms/su-kien")):           # đang ở giữa quy trình (trang ?w=…) cũng sáng đúng mục
             r = self.client.post("/sms/gui", data=dict(csrf="tok", step="recipients", kind=step_url_kind, aud="contacts", event_id=str(eid), body=""))
             self.assertEqual(active(self.client.get(r.headers["Location"]).get_data(as_text=True)), [want])
+
+    def test_section_tabs_are_real_pages_always_visible_and_marked(self):
+        sel = lambda h: re.findall(r'<a href="([^"]+)" role="tab" aria-selected="true"', h)           # tab đang mở
+        eid = self._event()
+        cases = {"/sms": "/sms", "/sms/mau-tin": "/sms/mau-tin", "/sms/gui?kind=appointment": "/sms/gui?kind=appointment",
+                 "/sms/su-kien": "/sms/su-kien", "/sms/su-kien/moi": "/sms/su-kien/moi", "/sms/gui?kind=mobile": "/sms/gui?kind=mobile",
+                 f"/sms/su-kien/{eid}": "/sms/su-kien"}
+        for url, want in cases.items():
+            self.assertEqual(sel(self.client.get(url).get_data(as_text=True)), [want], url)          # đúng 1 tab được tô, đúng tab
+        for url in ("/sms", "/sms/mau-tin", "/sms/gui?kind=appointment"):                            # vào soạn tin / sửa mẫu rồi, các tab vẫn còn đủ
+            h = self.client.get(url).get_data(as_text=True)
+            for href in ("/sms", "/sms/gui?kind=appointment", "/sms/mau-tin"):
+                self.assertIn(f'<a href="{href}" role="tab"', h, url)
+            self.assertNotIn('href="/sms/su-kien/moi" role="tab"', h)                                # tab của mục kia không lẫn sang
+        for url in ("/sms/su-kien", "/sms/su-kien/moi", "/sms/gui?kind=mobile"):
+            h = self.client.get(url).get_data(as_text=True)
+            for href in ("/sms/su-kien", "/sms/su-kien/moi", "/sms/gui?kind=mobile"):
+                self.assertIn(f'<a href="{href}" role="tab"', h, url)
+        r = self.client.post("/sms/gui", data=dict(csrf="tok", step="recipients", kind="appointment", body=""))
+        self.assertEqual(sel(self.client.get(r.headers["Location"]).get_data(as_text=True)), ["/sms/gui?kind=appointment"])   # giữa quy trình vẫn đúng tab
+
+    def test_template_tab_is_its_own_page(self):
+        h = self.client.get("/sms/mau-tin").get_data(as_text=True)
+        self.assertIn("Đang dùng mẫu gốc", h); self.assertIn("Xem thử với bệnh nhân mẫu", h)
+        self.assertNotIn("Cài đặt gửi tin", h)                                                      # không lẫn với tab tổng quan
+        r = self.post("/sms/mau-tin", body="Xin chao {ho_ten} lich {ngay}").get_data(as_text=True)    # mẫu sai: hiện lại đúng nội dung vừa gõ để sửa
+        self.assertIn("Biến không hợp lệ", r); self.assertIn("Xin chao {ho_ten} lich {ngay}", r)
+        self.assertEqual(SMS.appointment_template(), SMS.DEFAULT_APPOINTMENT_TEMPLATE)
+
+    def test_new_event_tab_keeps_typed_values_on_error(self):
+        h = self.client.get("/sms/su-kien/moi").get_data(as_text=True)
+        self.assertIn("Thông tin đợt khám", h); self.assertNotIn("Các đợt khám lưu động</h3>", h)
+        r = self.post("/sms/su-kien", name="Khám thử xã A", audience="dan", event_date="2026-12-05", event_time="", location="", note="")
+        self.assertEqual(r.status_code, 200); self.assertIn("Khám thử xã A", r.get_data(as_text=True))   # thiếu địa điểm → ở lại tab «Tạo đợt», không mất chữ đã gõ
+        self.assertEqual(PD._TEST_POOL.raw.execute("SELECT COUNT(*) FROM sms_events").fetchone()[0], 0)
 
     def test_campaign_page_highlights_its_own_section(self):
         self.enable()

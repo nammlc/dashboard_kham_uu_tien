@@ -3,6 +3,8 @@
 {% block title %}SMS từ chối nhận{% endblock %}
 {% block page_title %}🚫 Số điện thoại từ chối nhận tin{% endblock %}
 {% block content %}
+{% from "sms/_tabs.html" import tabs %}
+{{ tabs('appointment', 'overview') }}
 <div class="max-w-3xl space-y-4">
   <a href="{{ url_for('sms_index') }}" class="text-sm text-blue-600 hover:underline">← Về trang SMS</a>
   <form method="POST" class="bg-white rounded-xl border border-slate-200 p-5 flex flex-wrap items-end gap-3">

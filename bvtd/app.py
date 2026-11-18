@@ -1619,36 +1619,49 @@ def sms_index():
                            brand=app.config.get("SMS_BRANDNAME", ""), brand_ok=cfg_ok_brand, brand_msg=brand_msg,
                            hotline=app.config.get("SMS_HOTLINE", ""), quiet=SMS.in_quiet_hours(), sent_today=sent_today,
                            preview=preview, tomorrow=tomorrow, campaigns=camps,
-                           kinds=SMS.KINDS, n_optout=n_optout, tpl=tpl, tpl_default=SMS.DEFAULT_APPOINTMENT_TEMPLATE,
-                           tpl_is_default=(tpl == SMS.DEFAULT_APPOINTMENT_TEMPLATE), open_tpl=bool(request.args.get("sua")),
+                           kinds=SMS.KINDS, n_optout=n_optout,
                            sample=SMS.render(tpl, SMS.appointment_context("Nguyễn Văn An", tomorrow, "08:30")))
 
 
-@app.route("/sms/mau-tin", methods=["POST"])
+@app.route("/sms/mau-tin", methods=["GET", "POST"])
 @sms_admin_required
-def sms_template_save():
-    """Sửa / khôi phục mẫu tin NHẮC LỊCH HẸN. Mẫu này dùng cho tin tự động, nút «Tạo & gửi ngay», gửi thử và trang soạn tin."""
-    if not _csrf_ok():
-        abort(400)
+def sms_template():
+    """Tab «Sửa mẫu tin» của mục Nhắc lịch hẹn khám. Mẫu này dùng cho tin tự động, nút «Tạo & gửi ngay», gửi thử và trang soạn tin."""
     from datetime import timedelta
-    from services import sms as SMS
+    from services import patient_db as PD, sms as SMS
     from services.sheets import vn_today
     by = getattr(current_user, "email", "")
-    try:
-        if request.form.get("reset"):
-            SMS.set_setting("tpl_appointment", "", by)
-            flash("✅ Đã khôi phục mẫu tin gốc.", "success")
-        else:
-            body = request.form.get("body", "").strip()
-            if not body:
-                raise ValueError("Nội dung tin không được để trống (muốn dùng mẫu gốc thì bấm «Khôi phục mẫu gốc»).")
-            SMS.render(body, SMS.appointment_context("Nguyễn Văn An", vn_today() + timedelta(days=1), "08:30"))      # thử ghép thật
-            SMS.set_setting("tpl_appointment", "" if body == SMS.DEFAULT_APPOINTMENT_TEMPLATE else body, by)
-            flash("✅ Đã lưu mẫu tin nhắc lịch. Các tin tạo từ giờ trở đi sẽ dùng mẫu này.", "success")
-    except ValueError as e:
-        flash(str(e), "error")
-        return redirect(url_for("sms_index", sua=1))
-    return redirect(url_for("sms_index"))
+    typed = None
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400)
+        ctx = SMS.appointment_context("Nguyễn Văn An", vn_today() + timedelta(days=1), "08:30")
+        try:
+            if request.form.get("reset"):
+                SMS.set_setting("tpl_appointment", "", by)
+                flash("✅ Đã khôi phục mẫu tin gốc.", "success")
+            else:
+                typed = request.form.get("body", "").strip()
+                if not typed:
+                    raise ValueError("Nội dung tin không được để trống (muốn dùng mẫu gốc thì bấm «Khôi phục mẫu gốc»).")
+                SMS.render(typed, ctx)                                                         # thử ghép thật
+                SMS.set_setting("tpl_appointment", "" if typed == SMS.DEFAULT_APPOINTMENT_TEMPLATE else typed, by)
+                flash("✅ Đã lưu mẫu tin nhắc lịch. Các tin tạo từ giờ trở đi sẽ dùng mẫu này.", "success")
+            return redirect(url_for("sms_template"))
+        except ValueError as e:
+            flash(str(e), "error")                                                             # lỗi: hiện lại đúng nội dung vừa gõ để sửa
+    with PD._conn() as c:
+        tpl = SMS.appointment_template(c)
+    return render_template("sms/template.html", tpl_text=typed if typed is not None else tpl, tpl_is_default=(tpl == SMS.DEFAULT_APPOINTMENT_TEMPLATE),
+                           sample=SMS.render(tpl, SMS.appointment_context("Nguyễn Văn An", vn_today() + timedelta(days=1), "08:30")))
+
+
+@app.route("/sms/su-kien/moi")
+@sms_admin_required
+def sms_event_new():
+    """Tab «Tạo đợt khám mới» của mục Nhắc lịch khám lưu động."""
+    from services import sms as SMS
+    return render_template("sms/event_new.html", audiences=SMS.AUDIENCES, form=request.args)
 
 
 @app.route("/sms/cai-dat", methods=["POST"])
@@ -1890,11 +1903,11 @@ def sms_events():
             return redirect(url_for("sms_event", eid=eid))
         except ValueError as e:
             flash(str(e), "error")
+            return render_template("sms/event_new.html", audiences=SMS.AUDIENCES, form=request.form)
     with PD._conn() as c:
         events = SMS.list_events(c)
         camps = _sms_recent_campaigns(c, ("mobile",))
-    return render_template("sms/events.html", events=events, audiences=SMS.AUDIENCES, campaigns=camps, kinds=SMS.KINDS,
-                           open_create=(request.method == "POST" or not events or bool(request.args.get("tao"))), form=request.form)
+    return render_template("sms/events.html", events=events, audiences=SMS.AUDIENCES, campaigns=camps, kinds=SMS.KINDS)
 
 
 @app.route("/sms/su-kien/<int:eid>", methods=["GET", "POST"])

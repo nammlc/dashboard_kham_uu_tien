@@ -44,7 +44,7 @@
 
 {% block content %}
 {% set acc_bg = 'bg-blue-600' if kind == 'appointment' else 'bg-violet-600' %}{% set acc_hover = 'hover:bg-blue-700' if kind == 'appointment' else 'hover:bg-violet-700' %}
-{{ tabs(kind) }}
+{{ tabs(kind, 'compose') }}
 
 <!-- Thanh tiến trình: riêng cho từng loại tin -->
 <ol class="flex flex-wrap items-center gap-y-2 text-xs mb-5" aria-label="Các bước">
@@ -79,7 +79,7 @@
     <p class="text-sm bg-slate-50 border border-dashed border-slate-300 rounded-lg px-4 py-3 text-slate-500">Chưa có đợt khám nào.</p>
     <input type="hidden" name="event_id" value="">
     {% endif %}
-    <a href="{{ url_for('sms_events', tao=1) }}" class="inline-block mt-2 text-sm text-blue-600 hover:underline">➕ Tạo đợt khám mới (rồi thêm danh bạ)</a>
+    <a href="{{ url_for('sms_event_new') }}" class="inline-block mt-2 text-sm text-blue-600 hover:underline">➕ Tạo đợt khám mới (rồi thêm danh bạ)</a>
   </div>
 
   <div>

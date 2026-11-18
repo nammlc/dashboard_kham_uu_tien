@@ -8,10 +8,10 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
 - Chiến dịch: xem từng người nhận, trạng thái, lý do loại; nút **gửi lại tin lỗi**.
 - Danh sách **từ chối nhận tin**; **gửi thử** 1 tin tới số của bạn.
 - **Chế độ thử (sandbox)**: chạy trọn luồng nhưng **không gửi gì ra ngoài** — dùng cho tới khi chọn xong nhà cung cấp.
-- **Menu trái có 2 mục riêng** (nhóm «Tin Nhắn SMS»), trang nào thì mục đó sáng và có dải tiêu đề cùng màu:
-  - **📅 Nhắc lịch hẹn khám** (màu xanh dương): cài đặt gửi tin, xem trước nhắc ngày mai, **✏️ Sửa mẫu tin**, **✉️ Soạn & gửi tin nhắc lịch**, lịch sử gửi.
-  - **🚑 Nhắc lịch khám lưu động** (màu tím): **➕ Tạo đợt khám mới**, danh sách đợt (👥 Danh bạ / ✉️ Soạn tin), lịch sử gửi.
-- **Sửa mẫu tin** (tab Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
+- **Menu trái có 2 mục riêng** (nhóm «Tin Nhắn SMS»), trang nào thì mục đó sáng và có dải tiêu đề cùng màu. Mỗi mục có **các tab thật** (mỗi tab là một trang, luôn hiện đủ ở mọi trang của mục, tab đang mở được tô màu):
+  - **📅 Nhắc lịch hẹn khám** (xanh dương): tab **📊 Tổng quan & cài đặt** (cài đặt gửi tin, nhắc ngày mai, lịch sử gửi) · **✉️ Soạn & gửi tin** · **✏️ Sửa mẫu tin**.
+  - **🚑 Nhắc lịch khám lưu động** (tím): tab **🗂️ Các đợt khám** (danh sách đợt, lịch sử gửi) · **➕ Tạo đợt khám mới** · **✉️ Soạn & gửi tin**.
+- **Sửa mẫu tin** (tab riêng của mục Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
   Mẫu mới áp dụng cho tin tự động 18:30, nút «Tạo & gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch (tin đã gửi không đổi). Mẫu lưu trong DB (bảng `sms_settings`), không cần đổi biến môi trường.
 - **Mỗi loại tin một quy trình riêng**, có thanh tiến trình «Bước n/N» và dải «Đã chọn» nhắc lại lựa chọn của các bước trước:
   - **Nhắc lịch hẹn khám (3 bước):** ① Chọn người nhận (mặc định lịch hẹn ngày mai, chưa khám; có nút chọn nhanh Hôm nay / Ngày mai / Ngày kia) →
@@ -24,7 +24,7 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
   - Bước xem trước: số người, số tin tính phí, chi phí ước tính, tin mẫu, lý do người bị loại, rồi **Gửi đồng loạt**. Bấm gửi 2 lần không tạo 2 chiến dịch.
 - **Lọc theo vùng:** hệ thống tự tách **xã/phường** từ địa chỉ («Phú Quý Xã Trung Chính, , Tỉnh Thanh Hóa» → Xã Trung Chính). Dòng không tách
   được vào nhóm «Chưa rõ xã» — sửa ở trang **Sửa bệnh nhân** (ô «Xã/phường»). Có thể **lưu nhóm vùng** (vd. «Bắc Nông Cống») để chọn nhanh.
-- **Khám lưu động**: bấm **➕ Tạo đợt khám mới** (tên, đối tượng dân/học sinh/công ty, ngày, giờ, địa điểm) →
+- **Khám lưu động**: vào tab **➕ Tạo đợt khám mới** (tên, đối tượng dân/học sinh/công ty, ngày, giờ, địa điểm) →
   thêm vào **danh bạ** bằng **từng ô riêng** (Họ tên, Số điện thoại, Xã/Phường, Thôn/Đơn vị; bấm «➕ Thêm một người» hoặc Enter ở ô cuối để thêm dòng;
   có sẵn danh sách thì dán nhiều dòng hoặc tải CSV ở mục gập bên dưới) → soạn tin theo đợt.
   **Bắt buộc chọn hình thức đồng ý nhận tin** (phiếu giấy / QR / nhân viên ghi nhận) — hệ thống lưu hình thức và thời điểm.
