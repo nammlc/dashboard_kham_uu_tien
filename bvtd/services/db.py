@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS patients (
     khoa          TEXT        NOT NULL DEFAULT '',                -- KHOA KHÁM CHỮA BỆNH
     gender        TEXT,                                           -- 'Nam' / 'Nữ' / NULL
     address       TEXT        NOT NULL DEFAULT '',
+    commune       TEXT        NOT NULL DEFAULT '',                -- xã/phường (tự tách từ địa chỉ, sửa tay được)
     symptom       TEXT        NOT NULL DEFAULT '',
     cccd          TEXT        NOT NULL DEFAULT '',
     specialty     TEXT        NOT NULL DEFAULT '',
@@ -102,6 +103,102 @@ CREATE TABLE IF NOT EXISTS patient_history (
     changes    TEXT        NOT NULL DEFAULT '{}'                  -- JSON: {cột: [giá trị cũ, giá trị mới]}
 );
 CREATE INDEX IF NOT EXISTS ix_patient_history_pid ON patient_history (patient_id, id DESC);
+
+-- ── SMS: chiến dịch gửi, từng tin, danh sách từ chối, cài đặt ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sms_campaigns (
+    id           BIGSERIAL   PRIMARY KEY,
+    kind         TEXT        NOT NULL,                              -- appointment, mobile, ksk, test
+    name         TEXT        NOT NULL DEFAULT '',
+    campaign_key TEXT,                                              -- khoá chống tạo trùng, vd. auto:2026-11-18
+    event_id     BIGINT,                                            -- sự kiện khám lưu động (nếu có)
+    body         TEXT        NOT NULL,                              -- mẫu tin (còn biến như {ten}, {ngay})
+    filters      TEXT        NOT NULL DEFAULT '{}',                 -- JSON: bộ lọc đã dùng khi chọn người nhận
+    mode         TEXT        NOT NULL DEFAULT 'live',               -- live = gửi thật, sandbox = chỉ thử
+    status       TEXT        NOT NULL DEFAULT 'queued',             -- queued, done, cancelled
+    created_by   TEXT        NOT NULL DEFAULT '',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at  TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sms_campaigns_key ON sms_campaigns (campaign_key);
+
+CREATE TABLE IF NOT EXISTS sms_messages (
+    id              BIGSERIAL   PRIMARY KEY,
+    campaign_id     BIGINT      NOT NULL REFERENCES sms_campaigns (id),
+    patient_id      BIGINT,                                         -- patients.id (hoặc số dòng khi còn dùng Sheet)
+    contact_id      BIGINT,                                         -- sms_contacts.id (danh bạ khám lưu động)
+    exam_date       DATE,
+    phone           TEXT        NOT NULL,
+    recipient_name  TEXT        NOT NULL DEFAULT '',
+    body            TEXT        NOT NULL,                           -- nội dung ĐÃ ghép, đúng như gửi đi
+    segments        INTEGER     NOT NULL DEFAULT 1,                 -- số tin tính phí
+    status          TEXT        NOT NULL DEFAULT 'queued',          -- queued, sending, sent, delivered, failed, skipped, unknown
+    skip_reason     TEXT        NOT NULL DEFAULT '',
+    provider_msg_id TEXT        NOT NULL DEFAULT '',
+    error           TEXT        NOT NULL DEFAULT '',
+    attempts        INTEGER     NOT NULL DEFAULT 0,
+    queued_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at         TIMESTAMPTZ,
+    delivered_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS ix_sms_messages_campaign ON sms_messages (campaign_id, status);
+CREATE INDEX IF NOT EXISTS ix_sms_messages_patient  ON sms_messages (patient_id, exam_date);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sms_messages_campaign_phone ON sms_messages (campaign_id, phone) WHERE status <> 'skipped';
+
+CREATE TABLE IF NOT EXISTS sms_optout (
+    phone      TEXT        PRIMARY KEY,                             -- SĐT đã chuẩn hoá (0xxxxxxxxx)
+    reason     TEXT        NOT NULL DEFAULT '',
+    created_by TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sms_settings (
+    key        TEXT        PRIMARY KEY,
+    value      TEXT        NOT NULL DEFAULT '',
+    updated_by TEXT        NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ── SMS giai đoạn 2–3: sự kiện khám lưu động, danh bạ (kèm đồng ý), nhóm vùng ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS sms_events (
+    id         BIGSERIAL   PRIMARY KEY,
+    name       TEXT        NOT NULL,
+    audience   TEXT        NOT NULL DEFAULT 'dan',                  -- dan (người dân), hocsinh, congty
+    event_date DATE        NOT NULL,
+    event_time TEXT        NOT NULL DEFAULT '',
+    location   TEXT        NOT NULL DEFAULT '',
+    note       TEXT        NOT NULL DEFAULT '',
+    created_by TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sms_contacts (
+    id             BIGSERIAL   PRIMARY KEY,
+    event_id       BIGINT      NOT NULL REFERENCES sms_events (id),
+    name           TEXT        NOT NULL DEFAULT '',
+    phone          TEXT        NOT NULL,                            -- đã chuẩn hoá 0xxxxxxxxx
+    commune        TEXT        NOT NULL DEFAULT '',
+    org            TEXT        NOT NULL DEFAULT '',                 -- trường / lớp / công ty / thôn
+    consent_source TEXT        NOT NULL,                            -- giay, qr, mieng, khac — BẮT BUỘC, không có đồng ý thì không nhập
+    consent_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by     TEXT        NOT NULL DEFAULT '',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at     TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sms_contacts_event_phone ON sms_contacts (event_id, phone) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sms_regions (
+    id         BIGSERIAL   PRIMARY KEY,
+    name       TEXT        NOT NULL UNIQUE,
+    communes   TEXT        NOT NULL DEFAULT '[]',                   -- JSON: danh sách xã/phường
+    created_by TEXT        NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Cột bổ sung (DB đã tạo từ bản trước: chạy lại không sao)
+ALTER TABLE patients      ADD COLUMN IF NOT EXISTS commune    TEXT   NOT NULL DEFAULT '';
+ALTER TABLE sms_campaigns ADD COLUMN IF NOT EXISTS event_id   BIGINT;
+ALTER TABLE sms_messages  ADD COLUMN IF NOT EXISTS contact_id BIGINT;
 """
 
 _pools: dict[str, ConnectionPool] = {}

@@ -15,7 +15,7 @@ SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 def patients_ddl_for_sqlite() -> str:
     txt = open(SCHEMA_PATH, encoding="utf-8").read()
     txt = txt[txt.index("CREATE TABLE IF NOT EXISTS patients"):]
-    txt = "\n".join(l.split("--")[0] for l in txt.splitlines())
+    txt = "\n".join(l.split("--")[0] for l in txt.splitlines() if not l.lstrip().upper().startswith("ALTER TABLE"))
     txt = re.sub(r"BIGSERIAL\s+PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT", txt)
     return txt.replace("now()", "CURRENT_TIMESTAMP")
 

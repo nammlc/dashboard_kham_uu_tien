@@ -237,6 +237,8 @@ PAGE_NAMES = {
     "dup_clean_legacy": "Dọn bản ghi cũ", "api_update_status": "Cập nhật trạng thái", "refresh_cache": "Làm mới dữ liệu",
     "patient_new": "Thêm bệnh nhân", "patient_edit": "Sửa bệnh nhân", "patient_history": "Lịch sử bệnh nhân",
     "patient_delete": "Xoá bệnh nhân",
+    "sms_compose": "Soạn & gửi SMS", "sms_events": "Đợt khám lưu động", "sms_event": "Chi tiết đợt khám",
+    "sms_index": "Tin nhắn SMS", "sms_campaign": "Chiến dịch SMS", "sms_optout": "SMS từ chối nhận",
     "access_log": "Nhật ký truy cập", "register_page": "Đăng ký khám", "register_done": "Đăng ký xong",
 }
 
@@ -1546,6 +1548,391 @@ def patient_delete(pid):
     return redirect(url_for("patients"))
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# SMS NHẮC LỊCH — CHỈ tài khoản có email trong SMS_ADMIN_EMAILS
+# ════════════════════════════════════════════════════════════════════════════════
+def sms_admin_required(view):
+    import functools
+
+    @functools.wraps(view)
+    @login_required
+    def wrapper(*args, **kwargs):
+        from services import sms as SMS
+        if not SMS.is_sms_admin(getattr(current_user, "email", "")):
+            flash("Chỉ quản trị viên được cấp quyền gửi tin nhắn mới dùng được mục này "
+                  "(email phải nằm trong biến SMS_ADMIN_EMAILS).", "error")
+            return redirect(url_for("dashboard"))
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def _sms_kick_queue():
+    """Gửi hàng đợi ở NỀN (không giữ trang web chờ). Phần còn lại cron `sms-send-queue` sẽ lo."""
+    def work():
+        from services import sms as SMS
+        with app.app_context():
+            for _ in range(50):
+                try:
+                    r = SMS.process_queue(limit=100)
+                except Exception as e:
+                    app.logger.error(f"sms: lỗi gửi hàng đợi: {e}")
+                    return
+                if r["blocked"] or not r["remaining"]:
+                    return
+    threading.Thread(target=work, daemon=True).start()
+
+
+@app.route("/sms")
+@sms_admin_required
+def sms_index():
+    from datetime import timedelta
+    from services import patient_db as PD, sms as SMS
+    from services.sheets import vn_today
+    cfg_ok_brand, brand_msg = SMS.validate_brand(app.config.get("SMS_BRANDNAME", ""))
+    try:
+        provider = SMS.get_provider()
+        provider_err = ""
+    except RuntimeError as e:
+        provider, provider_err = None, str(e)
+    tomorrow = vn_today() + timedelta(days=1)
+    preview = SMS.preview_appointments(_get_df(), tomorrow)
+    with PD._conn() as c:
+        settings = SMS.get_settings(c)
+        sent_today = SMS.sent_today(c)
+        camps = c.execute("SELECT k.*, (SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('sent','delivered')) AS n_sent, "
+                          "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('failed','unknown')) AS n_fail, "
+                          "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('queued','sending')) AS n_wait, "
+                          "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status = 'skipped') AS n_skip "
+                          "FROM sms_campaigns k ORDER BY k.id DESC LIMIT 15").fetchall()
+        n_optout = c.execute("SELECT COUNT(*) AS n FROM sms_optout").fetchone()["n"]
+    return render_template("sms/index.html", settings=settings, provider=provider, provider_err=provider_err,
+                           brand=app.config.get("SMS_BRANDNAME", ""), brand_ok=cfg_ok_brand, brand_msg=brand_msg,
+                           hotline=app.config.get("SMS_HOTLINE", ""), quiet=SMS.in_quiet_hours(), sent_today=sent_today,
+                           preview=preview, tomorrow=tomorrow, campaigns=[PD.dict_row(r) for r in camps],
+                           kinds=SMS.KINDS, n_optout=n_optout,
+                           sample=SMS.render(SMS.DEFAULT_APPOINTMENT_TEMPLATE, SMS.appointment_context("Nguyễn Văn An", tomorrow, "08:30")))
+
+
+@app.route("/sms/cai-dat", methods=["POST"])
+@sms_admin_required
+def sms_settings_save():
+    if not _csrf_ok():
+        abort(400)
+    from services import sms as SMS
+    by = getattr(current_user, "email", "")
+    want_enabled = "1" if request.form.get("enabled") else "0"
+    try:
+        if want_enabled == "1":
+            provider = SMS.get_provider()
+            if provider.real and not SMS.validate_brand(app.config.get("SMS_BRANDNAME", ""))[0]:
+                raise ValueError("Không bật được: " + SMS.validate_brand(app.config.get("SMS_BRANDNAME", ""))[1])
+            if not str(app.config.get("SMS_HOTLINE", "")).strip():
+                raise ValueError("Không bật được: chưa đặt SMS_HOTLINE (số điện thoại bệnh viện ghi trong tin).")
+        SMS.set_setting("enabled", want_enabled, by)
+        SMS.set_setting("auto_reminder", "1" if request.form.get("auto_reminder") else "0", by)
+        SMS.set_setting("daily_cap", request.form.get("daily_cap", "500").strip(), by)
+        flash("✅ Đã lưu cài đặt SMS.", "success")
+    except (ValueError, RuntimeError) as e:
+        flash(str(e), "error")
+    return redirect(url_for("sms_index"))
+
+
+@app.route("/sms/nhac-ngay-mai", methods=["POST"])
+@sms_admin_required
+def sms_remind_tomorrow():
+    """Tạo + gửi chiến dịch nhắc lịch NGÀY MAI ngay bây giờ (nếu cron chưa chạy). Cùng khoá với cron nên không bao giờ gửi đôi."""
+    if not _csrf_ok():
+        abort(400)
+    from services import sms as SMS
+    try:
+        r = SMS.run_auto_reminders(_get_df(fresh=True), force=True)
+    except Exception as e:
+        flash(f"❌ {e}", "error")
+        return redirect(url_for("sms_index"))
+    if r["status"] == "error":
+        flash(r["message"], "error")
+    elif r["status"] == "exists":
+        flash("Chiến dịch nhắc lịch ngày mai đã được tạo trước đó (không tạo lần 2).", "success")
+        return redirect(url_for("sms_campaign", cid=r["campaign_id"]))
+    else:
+        flash(f"✅ Đã tạo chiến dịch: {r['eligible']} người nhận, {r['skipped']} người bị loại. Đang gửi…", "success")
+        _sms_kick_queue()
+        return redirect(url_for("sms_campaign", cid=r["campaign_id"]))
+    return redirect(url_for("sms_index"))
+
+
+# ── Trang gửi nhiều bước (nội dung → đối tượng → xem trước & gửi) ─────────────────────────────────────────────
+def _wiz_filters(kind, aud):
+    f = request.form
+    return {"date_from": _parse_date(f.get("date_from", "")), "date_to": _parse_date(f.get("date_to", "")),
+            "communes": [c for c in f.getlist("communes") if c.strip()], "khoa": f.get("khoa", "").strip(),
+            "source": f.get("f_source", ""), "status": f.get("f_status", "chua" if kind == "appointment" else "all"),
+            "q": f.get("q", "").strip()}
+
+
+@app.route("/sms/gui", methods=["GET", "POST"])
+@sms_admin_required
+def sms_compose():
+    from datetime import timedelta
+    from services import patient_db as PD, sms as SMS
+    from services.sheets import vn_today
+    f = request.form
+    step = f.get("step", "0") if request.method == "POST" else "0"
+    if request.method == "POST" and not _csrf_ok():
+        abort(400)
+    kind = f.get("kind", "appointment") if f.get("kind") in ("appointment", "mobile") else "appointment"
+    aud = f.get("aud", "patients") if (kind == "mobile" and f.get("aud") == "contacts") else "patients"
+    body = f.get("body", "").strip() or SMS.PRESETS[kind]
+    errors, flt = [], _wiz_filters(kind, aud)
+    sel, token = f.getlist("sel"), f.get("token", "")
+    with PD._conn() as c:
+        events = SMS.list_events(c)
+        event = SMS.get_event(c, f.get("event_id")) if f.get("event_id") else None
+        regions = SMS.list_regions(c)
+        settings = SMS.get_settings(c)
+
+        def page(n, **extra):
+            return render_template("sms/compose.html", step=n, kind=kind, aud=aud, body=body, event=event, events=events, flt=flt, sel=sel,
+                                   errors=errors, regions=regions, kinds=SMS.KINDS, presets=SMS.PRESETS, token=token,
+                                   max_n=SMS.max_recipients(), **extra)
+
+        def step2(reset_sel=True):
+            nonlocal sel
+            aud_data = SMS.audience(_get_df(), c, kind, aud, event, flt)
+            if reset_sel:
+                sel = [r["key"] for r in aud_data["rows"] if r["ok"]]
+            return page(2, aud_data=aud_data)
+
+        def step3():
+            nonlocal token
+            df = _get_df()
+            eligible, skipped = SMS.resolve_selection(df, c, kind, aud, event, sel)
+            token = token or uuid.uuid4().hex
+            reasons = {}
+            for r in skipped:
+                reasons[r["reason"]] = reasons.get(r["reason"], 0) + 1
+            prev = SMS.preview_messages(body, eligible)
+            return page(3, eligible=eligible, skipped=skipped, reasons=reasons, prev=prev, settings=settings, quiet=SMS.in_quiet_hours(),
+                        sent_today=SMS.sent_today(c), price=SMS.price_per_segment())
+
+        if step == "0":
+            return page(1)
+        if step in ("1", "1b"):
+            if step == "1b":
+                return page(1)
+            if kind == "mobile" and event is None:
+                errors.append("Chọn đợt khám lưu động (hoặc tạo đợt mới) trước khi tiếp tục.")
+            errors += SMS.template_errors(body)
+            if errors:
+                return page(1)
+            flt = {"date_from": (vn_today() + timedelta(days=1)) if kind == "appointment" else None,
+                   "date_to": (vn_today() + timedelta(days=1)) if kind == "appointment" else None,
+                   "communes": [], "khoa": "", "source": "", "status": "chua" if kind == "appointment" else "all", "q": ""}
+            return step2()
+        if step == "2f":
+            return step2()
+        if step == "2s":
+            try:
+                SMS.save_region(f.get("region_name", ""), flt["communes"], getattr(current_user, "email", ""))
+                regions = SMS.list_regions(c)
+                flash("✅ Đã lưu nhóm vùng.", "success")
+            except ValueError as e:
+                errors.append(str(e))
+            return step2(reset_sel=False)
+        if step == "2d":
+            SMS.delete_region(f.get("region_id", 0))
+            regions = SMS.list_regions(c)
+            return step2(reset_sel=False)
+        if step in ("2", "3b", "3p"):
+            if step == "3b":
+                return step2(reset_sel=False)
+            if step == "2" and not sel:
+                errors.append("Chưa tích chọn ai — hãy chọn ít nhất 1 người nhận.")
+                return step2(reset_sel=False)
+            errors += SMS.template_errors(body) if step == "3p" else []
+            return step3()
+        if step != "3s":
+            return page(1)
+        if step == "3s":
+            eligible, skipped = SMS.resolve_selection(_get_df(), c, kind, aud, event, sel)
+            if SMS.template_errors(body):
+                errors += SMS.template_errors(body)
+            if not f.get("confirm"):
+                errors.append("Hãy tích «Tôi đã kiểm tra nội dung và danh sách người nhận».")
+            if settings["enabled"] != "1":
+                errors.append("Công tắc gửi SMS đang TẮT — bật ở trang Tin nhắn SMS trước khi gửi.")
+            if not eligible:
+                errors.append("Không còn ai đủ điều kiện nhận tin.")
+            if len(eligible) > SMS.max_recipients():
+                errors.append(f"Tối đa {SMS.max_recipients()} người mỗi lần gửi (đang chọn {len(eligible)}). Chia thành nhiều lần.")
+            if errors:
+                return step3()
+            name = f"{SMS.KINDS[kind]}" + (f" — {event['name']}" if event else "") + f" ({len(eligible)} người)"
+            cid, existed = SMS.create_campaign(
+                c, kind=kind, name=name, body=body, eligible=eligible, skipped=skipped, created_by=getattr(current_user, "email", ""),
+                key=f"wiz:{token}" if token else None, event_id=event["id"] if event else None,
+                filters={"kind": kind, "audience": aud, "event_id": event["id"] if event else None, "selected": len(sel),
+                         "filters": {k: v for k, v in flt.items()}})
+    if not existed:
+        _sms_kick_queue()
+        flash(f"✅ Đã đưa {len(eligible)} tin vào hàng đợi, đang gửi đồng loạt.", "success")
+    return redirect(url_for("sms_campaign", cid=cid))
+
+
+# ── Đợt khám lưu động + danh bạ ───────────────────────────────────────────────────────────────────────────────
+@app.route("/sms/su-kien", methods=["GET", "POST"])
+@sms_admin_required
+def sms_events():
+    from services import patient_db as PD, sms as SMS
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400)
+        try:
+            eid = SMS.create_event(request.form.get("name"), request.form.get("audience"), _parse_date(request.form.get("event_date", "")),
+                                   request.form.get("event_time"), request.form.get("location"), request.form.get("note"),
+                                   getattr(current_user, "email", ""))
+            flash("✅ Đã tạo đợt khám. Hãy nhập danh bạ người nhận tin.", "success")
+            return redirect(url_for("sms_event", eid=eid))
+        except ValueError as e:
+            flash(str(e), "error")
+    with PD._conn() as c:
+        events = SMS.list_events(c)
+    return render_template("sms/events.html", events=events, audiences=SMS.AUDIENCES)
+
+
+@app.route("/sms/su-kien/<int:eid>", methods=["GET", "POST"])
+@sms_admin_required
+def sms_event(eid):
+    from services import patient_db as PD, sms as SMS
+    with PD._conn() as c:
+        ev = SMS.get_event(c, eid)
+    if ev is None:
+        flash("Không tìm thấy đợt khám.", "error")
+        return redirect(url_for("sms_events"))
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400)
+        act, by = request.form.get("act", ""), getattr(current_user, "email", "")
+        try:
+            if act == "add":
+                text = request.form.get("text", "")
+                up = request.files.get("file")
+                if up and up.filename:
+                    raw = up.read(2_000_000)
+                    for enc in ("utf-8-sig", "utf-16", "cp1258", "latin-1"):
+                        try:
+                            text += "\n" + raw.decode(enc); break
+                        except (UnicodeDecodeError, UnicodeError):
+                            continue
+                rows, errs = SMS.parse_contacts_text(text)
+                res = SMS.add_contacts(eid, rows, request.form.get("consent_source", ""), by) if rows else {"added": 0, "duplicate": 0}
+                msg = f"Đã thêm {res['added']} người" + (f", bỏ {res['duplicate']} số trùng" if res["duplicate"] else "") + \
+                      (f", {len(errs)} dòng lỗi: " + "; ".join(errs[:5]) + (" …" if len(errs) > 5 else "") if errs else "") + "."
+                flash(("✅ " if res["added"] else "⚠️ ") + msg, "success" if res["added"] else "error")
+            elif act == "del_contact":
+                SMS.delete_contact(request.form.get("contact_id", 0))
+            elif act == "del_event":
+                if SMS.delete_event(eid):
+                    flash("Đã xoá đợt khám.", "success")
+                    return redirect(url_for("sms_events"))
+                flash("Không xoá được: đợt này đã có chiến dịch gửi tin.", "error")
+        except ValueError as e:
+            flash(str(e), "error")
+        return redirect(url_for("sms_event", eid=eid))
+    with PD._conn() as c:
+        contacts = [PD.dict_row(r) for r in c.execute("SELECT * FROM sms_contacts WHERE event_id = %s AND deleted_at IS NULL ORDER BY commune, org, name LIMIT 500", (eid,)).fetchall()]
+        total = c.execute("SELECT COUNT(*) AS n FROM sms_contacts WHERE event_id = %s AND deleted_at IS NULL", (eid,)).fetchone()["n"]
+        camps = [PD.dict_row(r) for r in c.execute("SELECT id, name, status, created_at FROM sms_campaigns WHERE event_id = %s ORDER BY id DESC", (eid,)).fetchall()]
+    return render_template("sms/event.html", ev=ev, contacts=contacts, total=total, camps=camps, audiences=SMS.AUDIENCES, consents=SMS.CONSENT_SOURCES)
+
+
+@app.route("/sms/chien-dich/<int:cid>")
+@sms_admin_required
+def sms_campaign(cid):
+    from services import patient_db as PD, sms as SMS
+    status = request.args.get("status", "")
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per = 50
+    with PD._conn() as c:
+        k = c.execute("SELECT * FROM sms_campaigns WHERE id = %s", (cid,)).fetchone()
+        if not k:
+            flash("Không tìm thấy chiến dịch.", "error")
+            return redirect(url_for("sms_index"))
+        counts = {r["status"]: r["n"] for r in c.execute(
+            "SELECT status, COUNT(*) AS n FROM sms_messages WHERE campaign_id = %s GROUP BY status", (cid,)).fetchall()}
+        where, args = "campaign_id = %s", [cid]
+        if status:
+            where += " AND status = %s"; args.append(status)
+        total = c.execute(f"SELECT COUNT(*) AS n FROM sms_messages WHERE {where}", args).fetchone()["n"]
+        msgs = c.execute(f"SELECT * FROM sms_messages WHERE {where} ORDER BY id LIMIT %s OFFSET %s", args + [per, (page - 1) * per]).fetchall()
+    return render_template("sms/campaign.html", k=PD.dict_row(k), counts=counts, msgs=[PD.dict_row(m) for m in msgs],
+                           status=status, page=page, per=per, total=total, kinds=SMS.KINDS)
+
+
+@app.route("/sms/chien-dich/<int:cid>/gui-lai", methods=["POST"])
+@sms_admin_required
+def sms_retry(cid):
+    if not _csrf_ok():
+        abort(400)
+    from services import sms as SMS
+    n = SMS.retry_failed(cid)
+    flash(f"Đã đưa {n} tin lỗi về hàng đợi để gửi lại." if n else "Không có tin lỗi nào để gửi lại.", "success" if n else "error")
+    if n:
+        _sms_kick_queue()
+    return redirect(url_for("sms_campaign", cid=cid))
+
+
+@app.route("/sms/gui-thu", methods=["POST"])
+@sms_admin_required
+def sms_send_test():
+    """Gửi thử 1 tin tới số của bạn (đúng đường gửi thật nếu đã cấu hình nhà cung cấp)."""
+    if not _csrf_ok():
+        abort(400)
+    from datetime import timedelta
+    from services import patient_db as PD, sms as SMS
+    from services.sheets import vn_today
+    phone = SMS.sms_phone(request.form.get("phone", ""))
+    if not phone:
+        flash("SĐT không hợp lệ (cần số di động 10 số bắt đầu bằng 0).", "error")
+        return redirect(url_for("sms_index"))
+    if not str(app.config.get("SMS_HOTLINE", "")).strip():
+        flash("Chưa đặt SMS_HOTLINE.", "error")
+        return redirect(url_for("sms_index"))
+    rec = {"patient_id": None, "name": "Nguyễn Văn An", "phone": phone, "exam_date": vn_today() + timedelta(days=1), "exam_time": "08:30"}
+    with PD._conn() as c:
+        cid, _ = SMS.create_campaign(c, kind="test", name=f"Gửi thử tới {phone}", body=SMS.DEFAULT_APPOINTMENT_TEMPLATE,
+                                     eligible=[rec], skipped=[], created_by=getattr(current_user, "email", ""))
+    r = SMS.process_queue(limit=5)
+    flash(("✅ Đã gửi thử." if r["sent"] else f"⚠️ Chưa gửi được: {r['blocked'] or 'xem chi tiết chiến dịch'}"), "success" if r["sent"] else "error")
+    return redirect(url_for("sms_campaign", cid=cid))
+
+
+@app.route("/sms/tu-choi", methods=["GET", "POST"])
+@sms_admin_required
+def sms_optout():
+    from services import patient_db as PD, sms as SMS
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400)
+        by = getattr(current_user, "email", "")
+        try:
+            if request.form.get("remove"):
+                SMS.remove_optout(request.form["remove"])
+                flash("Đã bỏ khỏi danh sách từ chối.", "success")
+            else:
+                p = SMS.add_optout(request.form.get("phone", ""), request.form.get("reason", ""), by)
+                flash(f"✅ Đã thêm {p} vào danh sách từ chối nhận tin.", "success")
+        except ValueError as e:
+            flash(str(e), "error")
+        return redirect(url_for("sms_optout"))
+    with PD._conn() as c:
+        rows = c.execute("SELECT * FROM sms_optout ORDER BY created_at DESC LIMIT 500").fetchall()
+    return render_template("sms/optout.html", rows=[PD.dict_row(r) for r in rows])
+
+
 @app.route("/lich-kham")
 @login_required
 def upcoming():
@@ -2474,6 +2861,7 @@ def inject_globals():
         "import_version": IMPORT_VERSION,
         "current_user": current_user,
         "storage_pg":   __import__("services.sheets", fromlist=["USE_POSTGRES"]).USE_POSTGRES,
+        "sms_admin":    __import__("services.sms", fromlist=["is_sms_admin"]).is_sms_admin(getattr(current_user, "email", "")),
         "today_str":    datetime.now().strftime("%A, %d/%m/%Y"),
     }
 
@@ -2507,7 +2895,7 @@ def cli_init_db():
         with DB.pool(url).connection() as c:
             ver = c.execute("SELECT version() AS v").fetchone()["v"]
             tables = [r["tablename"] for r in c.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('admin_users','access_log','patients','patient_history') "
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('admin_users','access_log','patients','patient_history','sms_campaigns','sms_messages','sms_optout','sms_settings','sms_events','sms_contacts','sms_regions') "
                 "ORDER BY tablename").fetchall()]
     except DB.DBError as e:
         raise click.ClickException(f"Không kết nối được PostgreSQL: {e}")
@@ -2570,6 +2958,39 @@ def cli_restore_patient(pid):
     """Khôi phục bệnh nhân đã xoá mềm (PID = mã nội bộ, xem trong lịch sử)."""
     from services import patient_db as PD
     click.echo("Đã khôi phục." if PD.restore_patient(pid) else "Không có bệnh nhân đã xoá với mã này.")
+
+
+@app.cli.command("sms-auto-reminders")
+@click.option("--force", is_flag=True, help="Bỏ qua công tắc và khung giờ (chỉ dùng khi chạy tay).")
+def cli_sms_auto(force):
+    """Tạo chiến dịch nhắc lịch hẹn NGÀY MAI rồi gửi. Đặt cron 18:30 giờ Việt Nam."""
+    from services import sms as SMS
+    r = SMS.run_auto_reminders(_get_df(fresh=True), force=force)
+    click.echo(f"[{r['status']}] ngày hẹn {r['target']}: " + (r.get("message") or
+               f"chiến dịch #{r.get('campaign_id')}, {r.get('eligible')} người nhận, {r.get('skipped')} người bị loại"))
+    if r["status"] in ("created", "exists"):
+        _cli_drain_sms()
+
+
+@app.cli.command("sms-send-queue")
+def cli_sms_queue():
+    """Gửi các tin đang chờ trong hàng đợi (chạy mỗi phút bằng cron để gửi nốt / gửi lại tin lỗi tạm)."""
+    _cli_drain_sms()
+
+
+def _cli_drain_sms():
+    from services import sms as SMS
+    total = {"sent": 0, "failed": 0, "requeued": 0}
+    for _ in range(100):
+        r = SMS.process_queue(limit=100)
+        for k in total:
+            total[k] += r[k]
+        if r["blocked"]:
+            click.echo(f"Tạm dừng: {r['blocked']}")
+            break
+        if not r["remaining"]:
+            break
+    click.echo(f"Đã gửi {total['sent']} · lỗi {total['failed']} · chờ gửi lại {total['requeued']}")
 
 
 @app.cli.command("admin-list")

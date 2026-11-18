@@ -61,6 +61,18 @@ class Config:
     # ── Mật khẩu admin LẦN ĐẦU (chỉ dùng để tạo tài khoản khi bảng admin_users còn trống) ──────────
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
+    # ── SMS (nhắc lịch) ───────────────────────────────────────────────────────
+    SMS_PROVIDER      = os.environ.get("SMS_PROVIDER", "sandbox")              # sandbox = chỉ thử, không gửi ra ngoài
+    SMS_BRANDNAME     = os.environ.get("SMS_BRANDNAME", "")                    # tối đa 11 ký tự, chữ+số không dấu
+    SMS_HOTLINE       = os.environ.get("SMS_HOTLINE", "")                      # SĐT bệnh viện ghi trong tin
+    SMS_ADMIN_EMAILS  = os.environ.get("SMS_ADMIN_EMAILS", "")                 # email được gửi tin, cách nhau bằng dấu phẩy; trống = không ai
+    SMS_STRIP_ACCENTS = os.environ.get("SMS_STRIP_ACCENTS", "1")
+    SMS_QUIET_START   = os.environ.get("SMS_QUIET_START", "22:00")
+    SMS_QUIET_END     = os.environ.get("SMS_QUIET_END", "07:00")
+    SMS_AUTO_WINDOW   = os.environ.get("SMS_AUTO_WINDOW", "17:00-21:30")
+    SMS_MAX_RECIPIENTS    = int(os.environ.get("SMS_MAX_RECIPIENTS", "1000"))      # tối đa người nhận mỗi lần gửi
+    SMS_PRICE_PER_SEGMENT = int(os.environ.get("SMS_PRICE_PER_SEGMENT", "450"))    # đ/tin — chỉ để ước tính chi phí
+
     # ── Google Sheets ─────────────────────────────────────────────────────────
     SHEET_ID   = os.environ.get("SHEET_ID", "1EYiRA3ar41aue8DlbWA7JTKoLL0M2tiLTcZINhdMfTs")
     SHEET_NAME = os.environ.get("SHEET_NAME", "Câu trả lời biểu mẫu 1")

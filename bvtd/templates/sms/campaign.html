@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Chiến dịch SMS{% endblock %}
+{% block page_title %}💬 {{ k.name }}{% endblock %}
+
+{% block content %}
+{% set label = {'queued':'Chờ gửi','sending':'Đang gửi','sent':'Đã gửi','delivered':'Đã nhận','failed':'Lỗi','skipped':'Bị loại','unknown':'Không rõ kết quả'} %}
+<div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
+  <a href="{{ url_for('sms_index') }}" class="text-blue-600 hover:underline">← Về trang SMS</a>
+  <span class="text-slate-500">{{ kinds.get(k.kind, k.kind) }} · tạo bởi {{ k.created_by }} · {{ k.created_at.strftime('%d/%m/%Y %H:%M') if k.created_at else '' }}</span>
+  {% if k.mode == 'sandbox' %}<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full text-xs">🧪 Chế độ thử — không gửi tin thật</span>{% endif %}
+  {% if counts.get('failed') %}
+  <form method="POST" action="{{ url_for('sms_retry', cid=k.id) }}" class="ml-auto">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="text-xs bg-rose-600 text-white rounded-lg px-3 py-1.5 hover:bg-rose-700">↻ Gửi lại {{ counts.get('failed') }} tin lỗi</button>
+  </form>{% endif %}
+</div>
+
+<div class="flex flex-wrap gap-2 mb-4 text-xs">
+  <a href="{{ url_for('sms_campaign', cid=k.id) }}" class="px-3 py-1.5 rounded-full border {% if not status %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">Tất cả ({{ counts.values()|sum }})</a>
+  {% for s, n in counts.items() %}
+  <a href="{{ url_for('sms_campaign', cid=k.id, status=s) }}" class="px-3 py-1.5 rounded-full border {% if status == s %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ label.get(s, s) }} ({{ n }})</a>
+  {% endfor %}
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200">
+  <p class="px-5 py-3 text-xs text-slate-500 border-b border-slate-100"><b>Mẫu tin:</b> <span class="font-mono">{{ k.body }}</span></p>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm" style="min-width:760px">
+      <thead><tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <th class="px-4 py-3 text-left">Người nhận</th><th class="px-3 py-3 text-left">SĐT</th><th class="px-3 py-3 text-left">Nội dung đã gửi</th>
+        <th class="px-3 py-3 text-left">Trạng thái</th><th class="px-3 py-3 text-left">Giờ gửi</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for m in msgs %}
+        <tr>
+          <td class="px-4 py-2.5 font-medium text-slate-800">{{ m.recipient_name or '—' }}</td>
+          <td class="px-3 py-2.5 font-mono text-xs">{{ m.phone or '—' }}</td>
+          <td class="px-3 py-2.5 text-xs text-slate-600 max-w-md">{{ m.body or '—' }}{% if m.segments and m.segments > 1 %} <span class="text-amber-600">({{ m.segments }} tin)</span>{% endif %}</td>
+          <td class="px-3 py-2.5 text-xs">
+            <span class="px-2 py-0.5 rounded-full {% if m.status in ('sent','delivered') %}bg-emerald-50 text-emerald-700{% elif m.status in ('failed','unknown') %}bg-rose-50 text-rose-700{% elif m.status == 'skipped' %}bg-slate-100 text-slate-500{% else %}bg-blue-50 text-blue-700{% endif %}">{{ label.get(m.status, m.status) }}</span>
+            {% if m.skip_reason %}<span class="block text-slate-400 mt-0.5">{{ m.skip_reason }}</span>{% endif %}
+            {% if m.error %}<span class="block text-rose-500 mt-0.5">{{ m.error }}</span>{% endif %}
+          </td>
+          <td class="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{{ m.sent_at.strftime('%d/%m %H:%M:%S') if m.sent_at else '' }}</td>
+        </tr>
+        {% else %}<tr><td colspan="5" class="px-5 py-8 text-center text-slate-400">Không có dòng nào.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% set pages = (total // per) + (1 if total % per else 0) %}
+  {% if pages > 1 %}
+  <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100 text-xs">
+    <span class="text-slate-400">Trang {{ page }}/{{ pages }} · {{ total }} dòng</span>
+    <div class="flex gap-1">
+      {% if page > 1 %}<a class="px-3 py-1.5 border border-slate-300 rounded-lg" href="{{ url_for('sms_campaign', cid=k.id, status=status, page=page-1) }}">‹</a>{% endif %}
+      {% if page < pages %}<a class="px-3 py-1.5 border border-slate-300 rounded-lg" href="{{ url_for('sms_campaign', cid=k.id, status=status, page=page+1) }}">›</a>{% endif %}
+    </div>
+  </div>{% endif %}
+</div>
+{% endblock %}

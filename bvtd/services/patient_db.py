@@ -46,6 +46,7 @@ class Invalid(ValueError):
 # Cột: (tiêu đề trên Sheet, cột DB, kiểu)
 # ══════════════════════════════════════════════════════════════════════════════
 ADDRESS_HEADER = "2. ĐỊA CHỈ (THÔN/XÃ)"
+COMMUNE_HEADER = "XÃ/PHƯỜNG"                 # không có trên Sheet cũ; DB lưu bản sửa tay, còn trống thì tự tách từ địa chỉ
 
 
 def fields():
@@ -62,6 +63,7 @@ def fields():
         (S.COL_KHOA, "khoa", "text"),
         (S.COL_GENDER, "gender", "gender"),
         (ADDRESS_HEADER, "address", "text"),
+        (COMMUNE_HEADER, "commune", "text"),
         (S.COL_SYMPTOM, "symptom", "text"),
         (S.COL_CCCD, "cccd", "text"),
         (S.COL_SPECIALTY, "specialty", "text"),
@@ -367,6 +369,8 @@ def load_dataframe() -> pd.DataFrame:
         return pd.DataFrame(columns=headers)
     recs = [row_to_record(r) for r in rows]
     df = pd.DataFrame(recs, columns=headers)
+    from services import regions as RG
+    df[COMMUNE_HEADER] = [r[COMMUNE_HEADER] or RG.extract_commune(r[ADDRESS_HEADER])[0] for r in recs]   # sửa tay > tự tách
     df.index = [int(r["id"]) - 2 for r in rows]
     df["_date"] = pd.to_datetime([_as_date(r["exam_date"]) for r in rows])
     df["_created"] = pd.to_datetime([_as_date(r["created_date"]) for r in rows])
@@ -375,6 +379,20 @@ def load_dataframe() -> pd.DataFrame:
     df["_age"] = pd.to_numeric(df[S.COL_BIRTH_YEAR], errors="coerce").apply(
         lambda y: int(cy - y) if pd.notna(y) and 1900 < y <= cy else None)
     return df
+
+
+def dict_row(r) -> dict:
+    """Dòng DB (dict của psycopg hoặc sqlite3.Row) → dict thường, ngày giờ về datetime/date Python."""
+    d = dict(r)
+    for k, v in list(d.items()):
+        if v is not None and (k.endswith("_at") or k == "at"):
+            try:
+                d[k] = _as_dt(v)
+            except Exception:
+                pass
+        elif v is not None and k == "exam_date":
+            d[k] = _as_date(v)
+    return d
 
 
 def get_patient(pid: int):
@@ -600,7 +618,7 @@ def restore_patient(pid: int) -> bool:
 # ── Form web: thêm / sửa 1 bệnh nhân ─────────────────────────────────────────────────────────────────────
 FORM_FIELDS = {          # tên input trong form → tiêu đề cột
     "full_name": S.COL_NAME, "phone": S.COL_PHONE, "birth_year": S.COL_BIRTH_YEAR, "gender": S.COL_GENDER,
-    "address": ADDRESS_HEADER, "source": S.COL_SOURCE, "khoa": S.COL_KHOA, "exam_date": S.COL_EXAM_DATE,
+    "address": ADDRESS_HEADER, "commune": COMMUNE_HEADER, "source": S.COL_SOURCE, "khoa": S.COL_KHOA, "exam_date": S.COL_EXAM_DATE,
     "exam_time": S.COL_EXAM_TIME, "symptom": S.COL_SYMPTOM, "specialty": S.COL_SPECIALTY, "doctor": S.COL_DOCTOR,
     "status": S.COL_STATUS, "cccd": S.COL_CCCD,
 }

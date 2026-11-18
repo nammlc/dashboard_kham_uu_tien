@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Soạn & gửi SMS{% endblock %}
+{% block page_title %}✉️ Soạn &amp; gửi tin nhắn{% endblock %}
+
+{# các trường mang theo giữa các bước #}
+{% macro carry() -%}
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="kind" value="{{ kind }}">
+  <input type="hidden" name="aud" value="{{ aud }}">
+  <input type="hidden" name="event_id" value="{{ event.id if event else '' }}">
+  <input type="hidden" name="token" value="{{ token }}">
+{%- endmacro %}
+{% macro carry_body() -%}<input type="hidden" name="body" value="{{ body }}">{%- endmacro %}
+{% macro carry_filters() -%}
+  <input type="hidden" name="date_from" value="{{ flt.date_from.isoformat() if flt.date_from else '' }}">
+  <input type="hidden" name="date_to" value="{{ flt.date_to.isoformat() if flt.date_to else '' }}">
+  {% for c in flt.communes %}<input type="hidden" name="communes" value="{{ c }}">{% endfor %}
+  <input type="hidden" name="khoa" value="{{ flt.khoa }}"><input type="hidden" name="f_source" value="{{ flt.source }}">
+  <input type="hidden" name="f_status" value="{{ flt.status }}"><input type="hidden" name="q" value="{{ flt.q }}">
+{%- endmacro %}
+{% macro carry_sel() -%}{% for k in sel %}<input type="hidden" name="sel" value="{{ k }}">{% endfor %}{%- endmacro %}
+
+{% block content %}
+<!-- thanh các bước -->
+<ol class="flex items-center gap-2 text-xs mb-5">
+  {% for n, label in [(1, 'Loại tin & nội dung'), (2, 'Chọn người nhận'), (3, 'Xem trước & gửi')] %}
+  <li class="flex items-center gap-2">
+    <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold {% if step == n %}bg-[#0f2642] text-white{% elif step > n %}bg-emerald-500 text-white{% else %}bg-slate-200 text-slate-500{% endif %}">{{ '✓' if step > n else n }}</span>
+    <span class="{% if step == n %}font-semibold text-slate-800{% else %}text-slate-400{% endif %}">{{ label }}</span>
+    {% if not loop.last %}<span class="text-slate-300 mx-1">──</span>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+
+{% if errors %}
+<div class="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">
+  <ul class="list-disc ml-5">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{# ═════════════ BƯỚC 1 ═════════════ #}
+{% if step == 1 %}
+<form method="POST" class="bg-white rounded-xl border border-slate-200 p-5 space-y-5 max-w-4xl">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="step" value="1">
+  <div>
+    <p class="text-xs font-semibold text-slate-500 mb-2">1. Loại tin nhắn</p>
+    <div class="grid md:grid-cols-3 gap-3">
+      <label class="border rounded-xl p-3 cursor-pointer {% if kind == 'appointment' %}border-blue-500 bg-blue-50{% else %}border-slate-200{% endif %}">
+        <input type="radio" name="kind" value="appointment" class="mr-2 kind-radio" {% if kind == 'appointment' %}checked{% endif %}><b class="text-sm">Nhắc lịch hẹn khám</b>
+        <p class="text-xs text-slate-500 mt-1">Gửi cho bệnh nhân đã đăng ký lịch hẹn (lọc theo ngày khám, xã, khoa…).</p></label>
+      <label class="border rounded-xl p-3 cursor-pointer {% if kind == 'mobile' %}border-blue-500 bg-blue-50{% else %}border-slate-200{% endif %}">
+        <input type="radio" name="kind" value="mobile" class="mr-2 kind-radio" {% if kind == 'mobile' %}checked{% endif %}><b class="text-sm">Nhắc lịch khám lưu động</b>
+        <p class="text-xs text-slate-500 mt-1">Thông báo đợt khám tại xã / trường học / công ty, theo danh bạ hoặc bệnh nhân theo vùng.</p></label>
+      <div class="border border-dashed border-slate-200 rounded-xl p-3 opacity-60"><b class="text-sm">Nhắc khám sức khỏe (KSK)</b>
+        <p class="text-xs text-slate-500 mt-1">Nhập danh sách từ Excel — sắp có (giai đoạn 4).</p></div>
+    </div>
+  </div>
+
+  <div id="mobileBox" class="{% if kind != 'mobile' %}hidden{% endif %} space-y-3">
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex-1 min-w-[16rem]"><label class="block text-xs font-semibold text-slate-500 mb-1">Đợt khám lưu động</label>
+        <select name="event_id" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+          <option value="">— chọn đợt khám —</option>
+          {% for e in events %}<option value="{{ e.id }}" {% if event and event.id == e.id %}selected{% endif %}>{{ e.event_date.strftime('%d/%m/%Y') }} · {{ e.name }} ({{ e.location }})</option>{% endfor %}
+        </select></div>
+      <a href="{{ url_for('sms_events') }}" class="text-sm text-blue-600 hover:underline pb-2">➕ Tạo / quản lý đợt khám &amp; danh bạ</a>
+    </div>
+    <div class="flex flex-wrap gap-4 text-sm">
+      <label><input type="radio" name="aud" value="contacts" {% if aud == 'contacts' %}checked{% endif %}> Gửi theo <b>danh bạ</b> của đợt (đã có đồng ý nhận tin)</label>
+      <label><input type="radio" name="aud" value="patients" {% if aud != 'contacts' %}checked{% endif %}> Gửi cho <b>bệnh nhân cũ theo vùng</b> (xã/phường)</label>
+    </div>
+    <p class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">⚠️ Tin khám lưu động / thông báo cho người chưa phải bệnh nhân có thể bị nhà cung cấp xếp vào loại <b>quảng cáo</b> (quy định chặt hơn). Hãy hỏi nhà cung cấp trước khi gửi số lượng lớn.</p>
+  </div>
+
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <label class="block text-xs font-semibold text-slate-500">2. Nội dung tin</label>
+      <span id="counter" class="text-xs text-slate-400"></span>
+    </div>
+    <textarea id="body" name="body" rows="4" class="w-full text-sm font-mono border border-slate-300 rounded-lg px-3 py-2">{{ body }}</textarea>
+    <p class="text-[11px] text-slate-400 mt-1">Biến dùng được: <code>{ten}</code> <code>{ngay}</code> <code>{gio}</code> <code>{gio_text}</code> <code>{dia_diem}</code> <code>{hotline}</code>.
+      Hệ thống tự bỏ dấu để vừa 160 ký tự/tin. Không ghi bệnh hay chẩn đoán trong tin.</p>
+  </div>
+  <button class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">Tiếp tục: chọn người nhận →</button>
+</form>
+<script>
+  const PRESETS = {{ presets | tojson }};
+  const body = document.getElementById('body'), counter = document.getElementById('counter');
+  function upd() {
+    const t = body.value, ascii = /^[\x00-\x7F]*$/.test(t.replace(/\{\w+\}/g, 'x'));
+    const n = t.length, seg = n === 0 ? 0 : (ascii ? (n <= 160 ? 1 : Math.ceil(n / 153)) : (n <= 70 ? 1 : Math.ceil(n / 67)));
+    counter.textContent = n + ' ký tự (chưa tính phần biến được ghép) · ~' + seg + ' tin';
+  }
+  body.addEventListener('input', upd); upd();
+  document.querySelectorAll('.kind-radio').forEach(r => r.addEventListener('change', () => {
+    document.getElementById('mobileBox').classList.toggle('hidden', r.value !== 'mobile');
+    if (Object.values(PRESETS).includes(body.value.trim()) || !body.value.trim()) { body.value = PRESETS[r.value]; upd(); }
+  }));
+</script>
+{% endif %}
+
+{# ═════════════ BƯỚC 2 ═════════════ #}
+{% if step == 2 %}
+{% set rows = aud_data.rows %}
+<form method="POST" id="f2" class="space-y-4">
+  {{ carry() }}{{ carry_body() }}
+
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <p class="text-xs font-semibold text-slate-500 mb-3">Lọc người nhận
+      <span class="font-normal text-slate-400">· {{ 'Danh bạ đợt «' ~ event.name ~ '»' if aud == 'contacts' else 'Bệnh nhân' }}</span></p>
+    <div class="flex flex-wrap items-end gap-3 text-sm">
+      {% if aud != 'contacts' %}
+      <div><label class="block text-xs text-slate-500 mb-1">{{ 'Ngày khám từ' if kind == 'appointment' else 'Đăng ký từ' }}</label>
+        <input type="date" name="date_from" value="{{ flt.date_from.isoformat() if flt.date_from else '' }}" class="border border-slate-300 rounded-lg px-2 py-1.5"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">đến</label>
+        <input type="date" name="date_to" value="{{ flt.date_to.isoformat() if flt.date_to else '' }}" class="border border-slate-300 rounded-lg px-2 py-1.5"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">Khoa</label><input name="khoa" value="{{ flt.khoa }}" class="border border-slate-300 rounded-lg px-2 py-1.5 w-36"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">Nguồn</label>
+        <select name="f_source" class="border border-slate-300 rounded-lg px-2 py-1.5">
+          <option value="">Tất cả</option><option value="tai_kham" {% if flt.source == 'tai_kham' %}selected{% endif %}>Tái khám (từ khoa)</option><option value="khac" {% if flt.source == 'khac' %}selected{% endif %}>Ưu tiên / vãng lai / khác</option></select></div>
+      <div><label class="block text-xs text-slate-500 mb-1">Trạng thái</label>
+        <select name="f_status" class="border border-slate-300 rounded-lg px-2 py-1.5">
+          <option value="chua" {% if flt.status != 'all' %}selected{% endif %}>Chưa khám</option><option value="all" {% if flt.status == 'all' %}selected{% endif %}>Tất cả</option></select></div>
+      {% endif %}
+      <div><label class="block text-xs text-slate-500 mb-1">Tìm tên / SĐT</label><input name="q" value="{{ flt.q }}" class="border border-slate-300 rounded-lg px-2 py-1.5 w-40"></div>
+      <button type="submit" name="step" value="2f" class="bg-slate-700 text-white font-semibold px-4 py-1.5 rounded-lg hover:bg-slate-800">Lọc</button>
+    </div>
+
+    <details class="mt-3" {% if flt.communes %}open{% endif %}>
+      <summary class="text-xs font-semibold text-slate-600 cursor-pointer">📍 Lọc theo xã/phường ({{ flt.communes|length if flt.communes else 'tất cả' }}) — {{ aud_data.communes|length }} xã</summary>
+      <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        {% for rg in regions %}
+        <span class="inline-flex items-center bg-blue-50 text-blue-700 rounded-full pl-3 pr-1 py-0.5">
+          <button type="button" class="region-chip font-semibold" data-communes='{{ rg.communes | tojson }}'>{{ rg.name }} ({{ rg.communes|length }})</button>
+          <button type="submit" name="step" value="2d" onclick="document.getElementById('region_id').value={{ rg.id }}" class="ml-1 w-5 h-5 text-blue-400 hover:text-red-500" title="Xoá nhóm">×</button></span>
+        {% endfor %}
+        <input type="hidden" name="region_id" id="region_id" value="">
+      </div>
+      <div class="mt-2 max-h-44 overflow-y-auto grid sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs border border-slate-100 rounded-lg p-2">
+        {% for name, n in aud_data.communes %}
+        <label class="flex items-center gap-1.5"><input type="checkbox" class="commune-cb" name="communes" value="{{ name }}" {% if name in flt.communes %}checked{% endif %}> {{ name }} <span class="text-slate-400">({{ n }})</span></label>
+        {% endfor %}
+      </div>
+      <div class="mt-2 flex items-center gap-2 text-xs">
+        <input name="region_name" placeholder="Tên nhóm vùng, vd. Bắc Nông Cống" class="border border-slate-300 rounded-lg px-2 py-1 w-64">
+        <button type="submit" name="step" value="2s" class="border border-slate-300 rounded-lg px-3 py-1 hover:bg-slate-50">💾 Lưu các xã đã tích thành nhóm</button>
+      </div>
+    </details>
+  </div>
+
+  {% if aud_data.truncated %}<p class="text-sm bg-amber-50 text-amber-800 rounded-lg px-3 py-2">⚠️ Có hơn 1000 người khớp bộ lọc — chỉ hiện 1000 đầu tiên. Hãy lọc hẹp hơn (theo ngày hoặc xã).</p>{% endif %}
+
+  <div class="bg-white rounded-xl border border-slate-200">
+    <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-slate-100 text-sm">
+      <label class="flex items-center gap-2 font-semibold"><input type="checkbox" id="checkAll"> Chọn tất cả người đủ điều kiện</label>
+      <span class="text-slate-500">Đã chọn <b id="selCount" class="text-blue-700">0</b> / {{ rows|selectattr('ok')|list|length }} người gửi được ({{ rows|length }} dòng)</span>
+    </div>
+    <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+      <table class="w-full text-sm" style="min-width:760px">
+        <thead class="sticky top-0 bg-slate-50"><tr class="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          <th class="px-3 py-2 w-10"></th><th class="px-3 py-2 text-left">Họ tên</th><th class="px-3 py-2 text-left">SĐT</th>
+          {% if aud == 'contacts' %}<th class="px-3 py-2 text-left">Xã</th><th class="px-3 py-2 text-left">Đơn vị</th>
+          {% else %}<th class="px-3 py-2 text-left">{{ 'Ngày khám' if kind == 'appointment' else 'Lần đăng ký gần nhất' }}</th><th class="px-3 py-2 text-left">Xã</th><th class="px-3 py-2 text-left">Khoa</th>{% endif %}
+          <th class="px-3 py-2 text-left">Ghi chú</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for r in rows %}
+          <tr class="{% if not r.ok %}bg-slate-50 text-slate-400{% else %}hover:bg-blue-50/40{% endif %}">
+            <td class="px-3 py-2"><input type="checkbox" class="rowcb" name="sel" value="{{ r.key }}" {% if not r.ok %}disabled{% elif r.key in sel %}checked{% endif %}></td>
+            <td class="px-3 py-2 font-medium">{{ r.name or '—' }}</td>
+            <td class="px-3 py-2 font-mono text-xs">{{ r.phone or r.phone_raw or '—' }}</td>
+            {% if aud == 'contacts' %}<td class="px-3 py-2 text-xs">{{ r.commune }}</td><td class="px-3 py-2 text-xs">{{ r.org }}</td>
+            {% else %}<td class="px-3 py-2 text-xs whitespace-nowrap">{{ r.exam_date.strftime('%d/%m/%Y') if r.exam_date else '' }} {{ r.exam_time[:5] if r.exam_time and r.exam_time[:1].isdigit() else '' }}</td>
+            <td class="px-3 py-2 text-xs">{{ r.commune }}</td><td class="px-3 py-2 text-xs">{{ r.khoa }}</td>{% endif %}
+            <td class="px-3 py-2 text-xs">{{ r.reason }}</td>
+          </tr>
+          {% else %}<tr><td colspan="7" class="px-5 py-10 text-center text-slate-400">Không có ai khớp bộ lọc.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <button type="submit" name="step" value="1b" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Quay lại nội dung</button>
+    <button type="submit" name="step" value="2" class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">Tiếp tục: xem trước →</button>
+  </div>
+</form>
+<script>
+  const rowcbs = () => Array.from(document.querySelectorAll('.rowcb:not(:disabled)'));
+  const upd2 = () => { const r = rowcbs(); document.getElementById('selCount').textContent = r.filter(x => x.checked).length;
+                       document.getElementById('checkAll').checked = r.length > 0 && r.every(x => x.checked); };
+  document.getElementById('checkAll').addEventListener('change', e => { rowcbs().forEach(x => x.checked = e.target.checked); upd2(); });
+  rowcbs().forEach(x => x.addEventListener('change', upd2)); upd2();
+  document.querySelectorAll('.region-chip').forEach(b => b.addEventListener('click', () => {
+    const set = new Set(JSON.parse(b.dataset.communes));
+    document.querySelectorAll('.commune-cb').forEach(cb => cb.checked = set.has(cb.value));
+    const form = document.getElementById('f2'), h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'step'; h.value = '2f'; form.appendChild(h); form.submit();
+  }));
+</script>
+{% endif %}
+
+{# ═════════════ BƯỚC 3 ═════════════ #}
+{% if step == 3 %}
+<div class="grid lg:grid-cols-3 gap-4">
+  <div class="lg:col-span-2 space-y-4">
+    <form method="POST" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+      {{ carry() }}{{ carry_filters() }}{{ carry_sel() }}
+      <div class="flex items-center justify-between"><label class="text-xs font-semibold text-slate-500">Nội dung tin (có thể sửa lần cuối)</label>
+        <span class="text-xs text-slate-400">{{ kinds[kind] }}{% if event %} · {{ event.name }}{% endif %}</span></div>
+      <textarea name="body" rows="3" class="w-full text-sm font-mono border border-slate-300 rounded-lg px-3 py-2">{{ body }}</textarea>
+      <button type="submit" name="step" value="3p" class="text-sm border border-slate-300 rounded-lg px-4 py-1.5 hover:bg-slate-50">↻ Cập nhật xem trước</button>
+    </form>
+
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <p class="text-xs font-semibold text-slate-500 mb-2">Tin mẫu (3 người đầu)</p>
+      {% if prev.error %}<p class="text-sm text-red-600">{{ prev.error }}</p>{% endif %}
+      <div class="space-y-2">
+        {% for s in prev.samples %}
+        <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"><p class="text-[11px] text-slate-400 mb-0.5">Gửi tới {{ s.to }} · {{ s.text|length }} ký tự · {{ s.segments }} tin</p>
+          <p class="text-sm font-mono">{{ s.text }}</p></div>
+        {% endfor %}
+      </div>
+      {% if prev.long %}<p class="text-xs text-amber-700 mt-2">⚠️ {{ prev.long }} tin dài hơn 1 tin tính phí — rút gọn nội dung để tiết kiệm.</p>{% endif %}
+    </div>
+
+    {% if skipped %}
+    <details class="bg-white rounded-xl border border-slate-200 p-4"><summary class="text-sm font-semibold text-slate-600 cursor-pointer">{{ skipped|length }} người đã chọn nhưng bị loại (kiểm tra lại lúc gửi)</summary>
+      <ul class="mt-2 text-xs text-slate-500 space-y-0.5 max-h-48 overflow-y-auto">
+        {% for r in skipped %}<li>{{ r.name }} — {{ r.reason }}</li>{% endfor %}</ul></details>
+    {% endif %}
+  </div>
+
+  <form method="POST" class="bg-white rounded-xl border border-slate-200 p-5 space-y-4 self-start">
+    {{ carry() }}{{ carry_body() }}{{ carry_filters() }}{{ carry_sel() }}
+    <h3 class="font-semibold text-slate-800 text-sm">Tóm tắt trước khi gửi</h3>
+    <div class="grid grid-cols-2 gap-3 text-center">
+      <div class="rounded-lg bg-emerald-50 py-3"><p class="text-2xl font-bold text-emerald-600">{{ eligible|length }}</p><p class="text-[11px] text-emerald-700/70">người nhận</p></div>
+      <div class="rounded-lg bg-blue-50 py-3"><p class="text-2xl font-bold text-blue-600">{{ prev.segments }}</p><p class="text-[11px] text-blue-700/70">tin tính phí</p></div>
+    </div>
+    <p class="text-sm text-slate-600">Chi phí ước tính: <b>{{ '{:,}'.format(prev.cost).replace(',', '.') }} đ</b> <span class="text-xs text-slate-400">({{ price }} đ/tin)</span></p>
+    {% if reasons %}<p class="text-xs text-slate-500">Bị loại: {% for r, n in reasons.items() %}{{ r }} ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+
+    <ul class="text-xs space-y-1 border-t border-slate-100 pt-3">
+      {% if settings.enabled != '1' %}<li class="text-red-600">❌ Công tắc gửi SMS đang TẮT — bật ở trang Tin nhắn SMS.</li>{% endif %}
+      {% if quiet %}<li class="text-amber-700">🌙 Đang trong giờ nghỉ 22:00–07:00: tin vào hàng đợi và gửi từ 07:00.</li>{% endif %}
+      {% if eligible|length + sent_today > settings.daily_cap|int %}<li class="text-amber-700">⚠️ Vượt hạn mức {{ settings.daily_cap }} tin/ngày (đã gửi {{ sent_today }}): phần còn lại gửi vào ngày hôm sau.</li>{% endif %}
+      {% if eligible|length > max_n %}<li class="text-red-600">❌ Tối đa {{ max_n }} người/lần gửi.</li>{% endif %}
+    </ul>
+
+    <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="confirm" value="1" class="mt-1"> <span>Tôi đã kiểm tra nội dung và danh sách người nhận.</span></label>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" name="step" value="3b" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Chọn lại</button>
+      <button type="submit" name="step" value="3s" class="bg-emerald-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-emerald-700 {% if not eligible %}opacity-50{% endif %}"
+              {% if not eligible %}disabled{% endif %}>📤 Gửi đồng loạt</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -74,8 +74,11 @@
       {{ field('doctor', 'Bác sĩ mong muốn') }}
     </div>
 
-    <div class="grid md:grid-cols-2 gap-4">
-      {{ field('address', 'Địa chỉ (thôn/xã)') }}
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="md:col-span-2">{{ field('address', 'Địa chỉ (thôn/xã)') }}</div>
+      {{ field('commune', 'Xã/phường (để lọc theo vùng)', hint='Để trống = tự tách từ địa chỉ. Điền nếu hệ thống tách sai.') }}
+    </div>
+    <div class="grid md:grid-cols-1 gap-4">
       {{ field('symptom', 'Triệu chứng chính') }}
     </div>
 
