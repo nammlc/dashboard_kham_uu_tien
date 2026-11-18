@@ -1709,7 +1709,7 @@ def _wiz_filters(kind, auds, f=None):
 
 
 def _wiz_as_step(form, step):
-    """Bản sao dữ liệu form với `step` đổi thành `step` (3b = hiện lại bước 2, giữ nguyên các ô đã tích)."""
+    """Bản sao dữ liệu form với `step` đổi thành `step` (vd. recipients = hiện lại bước chọn người, giữ nguyên các ô đã tích)."""
     from werkzeug.datastructures import MultiDict
     md = MultiDict(form)
     md.setlist("step", [step])
@@ -1719,30 +1719,48 @@ def _wiz_as_step(form, step):
 @app.route("/sms/gui", methods=["GET", "POST"])
 @sms_admin_required
 def sms_compose():
+    """Trang gửi tin theo từng bước. Mỗi loại tin một quy trình (SMS.WIZARD_FLOWS):
+       nhắc lịch hẹn: ① người nhận → ② nội dung → ③ xem trước & gửi
+       khám lưu động: ① đợt & đối tượng → ② người nhận → ③ nội dung → ④ xem trước & gửi
+    `step` trong form = bước cần HIỂN THỊ (event / recipients / content / send), hoặc thao tác: filter, region_save, region_del, do_send."""
     from datetime import timedelta
     from services import patient_db as PD, sms as SMS
     from services.sheets import vn_today
+    by = getattr(current_user, "email", "")
     f = request.form if request.method == "POST" else request.args        # GET: từ nút «Soạn tin» ở 2 tab (?kind=mobile&event_id=…)
-    step = f.get("step", "0") if request.method == "POST" else "0"
+    action = f.get("step", "") if request.method == "POST" else ""
     if request.method == "POST" and not _csrf_ok():
         abort(400)
-    # Các bước chỉ để XEM/CHỌN (không ghi gì) → lưu dữ liệu rồi chuyển sang trang GET ?w=…: nút Back / F5 của trình duyệt chạy bình thường.
-    # Bước ghi dữ liệu (2s lưu nhóm vùng, 2d xoá nhóm, 3s gửi) vẫn xử lý trực tiếp bên dưới.
-    if request.method == "POST" and step in ("0", "1", "1b", "2f", "2", "3b", "3p"):
-        return redirect(url_for("sms_compose", w=SMS.wiz_save(request.form, getattr(current_user, "email", ""))))
+    # Bước chỉ để XEM/CHỌN (không ghi gì) → lưu dữ liệu rồi chuyển sang trang GET ?w=…: nút Back / F5 của trình duyệt chạy bình thường.
+    # Bước ghi dữ liệu (region_save / region_del / do_send) xử lý trực tiếp bên dưới.
+    if request.method == "POST" and action in SMS.WIZ_VIEW_STEPS:
+        return redirect(url_for("sms_compose", w=SMS.wiz_save(request.form, by)))
+    entry = request.method == "GET" and not request.args.get("w")           # vừa mở từ tab (chưa bấm gì)
     if request.method == "GET" and request.args.get("w"):
         saved = SMS.wiz_load(request.args.get("w"))
         if saved is None:
             flash("Phiên soạn tin đã hết hạn — hãy bắt đầu lại.", "error")
             return redirect(url_for("sms_index"))
-        f, step = saved, saved.get("step", "0")
+        f, action = saved, saved.get("step", "")
+        if action in ("region_save", "region_del", "do_send"):             # mở lại bằng GET thì tuyệt đối KHÔNG ghi / gửi gì
+            action = "recipients"
     kind = f.get("kind", "appointment") if f.get("kind") in ("appointment", "mobile") else "appointment"
+    flow = SMS.WIZARD_FLOWS[kind]
+    names = [n for n, _ in flow]
+    if action not in names and action not in ("filter", "region_save", "region_del", "do_send"):
+        action = names[0]
     # Đối tượng: nhắc lịch hẹn luôn là bệnh nhân; khám lưu động được tích CẢ danh bạ lẫn bệnh nhân cũ theo vùng
     picked = [a for a in f.getlist("aud") if a in ("contacts", "patients")]
     auds = ["patients"] if kind == "appointment" else [a for a in ("contacts", "patients") if a in picked]
-    if kind == "mobile" and not auds and step == "0":
+    if kind == "mobile" and not auds and entry:
         auds = ["contacts"]
-    errors, flt = [], _wiz_filters(kind, auds, f)
+    tomorrow = vn_today() + timedelta(days=1)
+    if f.get("flt") == "1":
+        flt = _wiz_filters(kind, auds, f)
+    else:                                                                  # chưa có bộ lọc → mặc định (nhắc lịch: ngày mai, chưa khám)
+        flt = {"date_from": tomorrow if kind == "appointment" else None, "date_to": tomorrow if kind == "appointment" else None,
+               "communes": [], "khoa": "", "source": "", "status": "chua" if kind == "appointment" else "all", "q": ""}
+    errors = []
     sel, token = f.getlist("sel"), f.get("token", "")
     with PD._conn() as c:
         events = SMS.list_events(c)
@@ -1752,90 +1770,104 @@ def sms_compose():
         presets = {"appointment": SMS.appointment_template(c), "mobile": SMS.PRESETS["mobile"]}
         body = f.get("body", "").strip() or presets[kind]
 
-        def page(n, **extra):
-            return render_template("sms/compose.html", step=n, kind=kind, auds=auds, body=body, event=event, events=events, flt=flt, sel=sel,
-                                   errors=errors, regions=regions, kinds=SMS.KINDS, presets=presets, token=token,
-                                   max_n=SMS.max_recipients(), **extra)
+        def page(name, **extra):
+            return render_template("sms/compose.html", view=name, flow=flow, step_no=names.index(name) + 1, kind=kind, auds=auds, body=body,
+                                   event=event, events=events, flt=flt, sel=sel, errors=errors, regions=regions, kinds=SMS.KINDS,
+                                   preset=presets[kind], token=token, max_n=SMS.max_recipients(),
+                                   quick_dates={"today": vn_today().isoformat(), "tomorrow": tomorrow.isoformat(),
+                                                "after": (tomorrow + timedelta(days=1)).isoformat()}, **extra)
 
-        def step2(reset_sel=True):
+        def resolve():
+            return SMS.resolve_selection(_get_df(), c, kind, auds, event, sel)
+
+        def view_recipients(fresh):
             nonlocal sel
             aud_data = SMS.audience(_get_df(), c, kind, auds, event, flt)
-            if reset_sel:
+            if fresh:
                 sel = [r["key"] for r in aud_data["rows"] if r["ok"]]
-            return page(2, aud_data=aud_data)
+            return page("recipients", aud_data=aud_data)
 
-        def step3():
+        def view_content():
+            eligible, skipped = resolve()
+            return page("content", eligible=eligible, skipped=skipped, prev=SMS.preview_messages(body, eligible))
+
+        def view_send():
             nonlocal token
-            df = _get_df()
-            eligible, skipped = SMS.resolve_selection(df, c, kind, auds, event, sel)
+            eligible, skipped = resolve()
             token = token or uuid.uuid4().hex
             reasons = {}
             for r in skipped:
                 reasons[r["reason"]] = reasons.get(r["reason"], 0) + 1
-            prev = SMS.preview_messages(body, eligible)
-            return page(3, eligible=eligible, skipped=skipped, reasons=reasons, prev=prev, settings=settings, quiet=SMS.in_quiet_hours(),
-                        sent_today=SMS.sent_today(c), price=SMS.price_per_segment())
+            return page("send", eligible=eligible, skipped=skipped, reasons=reasons, prev=SMS.preview_messages(body, eligible),
+                        settings=settings, quiet=SMS.in_quiet_hours(), sent_today=SMS.sent_today(c), price=SMS.price_per_segment())
 
-        if step == "0":
-            return page(1)
-        if step in ("1", "1b"):
-            if step == "1b":
-                return page(1)
-            if kind == "mobile" and event is None:
-                errors.append("Chọn đợt khám lưu động (hoặc tạo đợt mới) trước khi tiếp tục.")
-            if kind == "mobile" and not auds:
-                errors.append("Hãy tích chọn ít nhất 1 đối tượng nhận tin (danh bạ của đợt và/hoặc bệnh nhân cũ theo vùng).")
-            errors += SMS.template_errors(body)
-            if errors:
-                return page(1)
-            flt = {"date_from": (vn_today() + timedelta(days=1)) if kind == "appointment" else None,
-                   "date_to": (vn_today() + timedelta(days=1)) if kind == "appointment" else None,
-                   "communes": [], "khoa": "", "source": "", "status": "chua" if kind == "appointment" else "all", "q": ""}
-            return step2()
-        if step == "2f":
-            return step2()
-        if step == "2s":
+        def first_failure(target):
+            """Kiểm tra các bước TRƯỚC `target` đã làm đúng chưa → (bước cần quay lại, lỗi) hoặc None."""
+            if kind == "mobile" and target != "event":
+                errs = []
+                if event is None:
+                    errs.append("Chọn đợt khám lưu động (hoặc tạo đợt mới) trước khi tiếp tục.")
+                if not auds:
+                    errs.append("Hãy tích chọn ít nhất 1 đối tượng nhận tin (danh bạ của đợt và/hoặc bệnh nhân cũ theo vùng).")
+                if errs:
+                    return "event", errs
+            if target in ("content", "send") and not sel:
+                return "recipients", ["Chưa tích chọn ai — hãy chọn ít nhất 1 người nhận."]
+            if target == "send" and SMS.template_errors(body):
+                return "content", SMS.template_errors(body)
+            return None
+
+        def goto_missing(bad):
+            name, errs = bad
+            errors.extend(errs)
+            return page("event") if name == "event" else (view_recipients(False) if name == "recipients" else view_content())
+
+        # ── hiển thị một bước ──
+        if action in names or action == "filter":
+            target = "recipients" if action == "filter" else action
+            bad = first_failure(target)
+            if bad:
+                return goto_missing(bad)
+            if target == "event":
+                return page("event")
+            if target == "recipients":                                      # đi tới từ bước trước / bấm Lọc → chọn sẵn mọi người gửi được; quay lại từ bước sau → giữ nguyên ô đã tích
+                return view_recipients(fresh=(action == "filter" or f.get("kept") != "1"))
+            return view_content() if target == "content" else view_send()
+
+        # ── lưu / xoá nhóm vùng (ghi dữ liệu → xong chuyển về trang GET, giữ nguyên các ô đã tích) ──
+        if action == "region_save":
             try:
-                SMS.save_region(f.get("region_name", ""), flt["communes"], getattr(current_user, "email", ""))
+                SMS.save_region(f.get("region_name", ""), flt["communes"], by)
                 flash("✅ Đã lưu nhóm vùng.", "success")
             except ValueError as e:
                 errors.append(str(e))
-                regions = SMS.list_regions(c)
-                return step2(reset_sel=False)
-            return redirect(url_for("sms_compose", w=SMS.wiz_save(_wiz_as_step(request.form, "3b"), getattr(current_user, "email", ""))))
-        if step == "2d":
+                return view_recipients(False)
+            return redirect(url_for("sms_compose", w=SMS.wiz_save(_wiz_as_step(request.form, "recipients"), by)))
+        if action == "region_del":
             SMS.delete_region(f.get("region_id", 0))
-            return redirect(url_for("sms_compose", w=SMS.wiz_save(_wiz_as_step(request.form, "3b"), getattr(current_user, "email", ""))))
-        if step in ("2", "3b", "3p"):
-            if step == "3b":
-                return step2(reset_sel=False)
-            if step == "2" and not sel:
-                errors.append("Chưa tích chọn ai — hãy chọn ít nhất 1 người nhận.")
-                return step2(reset_sel=False)
-            errors += SMS.template_errors(body) if step == "3p" else []
-            return step3()
-        if step != "3s":
-            return page(1)
-        if step == "3s":
-            eligible, skipped = SMS.resolve_selection(_get_df(), c, kind, auds, event, sel)
-            if SMS.template_errors(body):
-                errors += SMS.template_errors(body)
-            if not f.get("confirm"):
-                errors.append("Hãy tích «Tôi đã kiểm tra nội dung và danh sách người nhận».")
-            if settings["enabled"] != "1":
-                errors.append("Công tắc gửi SMS đang TẮT — bật ở trang Tin nhắn SMS trước khi gửi.")
-            if not eligible:
-                errors.append("Không còn ai đủ điều kiện nhận tin.")
-            if len(eligible) > SMS.max_recipients():
-                errors.append(f"Tối đa {SMS.max_recipients()} người mỗi lần gửi (đang chọn {len(eligible)}). Chia thành nhiều lần.")
-            if errors:
-                return step3()
-            name = f"{SMS.KINDS[kind]}" + (f" — {event['name']}" if event else "") + f" ({len(eligible)} người)"
-            cid, existed = SMS.create_campaign(
-                c, kind=kind, name=name, body=body, eligible=eligible, skipped=skipped, created_by=getattr(current_user, "email", ""),
-                key=f"wiz:{token}" if token else None, event_id=event["id"] if event else None,
-                filters={"kind": kind, "audience": auds, "event_id": event["id"] if event else None, "selected": len(sel),
-                         "filters": {k: v for k, v in flt.items()}})
+            return redirect(url_for("sms_compose", w=SMS.wiz_save(_wiz_as_step(request.form, "recipients"), by)))
+
+        # ── gửi ──
+        bad = first_failure("send")
+        if bad:
+            return goto_missing(bad)
+        eligible, skipped = resolve()
+        if not f.get("confirm"):
+            errors.append("Hãy tích «Tôi đã kiểm tra nội dung và danh sách người nhận».")
+        if settings["enabled"] != "1":
+            errors.append("Công tắc gửi SMS đang TẮT — bật ở trang Tin nhắn SMS trước khi gửi.")
+        if not eligible:
+            errors.append("Không còn ai đủ điều kiện nhận tin.")
+        if len(eligible) > SMS.max_recipients():
+            errors.append(f"Tối đa {SMS.max_recipients()} người mỗi lần gửi (đang chọn {len(eligible)}). Chia thành nhiều lần.")
+        if errors:
+            return view_send()
+        name = f"{SMS.KINDS[kind]}" + (f" — {event['name']}" if event else "") + f" ({len(eligible)} người)"
+        cid, existed = SMS.create_campaign(
+            c, kind=kind, name=name, body=body, eligible=eligible, skipped=skipped, created_by=by,
+            key=f"wiz:{token}" if token else None, event_id=event["id"] if event else None,
+            filters={"kind": kind, "audience": auds, "event_id": event["id"] if event else None, "selected": len(sel),
+                     "filters": {k: v for k, v in flt.items()}})
     if not existed:
         _sms_kick_queue()
         flash(f"✅ Đã đưa {len(eligible)} tin vào hàng đợi, đang gửi đồng loạt.", "success")

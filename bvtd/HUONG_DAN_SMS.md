@@ -13,9 +13,15 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
   - **🚑 Nhắc lịch khám lưu động**: **➕ Tạo đợt khám mới**, danh sách đợt (👥 Danh bạ / ✉️ Soạn tin), lịch sử gửi.
 - **Sửa mẫu tin** (tab Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
   Mẫu mới áp dụng cho tin tự động 18:30, nút «Tạo & gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch (tin đã gửi không đổi). Mẫu lưu trong DB (bảng `sms_settings`), không cần đổi biến môi trường.
-- **Trang gửi 3 bước**: ① nội dung (khám lưu động thì thêm: chọn đợt + đối tượng) → ② chọn người nhận (lọc theo **ngày khám, xã/phường,
-  khoa, nguồn, trạng thái, tên/SĐT**; **tích từng người**; chọn tất cả/bỏ chọn) → ③ xem trước (số người, số tin tính phí,
-  chi phí ước tính, tin mẫu, lý do người bị loại) rồi **Gửi đồng loạt**. Bấm gửi 2 lần không tạo 2 chiến dịch.
+- **Mỗi loại tin một quy trình riêng**, có thanh tiến trình «Bước n/N» và dải «Đã chọn» nhắc lại lựa chọn của các bước trước:
+  - **Nhắc lịch hẹn khám (3 bước):** ① Chọn người nhận (mặc định lịch hẹn ngày mai, chưa khám; có nút chọn nhanh Hôm nay / Ngày mai / Ngày kia) →
+    ② Soạn nội dung (mẫu có sẵn, bấm để chèn biến, xem thử 3 người đầu) → ③ Xem trước & gửi.
+  - **Khám lưu động (4 bước):** ① Chọn đợt & đối tượng (tích danh bạ và/hoặc bệnh nhân cũ theo vùng) → ② Chọn người nhận →
+    ③ Soạn nội dung → ④ Xem trước & gửi.
+  - Không nhảy cóc được: chưa chọn ai thì không soạn tin được, nội dung sai biến thì không sang bước gửi được. Bước nào cũng có nút «← Quay lại»;
+    quay lại thì các ô đã tích và nội dung đã sửa được giữ nguyên. Nút Back / F5 của trình duyệt dùng bình thường.
+  - Bước chọn người nhận: lọc theo **ngày khám, xã/phường, khoa, nguồn, trạng thái, tên/SĐT**; **tích từng người**; chọn tất cả/bỏ chọn.
+  - Bước xem trước: số người, số tin tính phí, chi phí ước tính, tin mẫu, lý do người bị loại, rồi **Gửi đồng loạt**. Bấm gửi 2 lần không tạo 2 chiến dịch.
 - **Lọc theo vùng:** hệ thống tự tách **xã/phường** từ địa chỉ («Phú Quý Xã Trung Chính, , Tỉnh Thanh Hóa» → Xã Trung Chính). Dòng không tách
   được vào nhóm «Chưa rõ xã» — sửa ở trang **Sửa bệnh nhân** (ô «Xã/phường»). Có thể **lưu nhóm vùng** (vd. «Bắc Nông Cống») để chọn nhanh.
 - **Khám lưu động**: bấm **➕ Tạo đợt khám mới** (tên, đối tượng dân/học sinh/công ty, ngày, giờ, địa điểm) →

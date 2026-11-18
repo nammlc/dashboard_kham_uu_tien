@@ -520,6 +520,12 @@ def remove_optout(phone: str):
 DEFAULT_MOBILE_TEMPLATE = ("BVDK Tam Duc Cau Quan: Kham luu dong ngay {ngay}{gio_text} tai {dia_diem}. "
                            "Moi {ten} den kham. Lien he {hotline}.")
 PRESETS = {"appointment": DEFAULT_APPOINTMENT_TEMPLATE, "mobile": DEFAULT_MOBILE_TEMPLATE}
+# Các bước của trang gửi tin — MỖI LOẠI TIN MỘT QUY TRÌNH RIÊNG (tên bước → nhãn hiện trên thanh tiến trình)
+WIZARD_FLOWS = {
+    "appointment": [("recipients", "Chọn người nhận"), ("content", "Soạn nội dung"), ("send", "Xem trước & gửi")],
+    "mobile": [("event", "Chọn đợt & đối tượng"), ("recipients", "Chọn người nhận"), ("content", "Soạn nội dung"), ("send", "Xem trước & gửi")],
+}
+WIZ_VIEW_STEPS = ("event", "recipients", "content", "send", "filter")      # bước chỉ XEM/CHỌN (không ghi gì) → chuyển sang trang GET
 LIST_CAP = 1000                                   # tối đa số dòng hiển thị để tích chọn (lọc hẹp hơn nếu nhiều hơn)
 CONSENT_SOURCES = {"giay": "Phiếu đồng ý (giấy)", "qr": "Quét mã QR / biểu mẫu online",
                    "mieng": "Đồng ý trực tiếp (nhân viên ghi nhận)", "khac": "Hình thức khác"}

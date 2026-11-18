@@ -7,11 +7,7 @@
 <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
   <a href="{{ url_for('sms_events') }}" class="text-blue-600 hover:underline">← Các đợt khám lưu động</a>
   <span class="text-slate-500">{{ audiences.get(ev.audience, ev.audience) }} · {{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }}</span>
-  <form method="POST" action="{{ url_for('sms_compose') }}" class="ml-auto">
-    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="mobile"><input type="hidden" name="aud" value="contacts">
-    <input type="hidden" name="event_id" value="{{ ev.id }}"><input type="hidden" name="step" value="0">
-    <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">✉️ Soạn tin cho đợt này</button>
-  </form>
+  <a href="{{ url_for('sms_compose', kind='mobile', event_id=ev.id) }}" class="ml-auto bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">✉️ Soạn tin cho đợt này →</a>
 </div>
 <div class="grid lg:grid-cols-3 gap-4">
   <form method="POST" enctype="multipart/form-data" id="addForm" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 self-start lg:col-span-1">
