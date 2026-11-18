@@ -13,6 +13,7 @@ import json
 import math
 import re
 import unicodedata
+import uuid
 from datetime import date, datetime, timedelta
 from typing import NamedTuple
 
@@ -157,13 +158,14 @@ def get_provider() -> Provider:
 # ══════════════════════════════════════════════════════════════════════════════
 # Cài đặt (lưu trong DB, chỉnh trên web)
 # ══════════════════════════════════════════════════════════════════════════════
+WIZ_PREFIX = "wiz:"                                      # dòng nháp của trang soạn tin (không phải cài đặt thật)
 SETTING_DEFAULTS = {"enabled": "0", "auto_reminder": "0", "daily_cap": "500", "tpl_appointment": ""}   # tpl_appointment rỗng = mẫu gốc
 
 
 def get_settings(c=None) -> dict:
     def _get(cc):
         rows = cc.execute("SELECT key, value FROM sms_settings").fetchall()
-        d = dict(SETTING_DEFAULTS); d.update({r["key"]: r["value"] for r in rows})
+        d = dict(SETTING_DEFAULTS); d.update({r["key"]: r["value"] for r in rows if not r["key"].startswith(WIZ_PREFIX)})
         return d
     if c is not None:
         return _get(c)
@@ -189,6 +191,39 @@ def set_setting(key: str, value: str, by: str):
             c.execute("UPDATE sms_settings SET value = %s, updated_by = %s, updated_at = %s WHERE key = %s", (str(value), by, now, key))
         else:
             c.execute("INSERT INTO sms_settings (key, value, updated_by, updated_at) VALUES (%s, %s, %s, %s)", (key, str(value), by, now))
+
+
+def wiz_save(form, by: str = "") -> str:
+    """Lưu lại dữ liệu 1 bước của trang soạn tin để hiện bằng trang GET (nút Back / F5 của trình duyệt chạy bình thường,
+    không báo «Confirm Form Resubmission»). Nháp tự xoá sau 1 ngày."""
+    data = {k: form.getlist(k) for k in form.keys() if k != "csrf"}
+    wid = uuid.uuid4().hex[:24]
+    now = PD._now()
+    with PD._conn() as c:
+        c.execute("DELETE FROM sms_settings WHERE key LIKE %s AND updated_at < %s", (WIZ_PREFIX + "%", now - timedelta(days=1)))
+        c.execute("INSERT INTO sms_settings (key, value, updated_by, updated_at) VALUES (%s, %s, %s, %s)",
+                  (WIZ_PREFIX + wid, json.dumps(data, ensure_ascii=False), by, now))
+    return wid
+
+
+def wiz_load(wid: str):
+    """→ MultiDict dữ liệu của bước đã lưu, hoặc None nếu mã sai / đã hết hạn."""
+    from werkzeug.datastructures import MultiDict
+    if not re.fullmatch(r"[0-9a-f]{24}", wid or ""):
+        return None
+    with PD._conn() as c:
+        r = c.execute("SELECT value FROM sms_settings WHERE key = %s", (WIZ_PREFIX + wid,)).fetchone()
+    if not r:
+        return None
+    try:
+        data = json.loads(r["value"])
+    except ValueError:
+        return None
+    md = MultiDict()
+    for k, vals in data.items():
+        for v in (vals if isinstance(vals, list) else [vals]):
+            md.add(k, v)
+    return md
 
 
 def appointment_template(c=None) -> str:

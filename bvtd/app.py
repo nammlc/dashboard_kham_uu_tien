@@ -1700,12 +1700,20 @@ def sms_remind_tomorrow():
 
 
 # ── Trang gửi nhiều bước (nội dung → đối tượng → xem trước & gửi) ─────────────────────────────────────────────
-def _wiz_filters(kind, auds):
-    f = request.form
+def _wiz_filters(kind, auds, f=None):
+    f = request.form if f is None else f
     return {"date_from": _parse_date(f.get("date_from", "")), "date_to": _parse_date(f.get("date_to", "")),
             "communes": [c for c in f.getlist("communes") if c.strip()], "khoa": f.get("khoa", "").strip(),
             "source": f.get("f_source", ""), "status": f.get("f_status", "chua" if kind == "appointment" else "all"),
             "q": f.get("q", "").strip()}
+
+
+def _wiz_as_step(form, step):
+    """Bản sao dữ liệu form với `step` đổi thành `step` (3b = hiện lại bước 2, giữ nguyên các ô đã tích)."""
+    from werkzeug.datastructures import MultiDict
+    md = MultiDict(form)
+    md.setlist("step", [step])
+    return md
 
 
 @app.route("/sms/gui", methods=["GET", "POST"])
@@ -1718,13 +1726,23 @@ def sms_compose():
     step = f.get("step", "0") if request.method == "POST" else "0"
     if request.method == "POST" and not _csrf_ok():
         abort(400)
+    # Các bước chỉ để XEM/CHỌN (không ghi gì) → lưu dữ liệu rồi chuyển sang trang GET ?w=…: nút Back / F5 của trình duyệt chạy bình thường.
+    # Bước ghi dữ liệu (2s lưu nhóm vùng, 2d xoá nhóm, 3s gửi) vẫn xử lý trực tiếp bên dưới.
+    if request.method == "POST" and step in ("0", "1", "1b", "2f", "2", "3b", "3p"):
+        return redirect(url_for("sms_compose", w=SMS.wiz_save(request.form, getattr(current_user, "email", ""))))
+    if request.method == "GET" and request.args.get("w"):
+        saved = SMS.wiz_load(request.args.get("w"))
+        if saved is None:
+            flash("Phiên soạn tin đã hết hạn — hãy bắt đầu lại.", "error")
+            return redirect(url_for("sms_index"))
+        f, step = saved, saved.get("step", "0")
     kind = f.get("kind", "appointment") if f.get("kind") in ("appointment", "mobile") else "appointment"
     # Đối tượng: nhắc lịch hẹn luôn là bệnh nhân; khám lưu động được tích CẢ danh bạ lẫn bệnh nhân cũ theo vùng
     picked = [a for a in f.getlist("aud") if a in ("contacts", "patients")]
     auds = ["patients"] if kind == "appointment" else [a for a in ("contacts", "patients") if a in picked]
     if kind == "mobile" and not auds and step == "0":
         auds = ["contacts"]
-    errors, flt = [], _wiz_filters(kind, auds)
+    errors, flt = [], _wiz_filters(kind, auds, f)
     sel, token = f.getlist("sel"), f.get("token", "")
     with PD._conn() as c:
         events = SMS.list_events(c)
@@ -1779,15 +1797,15 @@ def sms_compose():
         if step == "2s":
             try:
                 SMS.save_region(f.get("region_name", ""), flt["communes"], getattr(current_user, "email", ""))
-                regions = SMS.list_regions(c)
                 flash("✅ Đã lưu nhóm vùng.", "success")
             except ValueError as e:
                 errors.append(str(e))
-            return step2(reset_sel=False)
+                regions = SMS.list_regions(c)
+                return step2(reset_sel=False)
+            return redirect(url_for("sms_compose", w=SMS.wiz_save(_wiz_as_step(request.form, "3b"), getattr(current_user, "email", ""))))
         if step == "2d":
             SMS.delete_region(f.get("region_id", 0))
-            regions = SMS.list_regions(c)
-            return step2(reset_sel=False)
+            return redirect(url_for("sms_compose", w=SMS.wiz_save(_wiz_as_step(request.form, "3b"), getattr(current_user, "email", ""))))
         if step in ("2", "3b", "3p"):
             if step == "3b":
                 return step2(reset_sel=False)

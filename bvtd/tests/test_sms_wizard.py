@@ -324,6 +324,59 @@ class Wizard(AppTestCase, Base):
         self.assertEqual(SMS.appointment_template(), SMS.DEFAULT_APPOINTMENT_TEMPLATE)
 
 
+    # ── Nút Back / F5 của trình duyệt: mỗi bước là trang GET, không còn «Confirm Form Resubmission» ──────────────────
+    def test_steps_redirect_to_get_pages_so_browser_back_works(self):
+        for step, extra in (("1", {"kind": "appointment", "body": ""}), ("2f", {"kind": "appointment", "body": SMS.PRESETS["appointment"]})):
+            r = self.client.post("/sms/gui", data=dict(extra, csrf="tok", step=step))
+            self.assertEqual(r.status_code, 302)
+            self.assertRegex(r.headers["Location"], r"/sms/gui\?w=[0-9a-f]{24}$")                # kết quả nằm ở URL GET
+            g1 = self.client.get(r.headers["Location"]); g2 = self.client.get(r.headers["Location"])
+            self.assertEqual(g1.status_code, 200)
+            self.assertEqual(self.ids(g1.get_data(as_text=True)), self.ids(g2.get_data(as_text=True)))   # tải lại / Back: kết quả y hệt
+        h = self.client.get(r.headers["Location"]).get_data(as_text=True)
+        self.assertIn('action="/sms/gui"', h)                                                      # form POST về URL sạch, không dính ?w=
+        self.assertEqual(self.client.get("/sms/gui?w=" + "0" * 24).status_code, 302)               # mã không có / hết hạn → về trang SMS
+        self.assertEqual(self.client.get("/sms/gui?w=abc").status_code, 302)
+        self.assertNotIn("Phiên soạn tin", self.client.get("/sms/gui?w=" + "0" * 24, follow_redirects=False).get_data(as_text=True))
+
+    def test_send_step_is_not_replayable_by_get(self):
+        self.enable()
+        w = self.post(step="3s", kind="appointment", aud="patients", body=SMS.PRESETS["appointment"], sel=["p:2"], confirm="1", token="tk1")
+        n = len(self.msgs(status="sent"))
+        wid = SMS.wiz_save(__import__("werkzeug.datastructures", fromlist=["MultiDict"]).MultiDict({"step": "0", "kind": "appointment"}))
+        self.client.get(f"/sms/gui?w={wid}")
+        self.assertEqual(len(self.msgs(status="sent")), n)                                         # mở trang không bao giờ gửi thêm tin
+
+    def test_drafts_do_not_pollute_settings_and_expire(self):
+        from werkzeug.datastructures import MultiDict
+        wid = SMS.wiz_save(MultiDict([("step", "1"), ("sel", "p:2"), ("sel", "p:3")]))
+        self.assertEqual(SMS.wiz_load(wid).getlist("sel"), ["p:2", "p:3"])
+        self.assertFalse([k for k in SMS.get_settings() if k.startswith("wiz:")])                  # nháp không lẫn vào cài đặt
+        PD._TEST_POOL.raw.execute("UPDATE sms_settings SET updated_at = '2000-01-01 00:00:00' WHERE key LIKE 'wiz:%'")
+        SMS.wiz_save(MultiDict([("step", "0")]))
+        self.assertIsNone(SMS.wiz_load(wid))                                                       # nháp quá 1 ngày bị dọn
+
+    def test_region_save_and_delete_redirect_and_keep_selection(self):
+        H = dict(kind="appointment", aud="patients", body=SMS.PRESETS["appointment"], date_from=D.isoformat(), date_to=D.isoformat())
+        r = self.client.post("/sms/gui", data=dict(H, csrf="tok", step="2s", region_name="Vùng thử", communes=["Xã Trung Chính"], sel=["p:2", "p:4"]))
+        self.assertEqual(r.status_code, 302)                                                       # ghi xong → trang GET, Back không lỗi
+        h = self.client.get(r.headers["Location"]).get_data(as_text=True)
+        self.assertIn("Vùng thử", h); self.assertEqual(sorted(self.ids(h)), ["p:2", "p:4"])
+        with PD._conn() as c: rid = SMS.list_regions(c)[0]["id"]
+        r = self.client.post("/sms/gui", data=dict(H, csrf="tok", step="2d", region_id=str(rid), sel=["p:2"]))
+        self.assertEqual(r.status_code, 302)
+        self.assertNotIn("Vùng thử", self.client.get(r.headers["Location"]).get_data(as_text=True))
+
+    # ── Nút lọc theo xã / vùng hiện rõ ở bước 2 ───────────────────────────────────────────────────────────────────
+    def test_commune_and_region_filter_is_visible_not_collapsed(self):
+        h = self.post(step="1", kind="appointment", body="").get_data(as_text=True)
+        self.assertIn("Lọc theo xã/phường &amp; vùng", h); self.assertIn("Lọc theo xã đã tích", h)
+        self.assertIn("Chọn hết xã", h); self.assertIn("Bỏ chọn xã", h); self.assertIn('class="commune-cb"', h)
+        self.assertNotIn("<details", h)                                                            # không còn gập lại như trước
+        SMS.save_region("Bắc Nông Cống", ["Xã Trung Chính"], "t")
+        h = self.post(step="1", kind="appointment", body="").get_data(as_text=True)
+        self.assertIn("Bắc Nông Cống (1)", h); self.assertIn("Vùng đã lưu", h)
+
     def test_mobile_requires_event(self):
         h = self.post(step="1", kind="mobile", aud="contacts", body="").get_data(as_text=True)
         self.assertIn("Chọn đợt khám lưu động", h)
