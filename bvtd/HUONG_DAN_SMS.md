@@ -1,0 +1,99 @@
+# SMS nhắc lịch & khám lưu động (Giai đoạn 1–3)
+
+Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm trong `SMS_ADMIN_EMAILS`).
+
+## Đã có trong bản này
+- Nhắc lịch hẹn **tự động lúc 18:30** cho người có lịch **ngày mai**.
+- Trang xem trước: bao nhiêu người sẽ nhận, bao nhiêu bị loại và **lý do** (đã khám, không có SĐT di động, trùng SĐT, đã từ chối…), số tin tính phí, tin mẫu.
+- Chiến dịch: xem từng người nhận, trạng thái, lý do loại; nút **gửi lại tin lỗi**.
+- Danh sách **từ chối nhận tin**; **gửi thử** 1 tin tới số của bạn.
+- **Chế độ thử (sandbox)**: chạy trọn luồng nhưng **không gửi gì ra ngoài** — dùng cho tới khi chọn xong nhà cung cấp.
+- **Menu trái có 2 mục riêng** (nhóm «Tin Nhắn SMS»), trang nào thì mục đó sáng và có dải tiêu đề cùng màu. Mỗi mục có **các tab thật** (mỗi tab là một trang, luôn hiện đủ ở mọi trang của mục, tab đang mở được tô màu):
+  - **📅 Nhắc lịch hẹn khám** (xanh dương): tab **📊 Tổng quan & cài đặt** (cài đặt gửi tin, nhắc ngày mai, lịch sử gửi) · **✉️ Soạn & gửi tin** · **✏️ Sửa mẫu tin**.
+  - **🚑 Nhắc lịch khám lưu động** (tím): tab **➕ Tạo đợt khám mới** · **🗂️ Các đợt khám** (danh sách đợt, lịch sử gửi) · **✉️ Soạn & gửi tin** · **📊 Báo cáo tỉ lệ đến**.
+- **Sửa mẫu tin** (tab riêng của mục Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
+  Mẫu mới áp dụng cho tin tự động 18:30, nút «Tạo & gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch (tin đã gửi không đổi). Mẫu lưu trong DB (bảng `sms_settings`), không cần đổi biến môi trường.
+- **Mỗi loại tin một quy trình riêng**, có thanh tiến trình «Bước n/N» và dải «Đã chọn» nhắc lại lựa chọn của các bước trước:
+  - **Nhắc lịch hẹn khám (3 bước):** ① Chọn người nhận (mặc định lịch hẹn ngày mai, chưa khám; có nút chọn nhanh Hôm nay / Ngày mai / Ngày kia) →
+    ② Soạn nội dung (mẫu có sẵn, bấm để chèn biến, xem thử 3 người đầu) → ③ Xem trước & gửi.
+  - **Khám lưu động (4 bước):** ① Chọn đợt & đối tượng (tích danh bạ và/hoặc bệnh nhân cũ theo vùng) → ② Chọn người nhận →
+    ③ Soạn nội dung → ④ Xem trước & gửi.
+  - Không nhảy cóc được: chưa chọn ai thì không soạn tin được, nội dung sai biến thì không sang bước gửi được. Bước nào cũng có nút «← Quay lại»;
+    quay lại thì các ô đã tích và nội dung đã sửa được giữ nguyên. Nút Back / F5 của trình duyệt dùng bình thường.
+  - Bước chọn người nhận: lọc theo **ngày khám, xã/phường, khoa, nguồn, trạng thái, tên/SĐT**; **tích từng người**; chọn tất cả/bỏ chọn.
+  - Bước xem trước: số người, số tin tính phí, chi phí ước tính, tin mẫu, lý do người bị loại, rồi **Gửi đồng loạt**. Bấm gửi 2 lần không tạo 2 chiến dịch.
+- **Lọc theo vùng:** hệ thống tự tách **xã/phường** từ địa chỉ («Phú Quý Xã Trung Chính, , Tỉnh Thanh Hóa» → Xã Trung Chính). Dòng không tách
+  được vào nhóm «Chưa rõ xã» — sửa ở trang **Sửa bệnh nhân** (ô «Xã/phường»). Có thể **lưu nhóm vùng** (vd. «Bắc Nông Cống») để chọn nhanh.
+- **Khám lưu động**: vào tab **➕ Tạo đợt khám mới** (tên, đối tượng dân/học sinh/công ty, ngày, giờ, địa điểm) →
+  thêm vào **danh bạ** bằng **từng ô riêng** (Họ tên, Số điện thoại, Xã/Phường, Thôn/Đơn vị; bấm «➕ Thêm một người» hoặc Enter ở ô cuối để thêm dòng;
+  có sẵn danh sách thì dán nhiều dòng hoặc tải CSV ở mục gập bên dưới) → soạn tin theo đợt.
+  **Bắt buộc chọn hình thức đồng ý nhận tin** (phiếu giấy / QR / nhân viên ghi nhận) — hệ thống lưu hình thức và thời điểm.
+  Khi soạn tin có thể **tích cả 2 đối tượng cùng lúc**: «Danh bạ của đợt» và «Bệnh nhân cũ theo vùng» (danh sách gộp chung; trùng SĐT thì ưu tiên người trong danh bạ).
+  Mỗi SĐT chỉ nhận 1 tin cho 1 đợt.
+- **Danh sách đã được nhắc + báo cáo tỉ lệ đến** (khám lưu động):
+  - Sau mỗi lần gửi, những người **đã được gửi tin** (cả người trong danh bạ lẫn bệnh nhân cũ theo vùng; mỗi SĐT tính 1 lần) tự được cập nhật
+    vào mục **«Đã được nhắc»** ở trang của đợt.
+  - Tab **📊 Báo cáo tỉ lệ đến**: ① tải file nhật ký khám (Báo cáo ĐK KCB — file 01-1, **dùng chung** với trang Đối chiếu tái khám, tải 1 lần dùng cho cả hai) →
+    ② chọn đợt (hoặc xem bảng tổng hợp mọi đợt) → xem **tỉ lệ đến**, theo nhóm (danh bạ / bệnh nhân) và theo xã/phường, danh sách từng người, rồi **⬇️ Tải báo cáo Excel**.
+  - Cách tính: so khớp tên + SĐT → tên + năm sinh → chỉ tên (đúng thuật toán đối chiếu tái khám) chỉ trong **2 hoặc 3 ngày kể từ ngày khám** (chọn ở ô «Số ngày khám», mặc định 3; ngày khám là ngày thứ nhất; không vượt quá hôm nay).
+    Khi hôm nay còn nằm trong số ngày đó, báo cáo ghi **«tạm tính»** vì nhật ký khám chưa đủ.
+    **Tỉ lệ đến** = số người **khớp chắc chắn** / số người đối chiếu được. Ca chỉ khớp tên xếp «Có thể đã đến (cần xác nhận)» và được nêu riêng (kèm tỉ lệ tối đa).
+    Người **thiếu họ tên** không đối chiếu được nên không tính vào mẫu số. Đợt chưa tới ngày khám thì chưa tính. Ô «Chỉ tính tin gửi thật» bỏ các tin gửi thử (sandbox).
+  - File Excel có 2 trang: **Tổng hợp** (tỉ lệ đến, theo nhóm, theo xã) và **Danh sách** (từng người, cùng các cột như file đối chiếu tái khám: Họ tên, SĐT, Năm sinh, Tuổi, Kết quả, Khớp qua, Ngày thực đến, SĐT/Năm sinh/Khoa lúc khám, Độ tin cậy…).
+- Chưa có: **KSK nhập từ Excel** (giai đoạn 4 — cùng bộ nhập file .xlsx cho danh bạ).
+
+## Cấu hình (biến môi trường trên Coolify)
+| Biến | Ý nghĩa |
+|---|---|
+| `SMS_ADMIN_EMAILS` | Email được gửi tin/cài đặt, cách nhau bằng dấu phẩy. **Để trống = không ai được gửi.** |
+| `SMS_HOTLINE` | SĐT bệnh viện ghi trong tin (bắt buộc). |
+| `SMS_BRANDNAME` | Tên thương hiệu, **tối đa 11 ký tự**, chữ + số không dấu, không dấu cách. |
+| `SMS_PROVIDER` | `sandbox` (mặc định, chỉ thử) hoặc tên nhà cung cấp thật sau khi đã viết kết nối. |
+| `SMS_STRIP_ACCENTS` | `1` (mặc định): tự bỏ dấu để vừa 160 ký tự/tin. |
+| `SMS_AUTO_WINDOW` | Khung giờ cho phép chạy tự động (mặc định `17:00-21:30`). |
+| `SMS_MAX_RECIPIENTS` | Tối đa người nhận mỗi lần gửi (mặc định 1000). |
+| `SMS_PRICE_PER_SEGMENT` | Đơn giá/tin để ước tính chi phí (mặc định 450 đ). |
+
+> **Brandname:** `BvdkTamDucCQ` có **12 ký tự** nên vượt giới hạn 11. Gợi ý: `BvdkTamDuc` (10), `TamDucCQ` (8) hoặc `BVTamDucCQ` (10).
+> App sẽ không cho bật gửi thật nếu tên chưa hợp lệ.
+
+## Bật dần, an toàn
+1. Đặt `SMS_ADMIN_EMAILS`, `SMS_HOTLINE`, `SMS_BRANDNAME`, redeploy. Chạy `flask --app app init-db` (tạo 4 bảng `sms_*`).
+2. Vào trang SMS: xem **Nhắc lịch ngày mai** — kiểm tra danh sách và tin mẫu có đúng không.
+3. Bật **Bật gửi SMS** → bấm **Gửi thử** tới số của bạn. Ở chế độ sandbox tin hiện trong chiến dịch nhưng **không** ra điện thoại.
+4. Khi đã có nhà cung cấp thật: đặt `SMS_PROVIDER`, gửi thử tới 2–3 số nhân viên, rồi mới bật **Tự động nhắc lịch 18:30**.
+5. 1–2 tuần đầu, mỗi ngày xem lại chiến dịch tự động trước 18:30 (nút **Tạo & gửi ngay** chỉ dùng khi cron lỡ chạy).
+
+## Cron (Coolify → Scheduled Tasks, hoặc cron của máy chủ)
+Máy chủ thường chạy giờ UTC: **18:30 giờ Việt Nam = 11:30 UTC**.
+```
+30 11 * * *   flask --app app sms-auto-reminders     # tạo chiến dịch ngày mai + gửi
+* * * * *     flask --app app sms-send-queue          # gửi nốt / gửi lại tin lỗi tạm mỗi phút
+```
+`sms-auto-reminders` tự bỏ qua nếu **ngoài khung 17:00–21:30** giờ Việt Nam (chống cấu hình nhầm giờ) và **mỗi ngày chỉ tạo 1 chiến dịch**
+(khoá `auto:<ngày>`), nên chạy hai lần cũng không gửi đôi.
+
+## Các lớp an toàn (mặc định đóng)
+- Công tắc tổng **tắt** cho tới khi admin bật; không bật được nếu thiếu hotline hoặc brandname sai (khi dùng nhà cung cấp thật).
+- Không gửi **22:00–07:00**; **hạn mức tin/ngày** (mặc định 500).
+- Mỗi **SĐT chỉ 1 tin** cho 1 ngày hẹn (kể cả khi người nhà dùng chung số); lịch đã nhắc không bị nhắc lại.
+- Chỉ nhắn **số di động 10 số** hợp lệ; số bàn, `N/A`, `0`, số rác bị loại.
+- Tin **không rõ kết quả** (mất kết nối giữa chừng) → trạng thái `unknown`, **không tự gửi lại** — kiểm tra với nhà cung cấp rồi mới quyết.
+- Chiến dịch "thật" mà chưa có nhà cung cấp thật → **giữ nguyên hàng đợi**, không đánh dấu "đã gửi" oan.
+- Mọi tin lưu **đúng nội dung đã gửi**, giờ gửi, mã tin của nhà cung cấp.
+
+## Chọn nhà cung cấp — việc cần làm song song
+Hỏi 2–3 nơi (VD. SpeedSMS, VietGuys, TingTing…) và yêu cầu:
+1. **Brandname CSKH** cho **cả 3 nhà mạng**, nhóm giá **y tế**; thời gian duyệt; hồ sơ cần (công văn, giấy phép KCB…).
+2. **Tin có dấu** được tính mấy tin? Có hỗ trợ **gửi không dấu 160 ký tự** không?
+3. **API gửi** (REST), có **báo trạng thái giao tin (DLR)** qua webhook không, có **tài khoản thử**, tài liệu API.
+4. Phí duy trì Brandname, phí khởi tạo, **hoá đơn VAT** cho bệnh viện.
+5. Phân loại tin **khám lưu động / KSK** là CSKH hay quảng cáo (giá và quy định khác nhau).
+6. Giới hạn tốc độ gửi, cam kết uptime, hỗ trợ khi nhà mạng chặn.
+
+Khi đã chọn, gửi mình **tài liệu API** (hoặc trang tài liệu) — mình viết lớp kết nối (khoảng 1 file nhỏ trong `services/sms.py`,
+đăng ký bằng `register_provider`) cộng đường nhận trạng thái giao tin; phần còn lại không phải sửa.
+
+## Kiểm thử
+`python -m unittest tests.test_sms tests.test_sms_wizard` — chạy bằng SQLite giả + nhà cung cấp sandbox: nội dung tin, người nhận, hàng đợi,
+hạn mức, giờ nghỉ, lỗi tạm/vĩnh viễn, tin không rõ kết quả, nhắc tự động 1 lần/ngày, quyền admin.

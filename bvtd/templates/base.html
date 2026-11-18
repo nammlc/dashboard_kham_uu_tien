@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tâm Đức{% endblock %} · BVĐK Tâm Đức Cầu Quan</title>
+  {% include "_icons.html" %}
+
+  <!-- Tailwind CSS (CDN, không cần build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { DEFAULT:'#0f2642', 2:'#162f52', 3:'#1e3f6a', light:'#2a7ae4' },
+          },
+          fontFamily: {
+            sans: ['Inter','system-ui','sans-serif'],
+            mono: ['JetBrains Mono','monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+  <!-- HTMX (cho cập nhật bảng không reload trang) -->
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+
+  <!-- Chart.js (biểu đồ) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    /* Scrollbar mỏng cho sidebar */
+    .sb-scroll::-webkit-scrollbar { width: 4px; }
+    .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:2px; }
+    /* Flash messages */
+    .flash-success { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+    .flash-error   { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+    .flash-info    { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+    .flash-warning { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+    /* Modal đăng xuất */
+    @keyframes pop-in { from { opacity:0; transform:scale(.96) translateY(6px); } to { opacity:1; transform:none; } }
+    .modal-pop { animation: pop-in .15s ease-out; }
+    /* Hiệu ứng HTMX loading */
+    .htmx-indicator { opacity:0; transition:opacity 200ms; }
+    .htmx-request .htmx-indicator { opacity:1; }
+  </style>
+
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-100 text-slate-900 flex min-h-screen">
+
+  <!-- ══════════════════════════════════════════════════
+       SIDEBAR
+  ══════════════════════════════════════════════════ -->
+  <nav class="w-56 flex-shrink-0 bg-navy flex flex-col fixed left-0 top-0 h-screen z-50">
+
+    <!-- Logo -->
+    <div class="px-4 py-4 border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-navy-light rounded-lg flex items-center justify-center text-xl flex-shrink-0">🏥</div>
+        <div class="min-w-0">
+          <p class="text-white font-bold text-sm leading-tight truncate">Tâm Đức Cầu Quan</p>
+          <p class="text-white/40 text-xs">Theo dõi đặt khám</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <div class="flex-1 py-3 overflow-y-auto sb-scroll">
+      <p class="px-4 pt-1 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Chính</p>
+
+      {% set nav_items = [
+        ('dashboard', '📊', 'Tổng Quan'),
+        ('patients',  '🔍', 'Tìm Theo Ngày'),
+      ] %}
+
+      <a href="{{ url_for('dashboard') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'dashboard' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📊</span>
+        <span class="text-sm">Tổng Quan</span>
+      </a>
+
+      <a href="{{ url_for('patients') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'patients' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">👤</span>
+        <span class="text-sm">Bệnh Nhân</span>
+      </a>
+
+      <a href="{{ url_for('upcoming') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'upcoming' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📅</span>
+        <span class="text-sm">Lịch Khám 3 Ngày</span>
+      </a>
+
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Phân Tích</p>
+
+      <a href="{{ url_for('report') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'report' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📈</span>
+        <span class="text-sm">Báo Cáo</span>
+      </a>
+
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Dữ Liệu</p>
+
+      <a href="{{ url_for('import_excel') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'import_excel' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">📥</span>
+        <span class="text-sm">Import Lịch Hẹn</span>
+      </a>
+
+      <a href="{{ url_for('reconcile_page') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'reconcile_page' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">✅</span>
+        <span class="text-sm">Đối Chiếu Tái Khám</span>
+      </a>
+
+      <a href="{{ url_for('refresh_cache') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] border-transparent
+                text-white/65 hover:bg-white/5 hover:text-white transition-colors">
+        <span class="text-base w-5">🔄</span>
+        <span class="text-sm">Làm mới dữ liệu</span>
+      </a>
+
+      {% if sms_admin %}
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Tin Nhắn SMS</p>
+      {# trang con khai báo mình thuộc mục nào bằng  {% set sms_section = 'appointment' | 'mobile' %}  #}
+      <a href="{{ url_for('sms_index') }}" {% if sms_section|default('') == 'appointment' %}aria-current="page"{% endif %}
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if sms_section|default('') == 'appointment' %}border-blue-400 bg-blue-500/25 text-white font-semibold
+                {% else %}border-transparent text-white/65 hover:bg-white/5 hover:text-white{% endif %}">
+        <span class="text-base w-5">📅</span>
+        <span class="text-sm">Nhắc lịch hẹn khám</span>
+      </a>
+      <a href="{{ url_for('sms_events') }}" {% if sms_section|default('') == 'mobile' %}aria-current="page"{% endif %}
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if sms_section|default('') == 'mobile' %}border-violet-400 bg-violet-500/25 text-white font-semibold
+                {% else %}border-transparent text-white/65 hover:bg-white/5 hover:text-white{% endif %}">
+        <span class="text-base w-5">🚑</span>
+        <span class="text-sm">Nhắc lịch khám lưu động</span>
+      </a>
+      {% endif %}
+
+      <p class="px-4 pt-4 pb-1 text-white/30 text-xs font-bold uppercase tracking-wider">Hệ Thống</p>
+
+      <a href="{{ url_for('access_log') }}"
+         class="flex items-center gap-3 px-4 py-2 border-l-[3px] transition-colors
+                {% if request.endpoint == 'access_log' %}
+                  border-navy-light bg-white/10 text-white font-semibold
+                {% else %}
+                  border-transparent text-white/65 hover:bg-white/5 hover:text-white
+                {% endif %}">
+        <span class="text-base w-5">🛡️</span>
+        <span class="text-sm">Nhật Ký Truy Cập</span>
+      </a>
+    </div>
+
+    <!-- User info + dropdown -->
+    <div class="relative border-t border-white/10" id="user-menu">
+
+      <!-- Dropdown (mở lên trên) -->
+      <div id="user-menu-panel" role="menu" aria-labelledby="user-menu-btn"
+           class="hidden absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-[60]">
+        <div class="px-3 py-2.5 border-b border-slate-100">
+          <p class="text-xs font-semibold text-slate-800 truncate">{{ current_user.name }}</p>
+          <p class="text-[11px] text-slate-400 truncate">{{ current_user.email }}</p>
+        </div>
+        <a href="{{ url_for('account_page') }}" role="menuitem"
+           class="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+          <span aria-hidden="true">⚙️</span> Tài khoản &amp; bảo mật
+        </a>
+        <button type="button" id="logout-open" role="menuitem"
+                class="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Đăng xuất
+        </button>
+      </div>
+
+      <button type="button" id="user-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu-panel"
+              class="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-white/5 transition-colors focus:outline-none focus-visible:bg-white/10">
+        {% if current_user.picture %}
+          <img src="{{ current_user.picture }}" class="w-8 h-8 rounded-full flex-shrink-0" alt="">
+        {% else %}
+          <div class="w-8 h-8 rounded-full bg-navy-light flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            {{ current_user.name[0].upper() }}
+          </div>
+        {% endif %}
+        <div class="flex-1 min-w-0">
+          <p class="text-white font-semibold text-sm truncate">{{ current_user.name }}</p>
+          <p class="text-white/40 text-xs truncate">{{ current_user.email }}</p>
+        </div>
+        <svg id="user-menu-chev" class="w-4 h-4 text-white/50 flex-shrink-0 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="18 15 12 9 6 15"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Credit -->
+    <div class="px-4 py-2.5 border-t border-white/10 text-center">
+      <p class="text-[11px] text-white/40 tracking-wide">
+        Designed by <span class="text-white/75 font-semibold">Le Cong Nam</span>
+      </p>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════
+       MAIN
+  ══════════════════════════════════════════════════ -->
+  <div class="ml-56 flex-1 flex flex-col min-h-screen">
+
+    <!-- Top bar -->
+    <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+      <div class="flex items-center gap-3">
+        <h1 class="font-semibold text-slate-800 text-sm">{% block page_title %}{% endblock %}</h1>
+        <span class="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">● Trực tiếp</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-slate-400">{{ today_str }}</span>
+      </div>
+    </header>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="px-6 pt-4">
+          {% for category, message in messages %}
+            <div class="flash-{{ category }} rounded-lg px-4 py-3 text-sm mb-2 flex items-start gap-2">
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Page content -->
+    <main class="p-6 flex-1">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="px-6 py-3 text-xs text-slate-400 border-t border-slate-200 bg-white">
+      © 2026 BVĐK Tâm Đức Cầu Quan · Flask + Google Sheets
+    </footer>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       MODAL XÁC NHẬN ĐĂNG XUẤT
+  ══════════════════════════════════════════════════ -->
+  <div id="logout-modal" class="hidden fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-900/60"
+       role="dialog" aria-modal="true" aria-labelledby="logout-title" aria-describedby="logout-desc">
+    <div class="modal-pop w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 text-center">
+      <div class="mx-auto w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-4">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </div>
+      <h2 id="logout-title" class="text-base font-bold text-slate-800">Đăng xuất khỏi hệ thống?</h2>
+      <p id="logout-desc" class="text-sm text-slate-500 mt-1.5">
+        Bạn đang đăng nhập bằng <b class="text-slate-700 break-all">{{ current_user.email }}</b>.
+        Bạn cần đăng nhập lại để tiếp tục sử dụng.
+      </p>
+      <div class="mt-6 grid grid-cols-2 gap-3">
+        <button type="button" id="logout-cancel"
+                class="px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+          Hủy
+        </button>
+        <a href="{{ url_for('logout') }}" id="logout-confirm"
+           class="px-4 py-2.5 rounded-xl bg-red-600 text-sm font-semibold text-white text-center hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+          Đăng xuất
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const menu = document.getElementById('user-menu'),
+          btn = document.getElementById('user-menu-btn'),
+          panel = document.getElementById('user-menu-panel'),
+          chev = document.getElementById('user-menu-chev'),
+          modal = document.getElementById('logout-modal'),
+          openBtn = document.getElementById('logout-open'),
+          cancel = document.getElementById('logout-cancel'),
+          confirmA = document.getElementById('logout-confirm');
+    if (!menu || !modal) return;
+
+    const menuOpen = () => !panel.classList.contains('hidden');
+    const modalOpen = () => !modal.classList.contains('hidden');
+
+    function setMenu(open) {
+      panel.classList.toggle('hidden', !open);
+      btn.setAttribute('aria-expanded', String(open));
+      chev.classList.toggle('rotate-180', open);
+    }
+    function openModal() {
+      setMenu(false);
+      modal.classList.remove('hidden'); modal.classList.add('flex');
+      document.body.classList.add('overflow-hidden');
+      cancel.focus();
+    }
+    function closeModal() {
+      modal.classList.add('hidden'); modal.classList.remove('flex');
+      document.body.classList.remove('overflow-hidden');
+      btn.focus();
+    }
+
+    btn.addEventListener('click', () => setMenu(!menuOpen()));
+    openBtn.addEventListener('click', openModal);
+    cancel.addEventListener('click', closeModal);
+    modal.addEventListener('mousedown', e => { if (e.target === modal) closeModal(); });   // bấm nền tối = hủy
+    document.addEventListener('click', e => { if (menuOpen() && !menu.contains(e.target)) setMenu(false); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (modalOpen()) closeModal(); else if (menuOpen()) { setMenu(false); btn.focus(); }
+      } else if (e.key === 'Tab' && modalOpen()) {            // giữ focus trong modal
+        const first = cancel, last = confirmA;
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
+    confirmA.addEventListener('click', () => {                 // tránh bấm 2 lần
+      confirmA.textContent = 'Đang đăng xuất…';
+      confirmA.classList.add('pointer-events-none', 'opacity-70');
+    });
+  })();
+  </script>
+
+  <!-- Tự đăng xuất khi không thao tác: trình duyệt theo dõi chuột/phím/cuộn/chạm; còn thao tác thì định kỳ báo máy chủ
+       gia hạn phiên; không thao tác quá hạn thì hỏi máy chủ (tab khác có thể vẫn đang dùng) rồi chuyển về trang đăng nhập. -->
+  <script>
+  (function () {
+    const IDLE = {{ idle_seconds }} * 1000, PING_EVERY = Math.min(180000, IDLE / 3);
+    let lastAct = Date.now(), lastPing = Date.now(), busy = false;
+    const login = () => { location.href = {{ url_for('login', expired=1)|tojson }}; };
+    const hdr = { 'X-Requested-With': 'fetch', 'Accept': 'application/json' };
+    const touch = () => { lastAct = Date.now(); };
+    ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'wheel']
+      .forEach(ev => addEventListener(ev, touch, { passive: true, capture: true }));
+
+    async function ping() {
+      lastPing = Date.now();
+      try { const r = await fetch({{ url_for('keepalive')|tojson }}, { method: 'POST', headers: hdr, credentials: 'same-origin' });
+            if (r.status === 401) login(); } catch (_) {}
+    }
+    async function check() {                       // hết hạn ở trình duyệt này → hỏi máy chủ cho chắc
+      if (busy) return; busy = true;
+      try {
+        const r = await fetch({{ url_for('session_status')|tojson }}, { headers: hdr, credentials: 'same-origin' });
+        if (r.status === 401) { login(); return; }
+        const d = await r.json();
+        if (!d.active || d.remaining <= 0) { login(); return; }
+        lastAct = Date.now() - (IDLE - d.remaining * 1000);      // tab khác vẫn đang dùng → đợi đúng phần còn lại
+      } catch (_) {} finally { busy = false; }
+    }
+    function tick() {
+      const now = Date.now();
+      if (now - lastAct >= IDLE) check();
+      else if (lastAct > lastPing && now - lastPing >= PING_EVERY) ping();
+    }
+    setInterval(tick, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,28 @@
+{# Đầu trang của mục SMS: tiêu đề mục + TAB THẬT (mỗi tab là một trang, luôn hiện ở mọi trang của mục, tab đang mở được tô màu).
+   Dùng: {% from "sms/_tabs.html" import tabs %}{{ tabs('appointment', 'overview') }}
+   appointment: overview | compose | template      mobile: new | overview | compose | report #}
+{% macro tabs(section, active) -%}
+{% if section == 'mobile' %}
+  {% set title, desc, icon = 'Nhắc lịch khám lưu động', 'Thông báo đợt khám tại xã / trường học / công ty cho danh bạ của đợt và bệnh nhân cũ theo vùng.', '🚑' %}
+  {% set items = [('new', '➕ Tạo đợt khám mới', url_for('sms_event_new')), ('overview', '🗂️ Các đợt khám', url_for('sms_events')),
+                  ('compose', '✉️ Soạn & gửi tin', url_for('sms_compose', kind='mobile')), ('report', '📊 Báo cáo tỉ lệ đến', url_for('sms_event_report'))] %}
+{% else %}
+  {% set title, desc, icon = 'Nhắc lịch hẹn khám', 'Nhắc bệnh nhân đã có lịch hẹn: tự động 18:30 mỗi ngày hoặc gửi thủ công.', '📅' %}
+  {% set items = [('overview', '📊 Tổng quan & cài đặt', url_for('sms_index')), ('compose', '✉️ Soạn & gửi tin', url_for('sms_compose', kind='appointment')),
+                  ('template', '✏️ Sửa mẫu tin', url_for('sms_template'))] %}
+{% endif %}
+<div class="mb-5 rounded-xl border {{ 'border-violet-200' if section == 'mobile' else 'border-blue-200' }} bg-white overflow-hidden">
+  <div class="flex items-center gap-3 px-4 py-3 border-b {{ 'bg-violet-50 border-violet-100' if section == 'mobile' else 'bg-blue-50 border-blue-100' }}">
+    <span class="w-10 h-10 shrink-0 rounded-lg {{ 'bg-violet-600' if section == 'mobile' else 'bg-blue-600' }} text-white flex items-center justify-center text-xl" aria-hidden="true">{{ icon }}</span>
+    <div><p class="text-sm font-bold {{ 'text-violet-900' if section == 'mobile' else 'text-blue-900' }}">{{ title }}</p>
+      <p class="text-xs {{ 'text-violet-800/80' if section == 'mobile' else 'text-blue-800/80' }}">{{ desc }}</p></div>
+  </div>
+  <nav class="flex flex-wrap gap-1 px-2 pt-1" role="tablist" aria-label="{{ title }}">
+    {% for key, label, href in items %}
+    <a href="{{ href }}" role="tab" aria-selected="{{ 'true' if key == active else 'false' }}"
+       class="px-4 py-2.5 text-sm border-b-[3px] transition-colors
+              {% if key == active %}{{ 'border-violet-600 text-violet-700' if section == 'mobile' else 'border-blue-600 text-blue-700' }} font-bold{% else %}border-transparent text-slate-500 font-medium hover:text-slate-800 hover:border-slate-300{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+</div>
+{%- endmacro %}

@@ -1,0 +1,16 @@
+{% extends "auth/_shell.html" %}
+{% block title %}Đặt mật khẩu mới{% endblock %}
+{% block icon %}🔑{% endblock %}
+{% block heading %}Đặt mật khẩu mới{% endblock %}
+{% block sub %}{{ email }}{% endblock %}
+{% block body %}
+    <form method="POST" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label for="password" class="block text-sm font-semibold text-slate-600 mb-1.5">Mật khẩu mới <span class="font-normal text-slate-400">(ít nhất 8 ký tự)</span></label>
+      <input type="password" id="password" name="password" required minlength="8" autofocus autocomplete="new-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <label for="password2" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Nhập lại mật khẩu mới</label>
+      <input type="password" id="password2" name="password2" required minlength="8" autocomplete="new-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Lưu mật khẩu mới</button>
+    </form>
+    <p class="text-xs text-slate-400 mt-4 text-center">Sau khi lưu, đăng nhập bằng mật khẩu mới (vẫn cần mã OTP nếu đã bật 2 bước).</p>
+{% endblock %}

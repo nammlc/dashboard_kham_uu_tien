@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% set sms_section = 'mobile' %}
+{% from "sms/_tabs.html" import tabs %}
+{% block title %}Báo cáo tỉ lệ đến{% endblock %}
+{% block page_title %}💬 Tin nhắn SMS · Báo cáo tỉ lệ đến khám lưu động{% endblock %}
+{% block content %}
+{{ tabs('mobile', 'report') }}
+{% set badge = {'attended_sure': 'bg-emerald-50 text-emerald-700', 'attended_unsure': 'bg-amber-50 text-amber-700', 'not_attended': 'bg-rose-50 text-rose-600', 'no_name': 'bg-slate-100 text-slate-500'} %}
+
+<!-- ① File nhật ký khám -->
+<div class="bg-white rounded-xl border border-slate-200 p-5 mb-4">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <p class="text-sm font-semibold text-slate-800">① File nhật ký khám <span class="font-normal text-slate-400">(Báo cáo ĐK KCB — file 01-1, .xlsx)</span></p>
+      {% if visit %}
+      <p class="text-sm text-emerald-700 mt-1">✅ Đã tải <b>{{ visit.filename }}</b> · {{ visit.records|length }} lượt khám · ngày khám từ {{ visit.vmin }} đến {{ visit.vmax }}</p>
+      {% else %}
+      <p class="text-sm text-slate-500 mt-1">Chưa có file. Tải file nhật ký khám sau ngày khám lưu động để biết ai đã đến — cùng file với trang «Đối chiếu tái khám» (tải 1 lần dùng cho cả hai).</p>
+      {% endif %}
+    </div>
+    <form method="POST" action="{{ url_for('sms_report_upload') }}" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="event_id" value="{{ ev.id if ev else '' }}"><input type="hidden" name="real" value="{{ '1' if real_only else '' }}"><input type="hidden" name="days" value="{{ days }}">
+      <input type="file" name="visit_file" accept=".xlsx" required class="text-xs">
+      <button class="bg-violet-600 text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-violet-700">{{ 'Tải file khác' if visit else 'Tải file lên' }}</button>
+    </form>
+  </div>
+</div>
+
+<!-- ② Chọn đợt -->
+<form method="GET" action="{{ url_for('sms_event_report') }}" class="bg-white rounded-xl border border-slate-200 p-5 mb-5 flex flex-wrap items-end gap-3">
+  <div class="flex-1 min-w-[18rem]"><label class="block text-sm font-semibold text-slate-800 mb-1">② Chọn đợt khám</label>
+    <select name="event_id" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+      <option value="">— tất cả các đợt (bảng tổng hợp) —</option>
+      {% for e in events %}<option value="{{ e.id }}" {% if ev and ev.id == e.id %}selected{% endif %}>{{ e.event_date.strftime('%d/%m/%Y') }} · {{ e.name }} ({{ counts.get(e.id, 0) }} người được nhắc)</option>{% endfor %}
+    </select></div>
+  <div><label class="block text-sm font-semibold text-slate-800 mb-1">Số ngày khám</label>
+    <select name="days" class="text-sm border border-slate-300 rounded-lg px-3 py-2">{% for d in day_choices %}<option value="{{ d }}" {% if d == days %}selected{% endif %}>{{ d }} ngày kể từ ngày khám</option>{% endfor %}</select></div>
+  <label class="flex items-center gap-2 text-sm pb-2"><input type="checkbox" name="real" value="1" {% if real_only %}checked{% endif %}> Chỉ tính tin gửi thật</label>
+  <button class="bg-violet-600 text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-violet-700">📊 Xem tỉ lệ đến</button>
+  {% if not events %}<p class="basis-full text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Chưa có đợt nào đã gửi tin. Báo cáo tính trên những người đã được nhắc (tin ở trạng thái «đã gửi»).</p>{% endif %}
+</form>
+
+{% if ev and not visit %}
+<p class="text-sm bg-amber-50 text-amber-800 rounded-xl px-4 py-3">Hãy tải file nhật ký khám ở bước ① để đối chiếu đợt «{{ ev.name }}».</p>
+
+{% elif ev and results is not none %}
+<!-- Kết quả của 1 đợt -->
+<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+  <div><p class="text-base font-bold text-slate-800">{{ ev.name }}</p>
+    <p class="text-xs text-slate-500">{{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }} · {{ audiences.get(ev.audience, ev.audience) }}</p></div>
+  <a href="{{ url_for('sms_event_report_xlsx', event_id=ev.id, real='1' if real_only else None, days=days) }}" class="inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700">⬇️ Tải báo cáo Excel</a>
+</div>
+{% if pending %}
+<p class="text-sm bg-sky-50 text-sky-800 rounded-xl px-4 py-3 mb-4">Đợt khám diễn ra ngày {{ ev.event_date.strftime('%d/%m/%Y') }}, chưa tới ngày — chưa thể tính tỉ lệ đến.</p>
+{% endif %}
+{% if not results %}
+<p class="text-sm bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-8 text-center text-slate-500">Đợt này chưa có người nào ở trạng thái «đã gửi»{% if real_only %} (đang chỉ tính tin gửi thật){% endif %}.</p>
+{% else %}
+<div class="grid lg:grid-cols-4 gap-3 mb-4">
+  <div class="lg:col-span-1 rounded-xl bg-violet-600 text-white p-4">
+    <p class="text-xs uppercase tracking-wide opacity-80">Tỉ lệ đến</p>
+    <p class="text-4xl font-extrabold mt-1">{{ (summary.rate ~ '%') if summary.rate is not none else '—' }}</p>
+    <p class="text-xs opacity-80 mt-1">{{ summary.sure }} / {{ summary.n }} người đối chiếu{% if summary.rate_max is not none and summary.unsure %} · tối đa {{ summary.rate_max }}% nếu tính cả ca cần xác nhận{% endif %}</p>
+  </div>
+  <div class="rounded-xl bg-white border border-slate-200 p-4"><p class="text-xs text-slate-500">Được nhắc</p><p class="text-3xl font-bold text-slate-800">{{ summary.total }}</p>
+    {% if summary.no_name %}<p class="text-[11px] text-slate-400">{{ summary.no_name }} người thiếu họ tên, không đối chiếu được</p>{% endif %}</div>
+  <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-4"><p class="text-xs text-emerald-700">Đã đến</p><p class="text-3xl font-bold text-emerald-600">{{ summary.sure }}</p>
+    <p class="text-[11px] text-emerald-700/70">+ {{ summary.unsure }} có thể đã đến (cần xác nhận)</p></div>
+  <div class="rounded-xl bg-rose-50 border border-rose-100 p-4"><p class="text-xs text-rose-600">Chưa đến</p><p class="text-3xl font-bold text-rose-500">{{ summary.not }}</p></div>
+</div>
+{% if provisional %}<p class="text-sm bg-sky-50 text-sky-800 rounded-xl px-4 py-3 mb-4">Đợt khám đang trong {{ days }} ngày tính «đến» (đến hết {{ win[1].strftime('%d/%m/%Y') }}) — số liệu là <b>tạm tính</b>, sẽ tăng thêm khi có thêm lượt khám.</p>{% endif %}
+<p class="text-[11px] text-slate-400 mb-4">Đối chiếu tên + SĐT / năm sinh với nhật ký khám trong <b>{{ days }} ngày</b>: từ {{ win[0].strftime('%d/%m/%Y') }} đến {{ win[1].strftime('%d/%m/%Y') }} (không vượt quá hôm nay). Tỉ lệ đến chỉ tính ca khớp chắc chắn.</p>
+
+<div class="grid lg:grid-cols-2 gap-4 mb-4">
+  <div class="bg-white rounded-xl border border-slate-200">
+    <div class="px-4 py-3 border-b border-slate-100"><h3 class="font-semibold text-slate-800 text-sm">Theo nhóm</h3></div>
+    <table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-500 uppercase"><th class="px-4 py-2 text-left">Nhóm</th><th class="px-2 py-2">Được nhắc</th><th class="px-2 py-2">Đã đến</th><th class="px-2 py-2">Tỉ lệ</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">{% for g in summary.by_group %}<tr><td class="px-4 py-2">{{ g.name }}</td><td class="px-2 py-2 text-center">{{ g.n }}</td><td class="px-2 py-2 text-center text-emerald-600 font-semibold">{{ g.sure }}</td>
+        <td class="px-2 py-2 text-center font-semibold">{{ (g.rate ~ '%') if g.rate is not none else '—' }}</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200">
+    <div class="px-4 py-3 border-b border-slate-100"><h3 class="font-semibold text-slate-800 text-sm">Theo xã / phường</h3></div>
+    <div class="max-h-60 overflow-y-auto"><table class="w-full text-sm"><thead class="sticky top-0"><tr class="bg-slate-50 text-xs text-slate-500 uppercase"><th class="px-4 py-2 text-left">Xã / phường</th><th class="px-2 py-2">Được nhắc</th><th class="px-2 py-2">Đã đến</th><th class="px-2 py-2">Tỉ lệ</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">{% for g in summary.by_commune %}<tr><td class="px-4 py-2">{{ g.name }}</td><td class="px-2 py-2 text-center">{{ g.n }}</td><td class="px-2 py-2 text-center text-emerald-600 font-semibold">{{ g.sure }}</td>
+        <td class="px-2 py-2 text-center font-semibold">{{ (g.rate ~ '%') if g.rate is not none else '—' }}</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200">
+  <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
+    <h3 class="font-semibold text-slate-800 text-sm">Danh sách người được nhắc ({{ results|length }})</h3>
+    <div class="flex flex-wrap gap-1.5 text-xs">
+      {% for key, lab in [('all', 'Tất cả'), ('attended_sure', 'Đã đến'), ('attended_unsure', 'Cần xác nhận'), ('not_attended', 'Chưa đến'), ('no_name', 'Thiếu họ tên')] %}
+      <a href="{{ url_for('sms_event_report', event_id=ev.id, real='1' if real_only else None, days=days, st=key if key != 'all' else None) }}"
+         class="px-3 py-1 rounded-full border {% if (st or 'all') == key %}bg-violet-600 text-white border-violet-600{% else %}border-slate-300 text-slate-600 hover:bg-slate-50{% endif %}">{{ lab }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="overflow-x-auto max-h-[32rem] overflow-y-auto">
+    <table class="w-full text-sm" style="min-width:860px">
+      <thead class="sticky top-0 bg-slate-50"><tr class="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <th class="px-3 py-2 text-left">Họ tên</th><th class="px-3 py-2 text-left">SĐT</th><th class="px-3 py-2 text-left">Nhóm</th><th class="px-3 py-2 text-left">Xã / đơn vị</th>
+        <th class="px-3 py-2 text-left">Kết quả</th><th class="px-3 py-2 text-left">Khớp qua</th><th class="px-3 py-2 text-left">Ngày thực đến</th><th class="px-3 py-2 text-left">Khoa thực khám</th></tr></thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in shown %}{% set v = r.visit or {} %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-3 py-2 font-medium">{{ r.name or '—' }}</td><td class="px-3 py-2 font-mono text-xs">{{ r.phone }}</td><td class="px-3 py-2 text-xs">{{ r.group }}</td>
+          <td class="px-3 py-2 text-xs">{{ r.commune }}{% if r.org %} · {{ r.org }}{% endif %}</td>
+          <td class="px-3 py-2"><span class="text-xs rounded-full px-2 py-0.5 {{ badge[r.status] }}">{{ labels[r.status] }}</span></td>
+          <td class="px-3 py-2 text-xs">{{ tiers.get(r.match_tier, '') }}</td><td class="px-3 py-2 text-xs">{{ v.get('NGÀY ĐK', '') }}</td><td class="px-3 py-2 text-xs">{{ v.get('KHOA ĐK', '') }}</td>
+        </tr>
+        {% else %}<tr><td colspan="8" class="px-5 py-8 text-center text-slate-400">Không có dòng nào.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if results|length > 500 and (st or 'all') == 'all' %}<p class="px-4 py-2 text-xs text-slate-400 border-t border-slate-100">Chỉ hiện 500 dòng đầu — tải Excel để xem đủ.</p>{% endif %}
+</div>
+{% endif %}
+
+{% elif visit %}
+<!-- Tổng hợp mọi đợt -->
+<div class="bg-white rounded-xl border border-slate-200">
+  <div class="px-5 py-4 border-b border-slate-100"><h3 class="font-semibold text-slate-800 text-sm">Tỉ lệ đến theo từng đợt khám <span class="font-normal text-slate-400">· tính trong {{ days }} ngày kể từ ngày khám</span></h3></div>
+  <div class="overflow-x-auto"><table class="w-full text-sm" style="min-width:680px">
+    <thead><tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide"><th class="px-4 py-3 text-left">Đợt khám</th><th class="px-3 py-3 text-left">Ngày khám</th>
+      <th class="px-3 py-3">Được nhắc</th><th class="px-3 py-3">Đã đến</th><th class="px-3 py-3">Cần xác nhận</th><th class="px-3 py-3">Chưa đến</th><th class="px-3 py-3">Tỉ lệ đến</th></tr></thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for o in overview %}
+      <tr class="hover:bg-slate-50">
+        <td class="px-4 py-3"><a class="font-medium text-violet-700 hover:underline" href="{{ url_for('sms_event_report', event_id=o.ev.id, real='1' if real_only else None, days=days) }}">{{ o.ev.name }}</a></td>
+        <td class="px-3 py-3 text-xs">{{ o.ev.event_date.strftime('%d/%m/%Y') }}</td><td class="px-3 py-3 text-center">{{ o.n_reminded }}</td>
+        {% if o.pending %}<td colspan="4" class="px-3 py-3 text-center text-xs text-sky-700">Chưa tới ngày khám</td>
+        {% else %}<td class="px-3 py-3 text-center text-emerald-600 font-semibold">{{ o.sum.sure }}</td><td class="px-3 py-3 text-center text-amber-600">{{ o.sum.unsure }}</td><td class="px-3 py-3 text-center text-rose-500">{{ o.sum.not }}</td>
+        <td class="px-3 py-3 text-center font-bold">{{ (o.sum.rate ~ '%') if o.sum.rate is not none else '—' }}</td>{% endif %}
+      </tr>
+      {% else %}<tr><td colspan="7" class="px-5 py-10 text-center text-slate-400">Chưa có đợt nào đã gửi tin để tính.</td></tr>{% endfor %}
+    </tbody></table></div>
+</div>
+{% endif %}
+{% endblock %}

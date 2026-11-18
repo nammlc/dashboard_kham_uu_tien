@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Lịch Khám 3 Ngày{% endblock %}
+{% block page_title %}📅 DS Bệnh Nhân Khám 3 Ngày Tới{% endblock %}
+
+{% macro patient_table(rows, empty_msg) %}
+{% if rows %}
+<div class="paged" data-per="20">
+<div class="overflow-x-auto">
+  <table class="w-full text-sm" style="min-width:680px">
+    <thead>
+      <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+        <th class="px-4 py-3 text-left">Họ tên</th>
+        <th class="px-3 py-3 text-left">Giờ hẹn</th>
+        <th class="px-3 py-3 text-left">Số điện thoại</th>
+        <th class="px-3 py-3 text-left">Khoa hẹn khám</th>
+        <th class="px-3 py-3 text-left">Nguồn bệnh nhân</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for r in rows %}
+      <tr class="hover:bg-slate-50">
+        <td class="px-4 py-3 font-medium text-slate-800">👤 {{ r.name }}</td>
+        <td class="px-3 py-3 mono text-xs text-slate-600">{{ r.time }}</td>
+        <td class="px-3 py-3 mono text-xs text-slate-600">
+          {% if r.tel %}<a href="tel:{{ r.tel }}" class="hover:text-blue-600">{{ r.phone }}</a>{% else %}<span class="text-slate-400">{{ r.phone }}</span>{% endif %}
+        </td>
+        <td class="px-3 py-3 text-xs">
+          {% if r.khoa %}<span class="text-slate-700">{{ r.khoa }}</span>
+          {% else %}<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Chưa phân khoa</span>{% endif %}
+        </td>
+        <td class="px-3 py-3 text-xs">
+          {% if r.src_kind == 'noi' %}<span class="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-medium">🏥 {{ r.source }}</span>
+          {% elif r.src_kind == 'vl' %}<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">🚶 {{ r.source }}</span>
+          {% elif r.src_kind == 'other' %}<span class="bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-medium">👤 {{ r.source }}</span>
+          {% else %}<span class="text-slate-400">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="pager flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-t border-slate-100"></div>
+</div>
+{% else %}
+<p class="px-5 py-8 text-center text-sm text-slate-400">{{ empty_msg }}</p>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="mb-4 text-center bg-blue-50 border border-blue-200 text-blue-700 rounded-xl px-4 py-3 text-sm">
+  📋 Tổng cộng <b class="text-lg">{{ data.total }}</b> bệnh nhân đăng ký khám trong 3 ngày tới
+  ({{ data.start.strftime('%d/%m') }} – {{ data.end.strftime('%d/%m/%Y') }})
+</div>
+
+{% for day in data.days %}
+{% set i = loop.index0 %}
+<div class="day-card bg-white rounded-xl border border-slate-200 mb-4 overflow-hidden" data-day="{{ i }}">
+  <div class="flex items-center justify-between px-5 py-3 bg-[#0f2642] text-white">
+    <span class="font-semibold text-sm">📅 {{ day.label }}</span>
+    <span class="text-xs bg-white/15 px-2.5 py-1 rounded-full">{{ day.count }} bệnh nhân</span>
+  </div>
+
+  {% if day.count %}
+  <div class="flex gap-1 px-4 pt-2 border-b border-slate-200">
+    <button type="button" data-tab="kb"
+            class="tab-btn px-3 py-2 text-xs sm:text-sm font-semibold border-b-2 -mb-px">
+      🩺 Khoa Khám Bệnh &amp; Chưa Phân Khoa · {{ day.kb|length }}
+    </button>
+    <button type="button" data-tab="khac"
+            class="tab-btn px-3 py-2 text-xs sm:text-sm font-semibold border-b-2 -mb-px">
+      🏥 Khoa Điều Trị Nội Trú Khác · {{ day.khac|length }}
+    </button>
+  </div>
+  <div class="tab-panel" data-panel="kb">{{ patient_table(day.kb, "Không có bệnh nhân thuộc nhóm này trong ngày.") }}</div>
+  <div class="tab-panel hidden" data-panel="khac">{{ patient_table(day.khac, "Không có bệnh nhân thuộc nhóm này trong ngày.") }}</div>
+  {% else %}
+  <p class="px-5 py-8 text-center text-sm text-slate-400">Chưa có bệnh nhân đăng ký ngày này.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Phân trang phía trình duyệt: 20 bệnh nhân / trang cho từng bảng ──
+  function initPaged(box) {
+    const per   = parseInt(box.dataset.per, 10) || 20;
+    const rows  = Array.from(box.querySelectorAll('tbody tr'));
+    const pager = box.querySelector('.pager');
+    const pages = Math.max(1, Math.ceil(rows.length / per));
+    let cur = 1;
+
+    function pageList() {                       // 1 … 4 5 [6] 7 8 … 20
+      const out = [], add = n => { if (n >= 1 && n <= pages && !out.includes(n)) out.push(n); };
+      add(1); for (let n = cur - 2; n <= cur + 2; n++) add(n); add(pages);
+      const res = [];
+      out.sort((a, b) => a - b).forEach((n, i) => {
+        if (i && n - out[i - 1] > 1) res.push(null);
+        res.push(n);
+      });
+      return res;
+    }
+    function btn(label, page, opts = {}) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label;
+      b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
+        (opts.active ? 'bg-[#0f2642] text-white border-[#0f2642]'
+                     : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
+      if (opts.disabled) b.disabled = true;
+      if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));
+      return b;
+    }
+    function render() {
+      const from = (cur - 1) * per, to = Math.min(cur * per, rows.length);
+      rows.forEach((r, i) => r.classList.toggle('hidden', i < from || i >= to));
+      pager.replaceChildren();
+      if (pages <= 1) { pager.classList.add('hidden'); return; }
+      pager.classList.remove('hidden');
+      const info = document.createElement('span');
+      info.className = 'text-xs text-slate-400';
+      info.textContent = `Hiển thị ${from + 1}–${to} / ${rows.length} bệnh nhân`;
+      const nav = document.createElement('div'); nav.className = 'flex gap-1';
+      nav.append(btn('‹', cur - 1, { disabled: cur === 1 }));
+      pageList().forEach(n => {
+        if (n === null) { const d = document.createElement('span'); d.textContent = '…'; d.className = 'px-1 text-slate-400 self-center'; nav.append(d); }
+        else nav.append(btn(String(n), n, { active: n === cur }));
+      });
+      nav.append(btn('›', cur + 1, { disabled: cur === pages }));
+      pager.append(info, nav);
+    }
+    function go(n) { cur = Math.min(Math.max(1, n), pages); render(); box.scrollIntoView({ block: 'nearest' }); }
+    render();
+  }
+  document.querySelectorAll('.paged').forEach(initPaged);
+
+  // ── Tab Khoa khám bệnh / Nội trú khác cho từng ngày ──
+  document.querySelectorAll('.day-card').forEach(card => {
+    const btns = card.querySelectorAll('.tab-btn');
+    const show = name => {
+      card.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+      btns.forEach(b => {
+        const on = b.dataset.tab === name;
+        b.classList.toggle('border-blue-500', on); b.classList.toggle('text-blue-700', on);
+        b.classList.toggle('border-transparent', !on); b.classList.toggle('text-slate-500', !on);
+      });
+    };
+    btns.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+    if (btns.length) show('kb');
+  });
+</script>
+{% endblock %}
