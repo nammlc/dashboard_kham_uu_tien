@@ -157,7 +157,7 @@ def get_provider() -> Provider:
 # ══════════════════════════════════════════════════════════════════════════════
 # Cài đặt (lưu trong DB, chỉnh trên web)
 # ══════════════════════════════════════════════════════════════════════════════
-SETTING_DEFAULTS = {"enabled": "0", "auto_reminder": "0", "daily_cap": "500"}
+SETTING_DEFAULTS = {"enabled": "0", "auto_reminder": "0", "daily_cap": "500", "tpl_appointment": ""}   # tpl_appointment rỗng = mẫu gốc
 
 
 def get_settings(c=None) -> dict:
@@ -176,12 +176,26 @@ def set_setting(key: str, value: str, by: str):
         raise ValueError("Cài đặt không hợp lệ.")
     if key == "daily_cap" and not (str(value).isdigit() and 0 <= int(value) <= 100000):
         raise ValueError("Hạn mức mỗi ngày phải là số từ 0 đến 100000.")
+    if key == "tpl_appointment" and str(value).strip():
+        value = str(value).strip()
+        errs = template_errors(value)
+        if len(value) > 320:
+            errs.append("Mẫu tin quá dài (tối đa 320 ký tự).")
+        if errs:
+            raise ValueError(" ".join(errs))
     now = PD._now()
     with PD._conn() as c:
         if c.execute("SELECT 1 AS x FROM sms_settings WHERE key = %s", (key,)).fetchone():
             c.execute("UPDATE sms_settings SET value = %s, updated_by = %s, updated_at = %s WHERE key = %s", (str(value), by, now, key))
         else:
             c.execute("INSERT INTO sms_settings (key, value, updated_by, updated_at) VALUES (%s, %s, %s, %s)", (key, str(value), by, now))
+
+
+def appointment_template(c=None) -> str:
+    """Mẫu tin nhắc lịch hẹn đang dùng: bản nhân viên đã sửa trên web, chưa sửa thì dùng mẫu gốc."""
+    st = get_settings(c)
+    t = (st.get("tpl_appointment") or "").strip()
+    return t if t and not template_errors(t) else DEFAULT_APPOINTMENT_TEMPLATE
 
 
 def in_quiet_hours(now: datetime | None = None) -> bool:
@@ -286,10 +300,11 @@ def preview_appointments(df, exam_date: date) -> dict:
     """Xem trước người sẽ nhận (không ghi gì)."""
     with PD._conn() as c:
         eligible, skipped = build_appointment_recipients(df, exam_date, c)
+        tpl = appointment_template(c)
     reasons: dict[str, int] = {}
     for s in skipped:
         reasons[s["reason"]] = reasons.get(s["reason"], 0) + 1
-    segs = sum(count_segments(render(DEFAULT_APPOINTMENT_TEMPLATE, appointment_context(r["name"], r["exam_date"], r["exam_time"])))
+    segs = sum(count_segments(render(tpl, appointment_context(r["name"], r["exam_date"], r["exam_time"])))
                for r in eligible) if eligible and cfg("SMS_HOTLINE", "") else None
     return {"date": exam_date, "eligible": eligible, "skipped": skipped, "reasons": reasons, "segments": segs}
 
@@ -439,7 +454,7 @@ def run_auto_reminders(df, today: date | None = None, now: datetime | None = Non
         eligible, skipped = build_appointment_recipients(df, target, c)
         cid, existed = create_campaign(
             c, kind="appointment", name=f"Nhắc lịch hẹn khám ngày {target.strftime('%d/%m/%Y')} (tự động)",
-            body=DEFAULT_APPOINTMENT_TEMPLATE, eligible=eligible, skipped=skipped, created_by="tu-dong",
+            body=appointment_template(c), eligible=eligible, skipped=skipped, created_by="tu-dong",
             key=f"auto:{target.isoformat()}", filters={"exam_date": target.isoformat(), "auto": True})
     return {"status": "exists" if existed else "created", "campaign_id": cid, "target": target,
             "eligible": 0 if existed else len(eligible), "skipped": 0 if existed else len(skipped)}
@@ -547,9 +562,37 @@ def delete_event(event_id) -> bool:
 
 
 # ── Danh bạ (BẮT BUỘC có đồng ý nhận tin) ───────────────────────────────────────────────────────────────────────
-def parse_contacts_text(text: str):
-    """Mỗi dòng: Họ tên, SĐT, Xã/Thôn, Đơn vị (ngăn bằng Tab, ; hoặc ,). Trả về (hợp lệ, lỗi theo dòng)."""
+def _contact_row(name, phone_raw, commune_raw="", org=""):
+    """1 người trong danh bạ → (dòng hợp lệ | None, lỗi). Dùng chung cho nhập theo ô và dán/CSV."""
     from services import regions as RG
+    name, phone_raw, commune_raw, org = (str(x or "").strip() for x in (name, phone_raw, commune_raw, org))
+    phone = sms_phone(phone_raw)
+    if not phone:
+        return None, (f"SĐT không hợp lệ «{phone_raw}» (cần số di động 10 số)" if phone_raw else "thiếu SĐT")
+    commune = RG.extract_commune(commune_raw)[0] or (f"Xã {' '.join(w.capitalize() for w in commune_raw.split())}" if commune_raw else "")
+    return {"name": name, "phone": phone, "commune": commune, "org": org}, ""
+
+
+def parse_contact_fields(names, phones, communes, orgs):
+    """Danh bạ nhập theo TỪNG Ô (4 cột song song). Dòng trống hoàn toàn thì bỏ qua. Trả về (hợp lệ, lỗi theo dòng)."""
+    rows, errors = [], []
+    n = max(len(names), len(phones), len(communes), len(orgs))
+    get = lambda lst, i: (lst[i] if i < len(lst) else "")
+    for i in range(n):
+        cells = [get(names, i), get(phones, i), get(communes, i), get(orgs, i)]
+        if not any(str(x).strip() for x in cells):
+            continue
+        row, err = _contact_row(*cells)
+        if err:
+            who = str(cells[0]).strip() or f"dòng {i + 1}"
+            errors.append(f"{who}: {err}")
+        else:
+            rows.append(row)
+    return rows, errors
+
+
+def parse_contacts_text(text: str):
+    """Dán nhiều dòng / file CSV: Họ tên, SĐT, Xã/Thôn, Đơn vị (ngăn bằng Tab, ; hoặc ,). Trả về (hợp lệ, lỗi theo dòng)."""
     rows, errors = [], []
     lines = [l for l in (text or "").replace("\r", "").split("\n")]
     for n, line in enumerate(lines, start=1):
@@ -562,13 +605,11 @@ def parse_contacts_text(text: str):
             continue
         if not re.search(r"\d{9}", re.sub(r"\D", "", cols[1])) and n == 1:
             continue                                                     # dòng tiêu đề (Họ tên, SĐT, …)
-        phone = sms_phone(cols[1])
-        if not phone:
-            errors.append(f"Dòng {n}: SĐT không hợp lệ «{cols[1]}» (cần số di động 10 số)")
+        row, err = _contact_row(cols[0], cols[1], cols[2] if len(cols) > 2 else "", cols[3] if len(cols) > 3 else "")
+        if err:
+            errors.append(f"Dòng {n}: {err}")
             continue
-        raw_commune = cols[2] if len(cols) > 2 else ""
-        commune = RG.extract_commune(raw_commune)[0] or (f"Xã {' '.join(w.capitalize() for w in raw_commune.split())}" if raw_commune else "")
-        rows.append({"name": cols[0], "phone": phone, "commune": commune, "org": cols[3] if len(cols) > 3 else ""})
+        rows.append(row)
     return rows, errors
 
 
@@ -737,29 +778,40 @@ def classify(rows: list[dict], c, kind: str, event_id: int | None = None) -> lis
     return out
 
 
-def audience(df, c, kind: str, source: str, event: dict | None, f: dict) -> dict:
-    """Danh sách để hiện ở bước 2: các dòng đã gắn ok/reason + danh sách xã để lọc."""
+def _sources(source) -> list[str]:
+    """Nhóm đối tượng: 'contacts' (danh bạ của đợt) và/hoặc 'patients' (bệnh nhân cũ theo vùng). Nhận chuỗi hoặc danh sách."""
+    items = [source] if isinstance(source, str) else list(source or [])
+    out = [x for x in ("contacts", "patients") if x in items]          # danh bạ đứng trước: trùng SĐT thì ưu tiên người trong danh bạ
+    return out or ["patients"]
+
+
+def audience(df, c, kind: str, source, event: dict | None, f: dict) -> dict:
+    """Danh sách để hiện ở bước 2: các dòng đã gắn ok/reason + danh sách xã để lọc. `source` có thể chọn CẢ 2 nhóm."""
     from services import regions as RG
-    if source == "contacts":
-        base, trunc = contact_rows(c, event["id"], f) if event else ([], False)
-        all_comm = [r["commune"] for r in (contact_rows(c, event["id"], {})[0] if event else [])]
-    else:
-        base, trunc = patient_rows(df, dict(f, communes=f.get("communes")), kind)
-        all_comm = [r["commune"] for r in patient_rows(df, dict(f, communes=[], q="", khoa="", source=""), kind)[0]]
+    base, trunc, all_comm = [], False, []
+    for src in _sources(source):
+        if src == "contacts":
+            b, t = contact_rows(c, event["id"], f) if event else ([], False)
+            all_comm += [r["commune"] for r in (contact_rows(c, event["id"], {})[0] if event else [])]
+        else:
+            b, t = patient_rows(df, dict(f, communes=f.get("communes")), kind)
+            all_comm += [r["commune"] for r in patient_rows(df, dict(f, communes=[], q="", khoa="", source=""), kind)[0]]
+        base += b
+        trunc = trunc or t
     rows = classify(base, c, kind, event["id"] if event else None)
     return {"rows": rows, "truncated": trunc, "communes": RG.commune_options(all_comm)}
 
 
-def resolve_selection(df, c, kind: str, source: str, event: dict | None, selected: list[str]):
+def resolve_selection(df, c, kind: str, source, event: dict | None, selected: list[str]):
     """Từ danh sách khoá đã tích (p:12, c:5) dựng lại người nhận bằng DỮ LIỆU MỚI NHẤT → (gửi được, bị loại)."""
     keys = [k for k in dict.fromkeys(selected) if re.fullmatch(r"[pc]:\d+", k)]
-    rows = []
-    if source == "contacts":
+    rows, srcs = [], _sources(source)
+    if "contacts" in srcs:
         ids = [int(k[2:]) for k in keys if k[0] == "c"]
         for r in (contact_rows(c, event["id"], {})[0] if event else []):
             if r["contact_id"] in ids:
                 rows.append(r)
-    else:
+    if "patients" in srcs:
         import pandas as pd
         df = _with_commune(df)
         for k in keys:

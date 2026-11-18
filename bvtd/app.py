@@ -1582,9 +1582,22 @@ def _sms_kick_queue():
     threading.Thread(target=work, daemon=True).start()
 
 
+def _sms_recent_campaigns(c, kinds, limit=15):
+    """Các lần gửi gần đây thuộc `kinds`, kèm số tin đã gửi / chờ / lỗi / bị loại."""
+    from services import patient_db as PD
+    ph = ",".join(["%s"] * len(kinds))
+    rows = c.execute("SELECT k.*, (SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('sent','delivered')) AS n_sent, "
+                     "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('failed','unknown')) AS n_fail, "
+                     "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('queued','sending')) AS n_wait, "
+                     "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status = 'skipped') AS n_skip "
+                     f"FROM sms_campaigns k WHERE k.kind IN ({ph}) ORDER BY k.id DESC LIMIT %s", (*kinds, limit)).fetchall()
+    return [PD.dict_row(r) for r in rows]
+
+
 @app.route("/sms")
 @sms_admin_required
 def sms_index():
+    """Tab 1: NHẮC LỊCH HẸN KHÁM (cài đặt chung, nhắc ngày mai, sửa mẫu tin, lịch sử gửi)."""
     from datetime import timedelta
     from services import patient_db as PD, sms as SMS
     from services.sheets import vn_today
@@ -1599,18 +1612,43 @@ def sms_index():
     with PD._conn() as c:
         settings = SMS.get_settings(c)
         sent_today = SMS.sent_today(c)
-        camps = c.execute("SELECT k.*, (SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('sent','delivered')) AS n_sent, "
-                          "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('failed','unknown')) AS n_fail, "
-                          "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status IN ('queued','sending')) AS n_wait, "
-                          "(SELECT COUNT(*) FROM sms_messages m WHERE m.campaign_id = k.id AND m.status = 'skipped') AS n_skip "
-                          "FROM sms_campaigns k ORDER BY k.id DESC LIMIT 15").fetchall()
+        tpl = SMS.appointment_template(c)
+        camps = _sms_recent_campaigns(c, ("appointment", "test"))
         n_optout = c.execute("SELECT COUNT(*) AS n FROM sms_optout").fetchone()["n"]
     return render_template("sms/index.html", settings=settings, provider=provider, provider_err=provider_err,
                            brand=app.config.get("SMS_BRANDNAME", ""), brand_ok=cfg_ok_brand, brand_msg=brand_msg,
                            hotline=app.config.get("SMS_HOTLINE", ""), quiet=SMS.in_quiet_hours(), sent_today=sent_today,
-                           preview=preview, tomorrow=tomorrow, campaigns=[PD.dict_row(r) for r in camps],
-                           kinds=SMS.KINDS, n_optout=n_optout,
-                           sample=SMS.render(SMS.DEFAULT_APPOINTMENT_TEMPLATE, SMS.appointment_context("Nguyễn Văn An", tomorrow, "08:30")))
+                           preview=preview, tomorrow=tomorrow, campaigns=camps,
+                           kinds=SMS.KINDS, n_optout=n_optout, tpl=tpl, tpl_default=SMS.DEFAULT_APPOINTMENT_TEMPLATE,
+                           tpl_is_default=(tpl == SMS.DEFAULT_APPOINTMENT_TEMPLATE), open_tpl=bool(request.args.get("sua")),
+                           sample=SMS.render(tpl, SMS.appointment_context("Nguyễn Văn An", tomorrow, "08:30")))
+
+
+@app.route("/sms/mau-tin", methods=["POST"])
+@sms_admin_required
+def sms_template_save():
+    """Sửa / khôi phục mẫu tin NHẮC LỊCH HẸN. Mẫu này dùng cho tin tự động, nút «Tạo & gửi ngay», gửi thử và trang soạn tin."""
+    if not _csrf_ok():
+        abort(400)
+    from datetime import timedelta
+    from services import sms as SMS
+    from services.sheets import vn_today
+    by = getattr(current_user, "email", "")
+    try:
+        if request.form.get("reset"):
+            SMS.set_setting("tpl_appointment", "", by)
+            flash("✅ Đã khôi phục mẫu tin gốc.", "success")
+        else:
+            body = request.form.get("body", "").strip()
+            if not body:
+                raise ValueError("Nội dung tin không được để trống (muốn dùng mẫu gốc thì bấm «Khôi phục mẫu gốc»).")
+            SMS.render(body, SMS.appointment_context("Nguyễn Văn An", vn_today() + timedelta(days=1), "08:30"))      # thử ghép thật
+            SMS.set_setting("tpl_appointment", "" if body == SMS.DEFAULT_APPOINTMENT_TEMPLATE else body, by)
+            flash("✅ Đã lưu mẫu tin nhắc lịch. Các tin tạo từ giờ trở đi sẽ dùng mẫu này.", "success")
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("sms_index", sua=1))
+    return redirect(url_for("sms_index"))
 
 
 @app.route("/sms/cai-dat", methods=["POST"])
@@ -1662,7 +1700,7 @@ def sms_remind_tomorrow():
 
 
 # ── Trang gửi nhiều bước (nội dung → đối tượng → xem trước & gửi) ─────────────────────────────────────────────
-def _wiz_filters(kind, aud):
+def _wiz_filters(kind, auds):
     f = request.form
     return {"date_from": _parse_date(f.get("date_from", "")), "date_to": _parse_date(f.get("date_to", "")),
             "communes": [c for c in f.getlist("communes") if c.strip()], "khoa": f.get("khoa", "").strip(),
@@ -1676,29 +1714,34 @@ def sms_compose():
     from datetime import timedelta
     from services import patient_db as PD, sms as SMS
     from services.sheets import vn_today
-    f = request.form
+    f = request.form if request.method == "POST" else request.args        # GET: từ nút «Soạn tin» ở 2 tab (?kind=mobile&event_id=…)
     step = f.get("step", "0") if request.method == "POST" else "0"
     if request.method == "POST" and not _csrf_ok():
         abort(400)
     kind = f.get("kind", "appointment") if f.get("kind") in ("appointment", "mobile") else "appointment"
-    aud = f.get("aud", "patients") if (kind == "mobile" and f.get("aud") == "contacts") else "patients"
-    body = f.get("body", "").strip() or SMS.PRESETS[kind]
-    errors, flt = [], _wiz_filters(kind, aud)
+    # Đối tượng: nhắc lịch hẹn luôn là bệnh nhân; khám lưu động được tích CẢ danh bạ lẫn bệnh nhân cũ theo vùng
+    picked = [a for a in f.getlist("aud") if a in ("contacts", "patients")]
+    auds = ["patients"] if kind == "appointment" else [a for a in ("contacts", "patients") if a in picked]
+    if kind == "mobile" and not auds and step == "0":
+        auds = ["contacts"]
+    errors, flt = [], _wiz_filters(kind, auds)
     sel, token = f.getlist("sel"), f.get("token", "")
     with PD._conn() as c:
         events = SMS.list_events(c)
         event = SMS.get_event(c, f.get("event_id")) if f.get("event_id") else None
         regions = SMS.list_regions(c)
         settings = SMS.get_settings(c)
+        presets = {"appointment": SMS.appointment_template(c), "mobile": SMS.PRESETS["mobile"]}
+        body = f.get("body", "").strip() or presets[kind]
 
         def page(n, **extra):
-            return render_template("sms/compose.html", step=n, kind=kind, aud=aud, body=body, event=event, events=events, flt=flt, sel=sel,
-                                   errors=errors, regions=regions, kinds=SMS.KINDS, presets=SMS.PRESETS, token=token,
+            return render_template("sms/compose.html", step=n, kind=kind, auds=auds, body=body, event=event, events=events, flt=flt, sel=sel,
+                                   errors=errors, regions=regions, kinds=SMS.KINDS, presets=presets, token=token,
                                    max_n=SMS.max_recipients(), **extra)
 
         def step2(reset_sel=True):
             nonlocal sel
-            aud_data = SMS.audience(_get_df(), c, kind, aud, event, flt)
+            aud_data = SMS.audience(_get_df(), c, kind, auds, event, flt)
             if reset_sel:
                 sel = [r["key"] for r in aud_data["rows"] if r["ok"]]
             return page(2, aud_data=aud_data)
@@ -1706,7 +1749,7 @@ def sms_compose():
         def step3():
             nonlocal token
             df = _get_df()
-            eligible, skipped = SMS.resolve_selection(df, c, kind, aud, event, sel)
+            eligible, skipped = SMS.resolve_selection(df, c, kind, auds, event, sel)
             token = token or uuid.uuid4().hex
             reasons = {}
             for r in skipped:
@@ -1722,6 +1765,8 @@ def sms_compose():
                 return page(1)
             if kind == "mobile" and event is None:
                 errors.append("Chọn đợt khám lưu động (hoặc tạo đợt mới) trước khi tiếp tục.")
+            if kind == "mobile" and not auds:
+                errors.append("Hãy tích chọn ít nhất 1 đối tượng nhận tin (danh bạ của đợt và/hoặc bệnh nhân cũ theo vùng).")
             errors += SMS.template_errors(body)
             if errors:
                 return page(1)
@@ -1754,7 +1799,7 @@ def sms_compose():
         if step != "3s":
             return page(1)
         if step == "3s":
-            eligible, skipped = SMS.resolve_selection(_get_df(), c, kind, aud, event, sel)
+            eligible, skipped = SMS.resolve_selection(_get_df(), c, kind, auds, event, sel)
             if SMS.template_errors(body):
                 errors += SMS.template_errors(body)
             if not f.get("confirm"):
@@ -1771,7 +1816,7 @@ def sms_compose():
             cid, existed = SMS.create_campaign(
                 c, kind=kind, name=name, body=body, eligible=eligible, skipped=skipped, created_by=getattr(current_user, "email", ""),
                 key=f"wiz:{token}" if token else None, event_id=event["id"] if event else None,
-                filters={"kind": kind, "audience": aud, "event_id": event["id"] if event else None, "selected": len(sel),
+                filters={"kind": kind, "audience": auds, "event_id": event["id"] if event else None, "selected": len(sel),
                          "filters": {k: v for k, v in flt.items()}})
     if not existed:
         _sms_kick_queue()
@@ -1791,13 +1836,15 @@ def sms_events():
             eid = SMS.create_event(request.form.get("name"), request.form.get("audience"), _parse_date(request.form.get("event_date", "")),
                                    request.form.get("event_time"), request.form.get("location"), request.form.get("note"),
                                    getattr(current_user, "email", ""))
-            flash("✅ Đã tạo đợt khám. Hãy nhập danh bạ người nhận tin.", "success")
+            flash("✅ Đã tạo đợt khám. Bước tiếp theo: thêm người nhận vào danh bạ bên dưới.", "success")
             return redirect(url_for("sms_event", eid=eid))
         except ValueError as e:
             flash(str(e), "error")
     with PD._conn() as c:
         events = SMS.list_events(c)
-    return render_template("sms/events.html", events=events, audiences=SMS.AUDIENCES)
+        camps = _sms_recent_campaigns(c, ("mobile",))
+    return render_template("sms/events.html", events=events, audiences=SMS.AUDIENCES, campaigns=camps, kinds=SMS.KINDS,
+                           open_create=(request.method == "POST" or not events or bool(request.args.get("tao"))), form=request.form)
 
 
 @app.route("/sms/su-kien/<int:eid>", methods=["GET", "POST"])
@@ -1815,7 +1862,9 @@ def sms_event(eid):
         act, by = request.form.get("act", ""), getattr(current_user, "email", "")
         try:
             if act == "add":
-                text = request.form.get("text", "")
+                F = request.form
+                rows, errs = SMS.parse_contact_fields(F.getlist("c_name"), F.getlist("c_phone"), F.getlist("c_commune"), F.getlist("c_org"))
+                text = F.get("text", "")
                 up = request.files.get("file")
                 if up and up.filename:
                     raw = up.read(2_000_000)
@@ -1824,7 +1873,11 @@ def sms_event(eid):
                             text += "\n" + raw.decode(enc); break
                         except (UnicodeDecodeError, UnicodeError):
                             continue
-                rows, errs = SMS.parse_contacts_text(text)
+                if text.strip():
+                    rows2, errs2 = SMS.parse_contacts_text(text)
+                    rows, errs = rows + rows2, errs + errs2
+                if not rows and not errs:
+                    raise ValueError("Chưa nhập người nào — điền ít nhất Họ tên và SĐT vào một dòng.")
                 res = SMS.add_contacts(eid, rows, request.form.get("consent_source", ""), by) if rows else {"added": 0, "duplicate": 0}
                 msg = f"Đã thêm {res['added']} người" + (f", bỏ {res['duplicate']} số trùng" if res["duplicate"] else "") + \
                       (f", {len(errs)} dòng lỗi: " + "; ".join(errs[:5]) + (" …" if len(errs) > 5 else "") if errs else "") + "."
@@ -1903,7 +1956,7 @@ def sms_send_test():
         return redirect(url_for("sms_index"))
     rec = {"patient_id": None, "name": "Nguyễn Văn An", "phone": phone, "exam_date": vn_today() + timedelta(days=1), "exam_time": "08:30"}
     with PD._conn() as c:
-        cid, _ = SMS.create_campaign(c, kind="test", name=f"Gửi thử tới {phone}", body=SMS.DEFAULT_APPOINTMENT_TEMPLATE,
+        cid, _ = SMS.create_campaign(c, kind="test", name=f"Gửi thử tới {phone}", body=SMS.appointment_template(c),
                                      eligible=[rec], skipped=[], created_by=getattr(current_user, "email", ""))
     r = SMS.process_queue(limit=5)
     flash(("✅ Đã gửi thử." if r["sent"] else f"⚠️ Chưa gửi được: {r['blocked'] or 'xem chi tiết chiến dịch'}"), "success" if r["sent"] else "error")

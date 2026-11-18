@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% from "sms/_tabs.html" import tabs %}
 {% block title %}{{ ev.name }}{% endblock %}
 {% block page_title %}🚑 {{ ev.name }}{% endblock %}
 {% block content %}
+{{ tabs('mobile') }}
 <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
-  <a href="{{ url_for('sms_events') }}" class="text-blue-600 hover:underline">← Các đợt khám</a>
+  <a href="{{ url_for('sms_events') }}" class="text-blue-600 hover:underline">← Các đợt khám lưu động</a>
   <span class="text-slate-500">{{ audiences.get(ev.audience, ev.audience) }} · {{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }}</span>
   <form method="POST" action="{{ url_for('sms_compose') }}" class="ml-auto">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="mobile"><input type="hidden" name="aud" value="contacts">
@@ -12,19 +14,72 @@
   </form>
 </div>
 <div class="grid lg:grid-cols-3 gap-4">
-  <form method="POST" enctype="multipart/form-data" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 self-start">
+  <form method="POST" enctype="multipart/form-data" id="addForm" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 self-start lg:col-span-1">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="act" value="add">
     <h3 class="font-semibold text-slate-800 text-sm">Thêm vào danh bạ</h3>
-    <div><label class="block text-xs font-semibold text-slate-500 mb-1">Dán danh sách (mỗi dòng 1 người)</label>
-      <textarea name="text" rows="6" placeholder="Họ tên, SĐT, Xã/Thôn, Đơn vị&#10;Nguyễn Văn An, 0912345678, Trung Chính, Thôn 3" class="w-full text-xs font-mono border border-slate-300 rounded-lg px-3 py-2"></textarea>
-      <p class="text-[11px] text-slate-400 mt-1">Ngăn cột bằng dấu phẩy, chấm phẩy hoặc Tab (dán từ Excel được). Dòng tiêu đề tự bỏ qua.</p></div>
-    <div><label class="block text-xs font-semibold text-slate-500 mb-1">hoặc tải file CSV</label><input type="file" name="file" accept=".csv,.txt" class="text-xs"></div>
-    <div><label class="block text-xs font-semibold text-slate-500 mb-1">Hình thức đồng ý nhận tin <span class="text-red-500">*</span></label>
+
+    <div id="rows" class="space-y-3">
+      {% for i in range(3) %}
+      <fieldset class="crow rounded-lg border border-slate-200 p-3 space-y-2 bg-slate-50/50">
+        <div class="flex items-center justify-between"><span class="rownum text-[11px] font-semibold text-slate-400">Người {{ i + 1 }}</span>
+          <button type="button" class="rowdel text-[11px] text-rose-500 hover:underline">Bỏ dòng</button></div>
+        <div><label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Họ tên</label>
+          <input name="c_name" autocomplete="off" placeholder="Nguyễn Văn An" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-1.5"></div>
+        <div><label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Số điện thoại <span class="text-red-500">*</span></label>
+          <input name="c_phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="0912345678" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-1.5 font-mono"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Xã / Phường</label>
+            <input name="c_commune" autocomplete="off" placeholder="Trung Chính" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-1.5"></div>
+          <div><label class="block text-[11px] font-semibold text-slate-500 mb-0.5">Thôn / Đơn vị</label>
+            <input name="c_org" autocomplete="off" placeholder="Thôn 3" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-1.5"></div>
+        </div>
+      </fieldset>
+      {% endfor %}
+    </div>
+    <button type="button" id="addRow" class="text-xs border border-dashed border-slate-300 rounded-lg px-3 py-1.5 w-full hover:bg-slate-50">➕ Thêm một người</button>
+    <p class="text-[11px] text-slate-400">Chỉ cần SĐT là bắt buộc; dòng bỏ trống hoàn toàn sẽ được bỏ qua.</p>
+
+    <details class="border-t border-slate-100 pt-2">
+      <summary class="text-xs font-semibold text-slate-600 cursor-pointer">Có sẵn danh sách? Dán nhiều dòng hoặc tải file CSV</summary>
+      <div class="mt-2 space-y-2">
+        <textarea name="text" rows="4" placeholder="Họ tên, SĐT, Xã/Thôn, Đơn vị&#10;Nguyễn Văn An, 0912345678, Trung Chính, Thôn 3" class="w-full text-xs font-mono border border-slate-300 rounded-lg px-3 py-2"></textarea>
+        <p class="text-[11px] text-slate-400">Mỗi dòng 1 người, ngăn cột bằng dấu phẩy, chấm phẩy hoặc Tab (dán từ Excel được). Dòng tiêu đề tự bỏ qua.</p>
+        <input type="file" name="file" accept=".csv,.txt" class="text-xs">
+      </div>
+    </details>
+
+    <div class="border-t border-slate-100 pt-3"><label class="block text-xs font-semibold text-slate-500 mb-1">Hình thức đồng ý nhận tin <span class="text-red-500">*</span></label>
       <select name="consent_source" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
         <option value="">— chọn —</option>{% for k, v in consents.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
       <p class="text-[11px] text-amber-700 mt-1">Chỉ nhập số của người <b>đã đồng ý</b> nhận tin. Hệ thống lưu hình thức và thời điểm đồng ý.</p></div>
     <button class="bg-slate-700 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-800">Thêm vào danh bạ</button>
   </form>
+  <script>
+    (function () {
+      const box = document.getElementById('rows');
+      function renumber() { box.querySelectorAll('.crow').forEach((r, i) => { r.querySelector('.rownum').textContent = 'Người ' + (i + 1); }); }
+      function addRow(focus) {
+        const first = box.querySelector('.crow'), n = first.cloneNode(true);
+        n.querySelectorAll('input').forEach(i => { i.value = ''; });
+        box.appendChild(n); renumber();
+        if (focus) n.querySelector('input').focus();
+      }
+      document.getElementById('addRow').addEventListener('click', () => addRow(true));
+      box.addEventListener('click', e => {
+        if (!e.target.classList.contains('rowdel')) return;
+        const rows = box.querySelectorAll('.crow');
+        if (rows.length > 1) { e.target.closest('.crow').remove(); renumber(); }
+        else rows[0].querySelectorAll('input').forEach(i => { i.value = ''; });
+      });
+      // Enter = sang ô kế tiếp (hết dòng thì tự thêm dòng mới), không gửi biểu mẫu nhầm
+      box.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+        e.preventDefault();
+        const inputs = Array.from(box.querySelectorAll('input')), i = inputs.indexOf(e.target);
+        if (i === inputs.length - 1) addRow(true); else inputs[i + 1].focus();
+      });
+    })();
+  </script>
 
   <div class="lg:col-span-2 space-y-4">
     <div class="bg-white rounded-xl border border-slate-200">

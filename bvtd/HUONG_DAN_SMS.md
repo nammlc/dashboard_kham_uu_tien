@@ -8,15 +8,22 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
 - Chiến dịch: xem từng người nhận, trạng thái, lý do loại; nút **gửi lại tin lỗi**.
 - Danh sách **từ chối nhận tin**; **gửi thử** 1 tin tới số của bạn.
 - **Chế độ thử (sandbox)**: chạy trọn luồng nhưng **không gửi gì ra ngoài** — dùng cho tới khi chọn xong nhà cung cấp.
-- **Trang gửi 3 bước** («✉️ Soạn & gửi tin mới»): ① loại tin + nội dung → ② chọn người nhận (lọc theo **ngày khám, xã/phường,
+- **Mục SMS chia 2 tab con**, bấm qua lại ở đầu trang:
+  - **📅 Nhắc lịch hẹn khám**: cài đặt gửi tin, xem trước nhắc ngày mai, **✏️ Sửa mẫu tin**, **✉️ Soạn & gửi tin nhắc lịch**, lịch sử gửi.
+  - **🚑 Nhắc lịch khám lưu động**: **➕ Tạo đợt khám mới**, danh sách đợt (👥 Danh bạ / ✉️ Soạn tin), lịch sử gửi.
+- **Sửa mẫu tin** (tab Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
+  Mẫu mới áp dụng cho tin tự động 18:30, nút «Tạo & gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch (tin đã gửi không đổi). Mẫu lưu trong DB (bảng `sms_settings`), không cần đổi biến môi trường.
+- **Trang gửi 3 bước**: ① nội dung (khám lưu động thì thêm: chọn đợt + đối tượng) → ② chọn người nhận (lọc theo **ngày khám, xã/phường,
   khoa, nguồn, trạng thái, tên/SĐT**; **tích từng người**; chọn tất cả/bỏ chọn) → ③ xem trước (số người, số tin tính phí,
   chi phí ước tính, tin mẫu, lý do người bị loại) rồi **Gửi đồng loạt**. Bấm gửi 2 lần không tạo 2 chiến dịch.
 - **Lọc theo vùng:** hệ thống tự tách **xã/phường** từ địa chỉ («Phú Quý Xã Trung Chính, , Tỉnh Thanh Hóa» → Xã Trung Chính). Dòng không tách
   được vào nhóm «Chưa rõ xã» — sửa ở trang **Sửa bệnh nhân** (ô «Xã/phường»). Có thể **lưu nhóm vùng** (vd. «Bắc Nông Cống») để chọn nhanh.
-- **Khám lưu động** («🚑 Đợt khám lưu động & danh bạ»): tạo đợt (tên, đối tượng dân/học sinh/công ty, ngày, giờ, địa điểm) →
-  nhập **danh bạ** (dán từ Excel hoặc tải CSV; mỗi dòng: Họ tên, SĐT, Xã/Thôn, Đơn vị) → soạn tin theo đợt.
+- **Khám lưu động**: bấm **➕ Tạo đợt khám mới** (tên, đối tượng dân/học sinh/công ty, ngày, giờ, địa điểm) →
+  thêm vào **danh bạ** bằng **từng ô riêng** (Họ tên, Số điện thoại, Xã/Phường, Thôn/Đơn vị; bấm «➕ Thêm một người» hoặc Enter ở ô cuối để thêm dòng;
+  có sẵn danh sách thì dán nhiều dòng hoặc tải CSV ở mục gập bên dưới) → soạn tin theo đợt.
   **Bắt buộc chọn hình thức đồng ý nhận tin** (phiếu giấy / QR / nhân viên ghi nhận) — hệ thống lưu hình thức và thời điểm.
-  Có thể gửi theo danh bạ hoặc cho **bệnh nhân cũ theo vùng** (mỗi SĐT chỉ giữ lần đăng ký gần nhất). Mỗi SĐT chỉ nhận 1 tin cho 1 đợt.
+  Khi soạn tin có thể **tích cả 2 đối tượng cùng lúc**: «Danh bạ của đợt» và «Bệnh nhân cũ theo vùng» (danh sách gộp chung; trùng SĐT thì ưu tiên người trong danh bạ).
+  Mỗi SĐT chỉ nhận 1 tin cho 1 đợt.
 - Chưa có: **KSK nhập từ Excel** (giai đoạn 4 — cùng bộ nhập file .xlsx cho danh bạ).
 
 ## Cấu hình (biến môi trường trên Coolify)

@@ -161,7 +161,7 @@ class Wizard(AppTestCase, Base):
 
     def test_no_duplicate_form_field_names_between_steps(self):
         h1 = self.client.get("/sms/gui").get_data(as_text=True)
-        self.assertEqual(h1.count('name="kind"'), 2)                                              # chỉ 2 nút chọn, không có trường ẩn trùng tên
+        self.assertEqual(h1.count('name="kind"'), 1)                                              # loại tin do tab quyết định: chỉ 1 trường ẩn, không còn nút chọn loại
         h2 = self.post(step="1", kind="appointment", body="").get_data(as_text=True)
         self.assertNotIn('type="hidden" name="step"', h2)                                         # tên nút bấm không bị trường ẩn che mất
 
@@ -226,6 +226,103 @@ class Wizard(AppTestCase, Base):
         self.assertIn("đã nhận tin của đợt khám này", h); self.assertEqual(self.ids(h), [])             # cả 2 ô bị khoá, không ai tích được
         # đã có chiến dịch → không xoá được đợt
         self.assertFalse(SMS.delete_event(eid))
+
+    # ── Bố cục 2 tab con ────────────────────────────────────────────────────────────────────────────────────
+    def test_two_tabs_switch_back_and_forth(self):
+        a = self.client.get("/sms").get_data(as_text=True)
+        m = self.client.get("/sms/su-kien").get_data(as_text=True)
+        for h in (a, m):
+            self.assertIn("Nhắc lịch hẹn khám", h); self.assertIn("Nhắc lịch khám lưu động", h)
+            self.assertIn('href="/sms"', h); self.assertIn('href="/sms/su-kien"', h)               # bấm qua lại giữa 2 tab
+        self.assertRegex(a, r'href="/sms"[^>]*aria-selected="true"')
+        self.assertRegex(m, r'href="/sms/su-kien"[^>]*aria-selected="true"')
+        self.assertIn("Tạo đợt khám mới", m)                                                       # nút tạo đợt nằm trong tab lưu động
+        self.assertIn("Sửa mẫu tin", a); self.assertNotIn("Sửa mẫu tin", m)                       # nút sửa mẫu tin nằm trong tab nhắc lịch
+
+    def test_compose_has_no_kind_picker_and_both_audiences_tickable(self):
+        h = self.client.get("/sms/gui?kind=mobile").get_data(as_text=True)
+        self.assertNotIn('value="appointment"', h)                                                 # bỏ ô chọn nhắc lịch hẹn khám
+        self.assertEqual(h.count('type="checkbox" name="aud"'), 2)                                 # 2 đối tượng: tích được cả 2
+        self.assertIn('name="aud" value="contacts" class="mt-1" checked', h)                       # mặc định tích danh bạ
+        self.assertEqual(h.count('name="kind"'), 1)
+        h = self.client.get("/sms/gui?kind=appointment").get_data(as_text=True)
+        self.assertNotIn('name="aud"', h); self.assertNotIn("Nhắc lịch khám lưu động</b>", h)
+
+    def test_mobile_needs_at_least_one_audience(self):
+        h = self.post(step="1", kind="mobile", event_id="", body="").get_data(as_text=True)
+        self.assertIn("ít nhất 1 đối tượng", h)
+
+    # ── Danh bạ nhập theo từng ô ────────────────────────────────────────────────────────────────────────────
+    def _event(self):
+        self.post("/sms/su-kien", name="Khám tại xã Trung Chính", audience="dan", event_date="2026-12-05", event_time="07:30",
+                  location="Trạm y tế xã Trung Chính", note="")
+        return int(PD._TEST_POOL.raw.execute("SELECT id FROM sms_events").fetchone()[0])
+
+    def test_contacts_entered_in_separate_fields(self):
+        eid = self._event()
+        h = self.client.get(f"/sms/su-kien/{eid}").get_data(as_text=True)
+        for f in ("c_name", "c_phone", "c_commune", "c_org"):
+            self.assertIn(f'name="{f}"', h)                                                        # mỗi thông tin 1 ô riêng
+        r = self.post(f"/sms/su-kien/{eid}", act="add", consent_source="giay",
+                      c_name=["Nguyễn Văn An", "", "Lê C", "Trần Thị Bình"], c_phone=["0912345678", "", "123", "0987654321"],
+                      c_commune=["Trung Chính", "", "", "Minh Nghĩa"], c_org=["Thôn 3", "", "", "Thôn 1"]).get_data(as_text=True)
+        self.assertIn("Đã thêm 2 người", r); self.assertIn("1 dòng lỗi", r); self.assertIn("Lê C", r)   # dòng trống bị bỏ qua, SĐT sai được nêu tên
+        rows = PD._TEST_POOL.raw.execute("SELECT name, phone, commune, org FROM sms_contacts ORDER BY id").fetchall()
+        self.assertEqual([tuple(x) for x in rows], [("Nguyễn Văn An", "0912345678", "Xã Trung Chính", "Thôn 3"),
+                                                    ("Trần Thị Bình", "0987654321", "Xã Minh Nghĩa", "Thôn 1")])
+        r = self.post(f"/sms/su-kien/{eid}", act="add", consent_source="giay", c_name=[""], c_phone=[""], c_commune=[""], c_org=[""]).get_data(as_text=True)
+        self.assertIn("Chưa nhập người nào", r)
+        r = self.post(f"/sms/su-kien/{eid}", act="add", consent_source="", c_name=["X"], c_phone=["0911000111"], c_commune=[""], c_org=[""]).get_data(as_text=True)
+        self.assertIn("hình thức đồng ý", r)                                                       # vẫn bắt buộc có đồng ý
+        self.assertEqual(PD._TEST_POOL.raw.execute("SELECT COUNT(*) FROM sms_contacts").fetchone()[0], 2)
+
+    # ── Tích CẢ 2 đối tượng cùng lúc ────────────────────────────────────────────────────────────────────────
+    def test_mobile_both_audiences_together(self):
+        self.enable()
+        eid = self._event()
+        self.post(f"/sms/su-kien/{eid}", act="add", consent_source="giay", c_name=["Nguyễn Văn An", "Trần Thị Bình", "Người Mới"],
+                  c_phone=["0912345678", "0987654321", "0955555555"], c_commune=["Trung Chính", "Minh Nghĩa", ""], c_org=["", "", ""])
+        h2 = self.post(step="1", kind="mobile", aud=["contacts", "patients"], event_id=str(eid), body="").get_data(as_text=True)
+        keys = self.ids(h2)
+        self.assertTrue(any(k.startswith("c:") for k in keys) and any(k.startswith("p:") for k in keys))        # 2 nhóm trong cùng 1 danh sách
+        self.assertEqual(len([k for k in keys if k.startswith("c:")]), 3)
+        self.assertNotIn("p:2", keys); self.assertNotIn("p:3", keys)                              # SĐT trùng danh bạ: danh bạ được ưu tiên, bệnh nhân bị loại
+        self.assertIn("trùng SĐT với người trước", h2)
+        self.assertIn("Danh bạ", h2); self.assertIn("Bệnh nhân", h2)
+        h3 = self.post(step="2", kind="mobile", aud=["contacts", "patients"], event_id=str(eid), body=SMS.PRESETS["mobile"], sel=keys).get_data(as_text=True)
+        token = re.search(r'name="token" value="(\w+)"', h3).group(1)
+        self.post(step="3s", kind="mobile", aud=["contacts", "patients"], event_id=str(eid), body=SMS.PRESETS["mobile"], sel=keys, confirm="1", token=token)
+        sent = self.msgs(status="sent")
+        self.assertEqual(len(sent), len(keys))
+        self.assertEqual(len({m["phone"] for m in sent}), len(sent))                              # mỗi số chỉ 1 tin
+        self.assertTrue(any(m["contact_id"] for m in sent) and any(m["patient_id"] for m in sent))
+        # chỉ tích bệnh nhân (bỏ danh bạ) vẫn chạy
+        h = self.post(step="1", kind="mobile", aud="patients", event_id=str(eid), body="").get_data(as_text=True)
+        self.assertTrue(all(k.startswith("p:") for k in self.ids(h)))
+
+    # ── Sửa mẫu tin nhắc lịch ───────────────────────────────────────────────────────────────────────────────
+    def test_edit_appointment_template(self):
+        self.enable()
+        new = "BV Tam Duc nhac {ten}: lich kham {ngay}{gio_text}. LH {hotline}"
+        r = self.post("/sms/mau-tin", body=new).get_data(as_text=True)
+        self.assertIn("Đã lưu mẫu tin", r); self.assertIn("Đang dùng mẫu đã sửa", r)
+        self.assertIn("BV Tam Duc nhac NGUYEN VAN AN: lich kham", r)                               # tin mẫu trên trang dùng mẫu mới
+        self.assertEqual(SMS.appointment_template(), new)
+        h2 = self.post(step="1", kind="appointment", body="").get_data(as_text=True)
+        self.assertIn("BV Tam Duc nhac", h2)                                                       # trang soạn tin lấy mẫu mới
+        self.post(step="3s", kind="appointment", aud="patients", body="", sel=["p:2"], confirm="1", token="t1")
+        self.assertIn("BV Tam Duc nhac", self.msgs(status="sent")[0]["body"])
+        r = self.post("/sms/mau-tin", body="Xin chao {ho_ten}").get_data(as_text=True)
+        self.assertIn("Biến không hợp lệ", r); self.assertEqual(SMS.appointment_template(), new)   # mẫu sai: không lưu, mẫu cũ còn nguyên
+        r = self.post("/sms/mau-tin", reset="1").get_data(as_text=True)
+        self.assertIn("Đã khôi phục", r); self.assertEqual(SMS.appointment_template(), SMS.DEFAULT_APPOINTMENT_TEMPLATE)
+
+    def test_template_save_needs_admin_and_csrf(self):
+        self.assertEqual(self.client.post("/sms/mau-tin", data={"body": "x {ten}"}).status_code, 400)
+        A.app.config["SMS_ADMIN_EMAILS"] = "other@x.vn"
+        self.assertEqual(self.post("/sms/mau-tin", body="x {ten}").status_code, 200)                # bị chuyển về trang chủ, không lưu
+        self.assertEqual(SMS.appointment_template(), SMS.DEFAULT_APPOINTMENT_TEMPLATE)
+
 
     def test_mobile_requires_event(self):
         h = self.post(step="1", kind="mobile", aud="contacts", body="").get_data(as_text=True)

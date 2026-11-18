@@ -1,12 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Tin nhắn SMS{% endblock %}
-{% block page_title %}💬 Tin nhắn SMS nhắc lịch{% endblock %}
+{% block page_title %}💬 Tin nhắn SMS · Nhắc lịch hẹn khám{% endblock %}
 
 {% block content %}
+{% from "sms/_tabs.html" import tabs %}
+{{ tabs('appointment') }}
 <div class="mb-4 flex flex-wrap gap-2">
-  <a href="{{ url_for('sms_compose') }}" class="inline-flex items-center gap-2 bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">✉️ Soạn &amp; gửi tin mới</a>
-  <a href="{{ url_for('sms_events') }}" class="inline-flex items-center gap-2 border border-slate-300 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-50">🚑 Đợt khám lưu động &amp; danh bạ</a>
+  <a href="{{ url_for('sms_compose', kind='appointment') }}" class="inline-flex items-center gap-2 bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">✉️ Soạn &amp; gửi tin nhắc lịch</a>
+  <button type="button" id="tplToggle" aria-expanded="{{ 'true' if open_tpl else 'false' }}" aria-controls="tplPanel"
+          class="inline-flex items-center gap-2 border border-slate-300 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-50">✏️ Sửa mẫu tin</button>
 </div>
+
+<!-- Sửa mẫu tin nhắc lịch -->
+<form method="POST" action="{{ url_for('sms_template_save') }}" id="tplPanel" class="{% if not open_tpl %}hidden {% endif %}mb-5 bg-white rounded-xl border border-blue-200 p-5 space-y-3">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h3 class="font-semibold text-slate-800 text-sm">Mẫu tin nhắc lịch hẹn khám</h3>
+    <span class="text-xs {% if tpl_is_default %}text-slate-400{% else %}text-blue-700 font-semibold{% endif %}">{{ 'Đang dùng mẫu gốc' if tpl_is_default else 'Đang dùng mẫu đã sửa' }}</span>
+  </div>
+  <textarea id="tplBody" name="body" rows="3" class="w-full text-sm font-mono border border-slate-300 rounded-lg px-3 py-2">{{ tpl }}</textarea>
+  <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+    <span>Biến dùng được: <code>{ten}</code> <code>{ngay}</code> <code>{gio}</code> <code>{gio_text}</code> <code>{hotline}</code> <code>{ten_bv}</code>. Hệ thống tự bỏ dấu để vừa 160 ký tự/tin. Không ghi bệnh hay chẩn đoán.</span>
+    <span id="tplCount"></span>
+  </div>
+  <p class="text-xs text-slate-500">Mẫu này áp dụng cho tin tự động 18:30, nút «Tạo &amp; gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch. Tin đã gửi trước đó không đổi.</p>
+  <div class="flex flex-wrap gap-2">
+    <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">💾 Lưu mẫu tin</button>
+    {% if not tpl_is_default %}
+    <button name="reset" value="1" formnovalidate onclick="return confirm('Quay về mẫu tin gốc?')" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">↺ Khôi phục mẫu gốc</button>
+    {% endif %}
+    <button type="button" id="tplCancel" class="text-sm text-slate-500 px-3 py-2 hover:underline">Đóng</button>
+  </div>
+</form>
+<script>
+  (function () {
+    const panel = document.getElementById('tplPanel'), tg = document.getElementById('tplToggle');
+    const ta = document.getElementById('tplBody'), cnt = document.getElementById('tplCount');
+    function show(v) { panel.classList.toggle('hidden', !v); tg.setAttribute('aria-expanded', v ? 'true' : 'false'); if (v) ta.focus(); }
+    tg.addEventListener('click', () => show(panel.classList.contains('hidden')));
+    document.getElementById('tplCancel').addEventListener('click', () => show(false));
+    function upd() { const t = ta.value, ascii = /^[\x00-\x7F]*$/.test(t.replace(/\{\w+\}/g, 'x')), n = t.length;
+      const seg = n === 0 ? 0 : (ascii ? (n <= 160 ? 1 : Math.ceil(n / 153)) : (n <= 70 ? 1 : Math.ceil(n / 67)));
+      cnt.textContent = n + ' ký tự (chưa tính phần biến được ghép) · ~' + seg + ' tin'; }
+    ta.addEventListener('input', upd); upd();
+  })();
+</script>
+
 <div class="grid lg:grid-cols-3 gap-4 mb-5">
 
   <!-- Trạng thái + công tắc -->
@@ -56,7 +95,7 @@
     {% if preview.reasons %}
     <p class="text-xs text-slate-500 mb-3">Lý do bị loại: {% for r, n in preview.reasons.items() %}<span class="inline-block bg-slate-100 rounded-full px-2 py-0.5 mr-1">{{ r }}: {{ n }}</span>{% endfor %}</p>
     {% endif %}
-    <p class="text-xs font-semibold text-slate-500 mb-1">Tin mẫu</p>
+    <p class="text-xs font-semibold text-slate-500 mb-1">Tin mẫu <span class="font-normal text-slate-400">(theo mẫu đang dùng)</span></p>
     <p class="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono">{{ sample }}</p>
     <p class="text-[11px] text-slate-400 mt-1">{{ sample|length }} ký tự — tin không dấu, vừa 1 tin tính phí.</p>
 
@@ -71,7 +110,7 @@
 
 <div class="bg-white rounded-xl border border-slate-200">
   <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-    <h3 class="font-semibold text-slate-800 text-sm">Các lần gửi gần đây</h3>
+    <h3 class="font-semibold text-slate-800 text-sm">Các lần gửi nhắc lịch gần đây</h3>
     <a href="{{ url_for('sms_optout') }}" class="text-xs text-blue-600 hover:underline">🚫 Danh sách từ chối nhận tin ({{ n_optout }})</a>
   </div>
   <div class="overflow-x-auto">
