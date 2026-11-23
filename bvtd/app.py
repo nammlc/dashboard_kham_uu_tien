@@ -55,6 +55,14 @@ oauth.register(
 from services import access_log as ACL, admin_users as ADM, db as DB, twofa as TF, mailer as MAIL, tokens as TK
 
 
+_VN_WEEKDAYS = ("Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy", "Chủ nhật")
+
+
+def _vn_weekday_date(d):
+    """'Thứ hai, 23/11/2026' — không phụ thuộc locale của máy chủ (strftime %A ra tiếng Anh)."""
+    return f"{_VN_WEEKDAYS[d.weekday()]}, {d:%d/%m/%Y}"
+
+
 def _admins() -> "ADM.AdminUsers":
     """Bảng admin_users. Lần đầu (bảng trống) tự tạo tài khoản từ ALLOWED_EMAILS + ADMIN_PASSWORD trong .env."""
     a = ADM.get(app.config["DATABASE_URL"])
@@ -3093,7 +3101,7 @@ def inject_globals():
         "current_user": current_user,
         "storage_pg":   __import__("services.sheets", fromlist=["USE_POSTGRES"]).USE_POSTGRES,
         "sms_admin":    __import__("services.sms", fromlist=["is_sms_admin"]).is_sms_admin(getattr(current_user, "email", "")),
-        "today_str":    datetime.now().strftime("%A, %d/%m/%Y"),
+        "today_str":    _vn_weekday_date(datetime.now()),
     }
 
 

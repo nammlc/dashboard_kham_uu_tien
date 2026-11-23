@@ -83,7 +83,7 @@
 
       <!-- Lọc + CSV -->
       <div class="flex flex-wrap items-center gap-2 text-xs">
-        {% for key, label in [('all','Tất cả'),('attended_sure','Đã đến'),('attended_unsure','<span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>Cần xác nhận'),('not_attended','Chưa đến')] %}
+        {% for key, label in [('all','Tất cả'),('attended_sure','Đã đến'),('attended_unsure','Cần xác nhận'),('not_attended','Chưa đến')] %}
         <a href="{{ url_for('reconcile_page', tab=tab, f=key, _anchor='ketqua') }}"
            class="px-3 py-1.5 rounded-full border {{ 'bg-[#0f2642] text-white border-[#0f2642]' if flt==key else 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ label }}</a>
         {% endfor %}
@@ -280,8 +280,8 @@
         <form method="POST" action="{{ url_for('dup_delete') }}" class="space-y-3"
               onsubmit="var n=document.querySelectorAll('.pickd:checked').length; if(!n){alert('Chưa chọn dòng Form nào.');return false;} return confirm('Xoá HẲN '+n+' dòng Form khỏi Google Sheet — KHÔNG THỂ HOÀN TÁC. Chắc chắn?');">
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" onclick="document.querySelectorAll('.pickd:not(:disabled)').forEach(c=>c.checked=this.checked)"> Chọn tất cả (trừ cặp bị khoá)</label>
-          {% set sev = {'critical':'<span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5 align-middle"></span>ĐẾM TRÙNG','review':'<span class="inline-block w-2 h-2 rounded-full bg-brand-500 mr-1.5 align-middle"></span>CẦN XEM TAY','leftover':'<span class="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1.5 align-middle"></span>DƯ THỪA','normal':'<span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>Bình thường'} %}
-          {% set tier = {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'<span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>Khớp yếu'} %}
+          {% set sev = {'critical':'Đếm trùng','review':'Cần xem tay','leftover':'Dư thừa','normal':'Bình thường'} %}
+          {% set tier = {1:'Tên + SĐT',2:'Tên + Năm sinh',3:'Khớp yếu'} %}
           {% for d in dup.pairs %}{% set pk = d.khoa %}{% set pf = d.form %}
           <div class="flex items-start gap-3 border border-slate-200 rounded-lg px-3 py-2">
             <input type="checkbox" class="pickd mt-1" name="row" value="{{ pf.sheet_row }}" {% if d.locked %}disabled{% endif %} title="{% if d.locked %}Bị khoá: khớp yếu, có thể là 2 người khác nhau{% else %}Chọn xoá dòng Form: STT {{ pf.stt or '—' }} · {{ pf.name }}{% endif %}">
