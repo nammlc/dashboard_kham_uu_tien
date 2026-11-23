@@ -208,7 +208,7 @@ class AccessLogPages(AppTestCase):
             self.assertIn("event=action", u); self.assertIn("per_page=20", u); self.assertIn("q=a@x.vn", u)
 
     def test_log_page_in_sidebar(self):
-        self.assertIn("Nhật Ký Truy Cập", self.client.get("/benh-nhan").get_data(as_text=True))
+        self.assertIn("Nhật ký truy cập", self.client.get("/benh-nhan").get_data(as_text=True))
 
     def test_logging_failure_never_breaks_the_page(self):
         DB.POOL_TIMEOUT = 1

@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Xem trước import{% endblock %}
-{% block page_title %}📋 Xem trước import — {{ c.filename }}{% endblock %}
+{% block title %}Xem trước khi nhập{% endblock %}
+{% block page_title %}Xem trước khi nhập — {{ c.filename }}{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl space-y-4">
 
   <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800 flex items-center justify-between gap-3">
-    <span>✅ Đọc được <b>{{ c.total }}</b> bệnh nhân từ file Excel</span>
+    <span>Đọc được <b>{{ c.total }}</b> bệnh nhân từ file Excel</span>
     <a href="{{ url_for('import_excel') }}" class="px-3 py-1.5 border border-emerald-300 rounded-lg text-xs text-emerald-700 hover:bg-white">← Chọn file khác</a>
   </div>
 
   <!-- ═════ Chọn NGÀY LẬP ═════ -->
   <div class="bg-white rounded-xl border border-slate-200 p-5">
-    <h2 class="font-semibold text-slate-800 text-sm mb-1">🗓️ Chọn Ngày Lập Để Ghi Vào Google Sheet</h2>
+    <h2 class="font-semibold text-slate-800 text-sm mb-1">Chọn ngày lập để ghi vào Google Sheet</h2>
     <p class="text-xs text-slate-500 mb-3 leading-relaxed">
       Minh Lộ liệt kê bệnh nhân theo ngày vào viện nên 1 file thường chứa nhiều "Ngày lập" khác nhau.
       Tích chọn 1 hoặc nhiều ngày — ví dụ quên ghi hôm qua / hôm kia thì tích thêm — chỉ những bệnh nhân
@@ -20,13 +20,13 @@
     </p>
 
     <div class="flex flex-wrap gap-2 mb-3">
-      <a href="{{ url_all }}"   class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50">✅ Chọn Tất Cả</a>
+      <a href="{{ url_all }}"   class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50">Chọn tất cả</a>
       {% if c.today_str in c.counts %}
-      <a href="{{ url_today }}" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50">📅 Chỉ Hôm Nay</a>
+      <a href="{{ url_today }}" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50">Chỉ hôm nay</a>
       {% else %}
-      <span class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-300 cursor-not-allowed" title="Trong file không có BN lập hôm nay">📅 Chỉ Hôm Nay</span>
+      <span class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-300 cursor-not-allowed" title="Trong file không có BN lập hôm nay">Chỉ hôm nay</span>
       {% endif %}
-      <a href="{{ url_none }}"  class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50">❌ Bỏ Chọn Tất Cả</a>
+      <a href="{{ url_none }}"  class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50">Bỏ chọn tất cả</a>
     </div>
 
     <form method="GET" id="lap-form" class="flex flex-wrap gap-2">
@@ -37,9 +37,9 @@
         <input type="checkbox" name="lap" value="{{ d }}" class="peer sr-only"
                {% if d in c.selected %}checked{% endif %} onchange="this.form.submit()">
         <span class="inline-block px-3 py-1.5 rounded-full border text-xs font-medium transition-colors
-                     border-slate-300 text-slate-600 bg-white hover:border-blue-400
-                     peer-checked:bg-blue-600 peer-checked:border-blue-600 peer-checked:text-white">
-          {% if d == c.UNKNOWN_LAP %}❓ Không rõ ngày{% else %}📅 {{ d }}{% if d == c.today_str %} (hôm nay){% endif %}{% endif %}
+                     border-slate-300 text-slate-600 bg-white hover:border-brand-400
+                     peer-checked:bg-brand-600 peer-checked:border-brand-600 peer-checked:text-white">
+          {% if d == c.UNKNOWN_LAP %}<span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>Không rõ ngày{% else %}{{ d }}{% if d == c.today_str %} (hôm nay){% endif %}{% endif %}
           · {{ c.counts[d] }} BN
           {% set pg = c.progress.get(d) %}
           {% if pg and pg.have and pg.have >= pg.total %}· ✔ đã nhập đủ
@@ -56,7 +56,7 @@
     {% if c.selected %}
     <div class="mt-3 overflow-x-auto border border-slate-200 rounded-lg">
       <table class="w-full text-xs" style="min-width:420px" id="lap-status">
-        <thead class="bg-slate-50 text-slate-500 uppercase"><tr>
+        <thead class="bg-slate-50 text-slate-500 "><tr>
           <th class="px-3 py-2 text-left">Ngày lập</th><th class="px-3 py-2 text-right">Trong file</th>
           <th class="px-3 py-2 text-right">Đã có trên Sheet</th><th class="px-3 py-2 text-right">Chưa có</th>
           <th class="px-3 py-2 text-left">Tình trạng</th>
@@ -65,14 +65,14 @@
         <tbody class="divide-y divide-slate-100">
         {% for d in c.order if d in c.selected %}{% set pg = c.progress.get(d) %}
           <tr>
-            <td class="px-3 py-2 mono">{% if d == c.UNKNOWN_LAP %}❓ Không rõ ngày{% else %}{{ d }}{% endif %}</td>
+            <td class="px-3 py-2 mono">{% if d == c.UNKNOWN_LAP %}<span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>Không rõ ngày{% else %}{{ d }}{% endif %}</td>
             <td class="px-3 py-2 text-right mono">{{ pg.total }}</td>
             <td class="px-3 py-2 text-right mono text-amber-700">{{ pg.have }}</td>
-            <td class="px-3 py-2 text-right mono text-blue-700">{{ pg.fresh }}</td>
+            <td class="px-3 py-2 text-right mono text-brand-700">{{ pg.fresh }}</td>
             <td class="px-3 py-2">
-              {% if pg.have >= pg.total %}<span class="bg-red-50 text-red-700 px-2 py-0.5 rounded-full font-semibold">⛔ ĐÃ NHẬP ĐỦ</span>
-              {% elif pg.have %}<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-semibold">🔁 Đã nhập một phần</span>
-              {% else %}<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">🆕 Chưa nhập</span>{% endif %}
+              {% if pg.have >= pg.total %}<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>ĐÃ NHẬP ĐỦ</span>
+              {% elif pg.have %}<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Đã nhập một phần</span>
+              {% else %}<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Chưa nhập</span>{% endif %}
             </td>
             <td class="px-3 py-2 mono text-slate-500">{{ pg.when or '—' }}</td>
           </tr>
@@ -85,13 +85,13 @@
 
   {% if not c.blind and not c.diag.has_created_col %}
   <div class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-3 text-sm text-amber-800" id="warn-no-created-col">
-    ⚠️ Google Sheet <b>chưa có cột "NGÀY TẠO LỊCH HẸN KHÁM"</b> (đúng tên, ở dòng tiêu đề). Khi chưa có cột này, hệ thống chỉ so trùng
+    Google Sheet <b>chưa có cột "NGÀY TẠO LỊCH HẸN KHÁM"</b> (đúng tên, ở dòng tiêu đề). Khi chưa có cột này, hệ thống chỉ so trùng
     bằng Họ tên + SĐT + Ngày khám và <b>không ghi được ngày tạo lịch hẹn</b>. Hãy thêm cột rồi tải lại trang.
   </div>
   {% endif %}
   {% if c.diag.bad_dates %}
   <div class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-3 text-sm text-amber-800" id="warn-bad-dates">
-    ⚠️ Có <b>{{ c.diag.bad_dates }}</b> dòng trên Sheet có <b>NGÀY KHÁM không đọc được</b>
+    Có <b>{{ c.diag.bad_dates }}</b> dòng trên Sheet có <b>NGÀY KHÁM không đọc được</b>
     ({% for v in c.diag.bad_samples %}«{{ v }}»{% if not loop.last %}, {% endif %}{% endfor %}) nên không dùng được để kiểm tra trùng.
     Hãy sửa các ô này về dạng dd/mm/yyyy.
   </div>
@@ -100,35 +100,35 @@
   <!-- ═════ CẢNH BÁO ĐÃ NHẬP LỊCH HẸN ═════ -->
   {% if c.blind %}
     <div class="rounded-xl border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-800">
-      <p class="font-bold text-base mb-1">⛔ Không kiểm tra được trùng — đã khoá nút Import</p>
+      <p class="font-semibold text-base mb-1">Không kiểm tra được trùng — đã khoá nút nhập</p>
       Đọc được <b>{{ c.sheet_rows }}</b> dòng trên Google Sheet nhưng không dòng nào có <b>Họ tên + Ngày khám</b> hợp lệ,
       nên không thể biết bệnh nhân nào đã được nhập. Để tránh nhập trùng, hệ thống không cho ghi.
       Hãy kiểm tra tên cột <b>NGÀY KHÁM</b> / <b>1. HỌ VÀ TÊN BỆNH NHÂN</b> trên Sheet.
     </div>
   {% elif not c.selected %}
     <div class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-3 text-sm text-amber-800">
-      ⚠️ Chưa chọn ngày lập nào — hãy tích chọn ít nhất 1 ngày để xem trước và ghi vào Sheet.
+      Chưa chọn ngày lập nào — hãy tích chọn ít nhất 1 ngày để xem trước và ghi vào Sheet.
     </div>
   {% elif c.dup and not c.new %}
     <div class="rounded-xl border-2 border-red-300 bg-red-50 px-5 py-4 text-sm text-red-800">
-      <p class="font-bold text-base mb-1">⛔ Lịch hẹn này ĐÃ ĐƯỢC NHẬP trước đó</p>
+      <p class="font-semibold text-base mb-1">Lịch hẹn này ĐÃ ĐƯỢC NHẬP trước đó</p>
       Toàn bộ <b>{{ c.dup|length }}</b> bệnh nhân trong các ngày lập đã chọn đều đã có sẵn trên Sheet
       (trùng Họ tên + Ngày tạo lịch hẹn, hoặc Họ tên + SĐT/Ngày khám) — không có gì mới để import. Hãy chọn ngày lập khác hoặc upload file khác.
     </div>
   {% elif c.dup %}
     <div class="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-      <p class="font-bold mb-1">🔁 Cảnh báo: có lịch hẹn đã nhập trước đó</p>
+      <p class="font-semibold mb-1">Cảnh báo: có lịch hẹn đã nhập trước đó</p>
       <b>{{ c.dup|length }}</b> bệnh nhân đã có sẵn trên Sheet (trùng Họ tên + Ngày tạo lịch hẹn, hoặc Họ tên + SĐT/Ngày khám) — sẽ <b>bỏ qua</b>, không ghi lại.
       Còn <b>{{ c.new|length }}</b> bệnh nhân mới sẽ được import.
     </div>
   {% else %}
     <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
-      ✅ Không có bệnh nhân nào trùng với dữ liệu đã có trên Sheet — cả <b>{{ c.new|length }}</b> bệnh nhân đều mới.
+      Không có bệnh nhân nào trùng với dữ liệu đã có trên Sheet — cả <b>{{ c.new|length }}</b> bệnh nhân đều mới.
     </div>
   {% endif %}
 
   {% if not c.blind %}
-  <p class="text-xs text-slate-400">🔎 Đã so khớp với <b class="text-slate-500">{{ c.sheet_valid }}</b>/{{ c.sheet_rows }} dòng trên Google Sheet
+  <p class="text-xs text-slate-400">Đã so khớp với <b class="text-slate-500">{{ c.sheet_valid }}</b>/{{ c.sheet_rows }} dòng trên Google Sheet
     (đọc lúc {{ c.sheet_read_at or '—' }}) · {{ c.diag.created_filled }} dòng đã có ngày tạo lịch hẹn · khoá trùng: Họ tên + Ngày tạo lịch hẹn;
     dòng cũ chưa có ngày tạo: Họ tên + SĐT + Ngày khám (thiếu SĐT thì Họ tên + Ngày khám).</p>
   {% endif %}
@@ -136,12 +136,12 @@
   {% if c.dup %}
   <details class="bg-white rounded-xl border border-slate-200">
     <summary class="cursor-pointer px-5 py-3 text-sm font-semibold text-slate-700">
-      👀 Xem {{ c.dup|length }} bệnh nhân đã có sẵn (bị bỏ qua)
+      Xem {{ c.dup|length }} bệnh nhân đã có sẵn (bị bỏ qua)
     </summary>
     <div class="overflow-x-auto border-t border-slate-100">
       <table class="w-full text-sm" style="min-width:560px">
         <thead>
-          <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+          <tr class="bg-slate-50 text-xs font-semibold text-slate-500  border-b border-slate-200">
             <th class="px-4 py-2.5 text-left">STT đã có trên Sheet</th>
             <th class="px-4 py-2.5 text-left">Họ tên</th>
             <th class="px-4 py-2.5 text-left">SĐT</th>
@@ -171,18 +171,18 @@
 
   {% if c.file_dup %}
   <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-600" id="file-dups">
-    ℹ️ Bỏ qua <b>{{ c.file_dup|length }}</b> dòng trùng ngay trong file (cùng Họ tên + Ngày hẹn + Ngày lập):
+    Bỏ qua <b>{{ c.file_dup|length }}</b> dòng trùng ngay trong file (cùng Họ tên + Ngày hẹn + Ngày lập):
     {% for d in c.file_dup[:8] %}{{ d['HỌ TÊN'] }}{% if not loop.last %}, {% endif %}{% endfor %}{% if c.file_dup|length > 8 %}…{% endif %}
   </div>
   {% endif %}
 
   {% if c.backfill %}
-  <div class="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-800 flex flex-wrap items-center gap-3" id="backfill-box">
-    <span class="flex-1 min-w-60">🧩 <b>{{ c.backfill|length }}</b> bệnh nhân đã nhập từ trước nhưng ô <b>NGÀY TẠO LỊCH HẸN KHÁM</b> còn trống.
+  <div class="rounded-xl border border-brand-200 bg-brand-50 px-5 py-4 text-sm text-brand-800 flex flex-wrap items-center gap-3" id="backfill-box">
+    <span class="flex-1 min-w-60"><b>{{ c.backfill|length }}</b> bệnh nhân đã nhập từ trước nhưng ô <b>NGÀY TẠO LỊCH HẸN KHÁM</b> còn trống.
       Điền bổ sung (chỉ ô trống, không đè dữ liệu) để lần sau báo trùng chính xác theo ngày lập.</span>
     <form method="POST" action="{{ url_for('import_backfill') }}" id="backfill-form" class="js-rec" data-count="{{ c.backfill|length }}">
       {% for d in c.selected|sort %}<input type="hidden" name="lap" value="{{ d }}">{% endfor %}
-      <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">
+      <button type="submit" class="px-4 py-2 rounded-lg bg-[#0f2642] text-white text-xs font-semibold hover:bg-[#1e3f6a]">
         Điền ngày tạo cho {{ c.backfill|length }} dòng
       </button>
     </form>
@@ -193,13 +193,13 @@
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
     {% for lbl, val, cls in [
       ('Tổng trong file', c.total, 'text-slate-800'),
-      ('Mới — sẽ ghi', c.new|length, 'text-blue-700'),
+      ('Mới — sẽ ghi', c.new|length, 'text-brand-700'),
       ('Số ngày hẹn', n_dates, 'text-slate-800'),
       ('Đã có sẵn — bỏ qua', c.dup|length, 'text-amber-600'),
     ] %}
     <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
-      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">{{ lbl }}</p>
-      <p class="text-2xl font-bold mt-1 {{ cls }}">{{ val }}</p>
+      <p class="text-xs font-semibold text-slate-400 ">{{ lbl }}</p>
+      <p class="text-2xl font-semibold mt-1 {{ cls }}">{{ val }}</p>
     </div>
     {% endfor %}
   </div>
@@ -208,18 +208,18 @@
   <div class="bg-white rounded-xl border border-slate-200">
     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
       <h2 class="font-semibold text-slate-800 text-sm">
-        Xem Trước Dữ Liệu Sẽ Import ({{ preview_rows|length }}/{{ c.new|length }} bệnh nhân mới)
+        Xem trước dữ liệu sẽ nhập ({{ preview_rows|length }}/{{ c.new|length }} bệnh nhân mới)
       </h2>
       {% if c.new|length > 10 %}
-        {% if show_all %}<a href="{{ url_short }}" class="text-xs text-blue-600 hover:underline">Thu gọn (10 dòng)</a>
-        {% else %}<a href="{{ url_full }}" class="text-xs text-blue-600 hover:underline">Xem nhiều hơn →</a>{% endif %}
+        {% if show_all %}<a href="{{ url_short }}" class="text-xs text-brand-600 hover:underline">Thu gọn (10 dòng)</a>
+        {% else %}<a href="{{ url_full }}" class="text-xs text-brand-600 hover:underline">Xem nhiều hơn →</a>{% endif %}
       {% endif %}
     </div>
     {% if preview_rows %}
     <div class="overflow-x-auto">
       <table class="w-full text-sm" style="min-width:860px">
         <thead>
-          <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+          <tr class="bg-slate-50 text-xs font-semibold text-slate-500  border-b border-slate-200">
             <th class="px-4 py-3 text-left">#</th>
             <th class="px-3 py-3 text-left">Họ tên</th>
             <th class="px-3 py-3 text-left">Tuổi</th>
@@ -260,11 +260,11 @@
     {% if c.new %}
     <a href="{{ csv_url }}"
        class="text-center px-4 py-3 border border-slate-300 bg-white rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
-      ⬇️ Tải CSV ({{ c.new|length }} BN mới)
+      Tải CSV ({{ c.new|length }} BN mới)
     </a>
     {% else %}
     <span class="text-center px-4 py-3 border border-slate-200 bg-slate-50 rounded-xl text-sm font-semibold text-slate-300 cursor-not-allowed">
-      ⬇️ Tải CSV (0 BN mới)
+      Tải CSV (0 BN mới)
     </span>
     {% endif %}
 
@@ -272,13 +272,13 @@
           data-count="{{ c.new|length }}" data-dup="{{ c.dup|length }}">
       {% for d in c.selected|sort %}<input type="hidden" name="lap" value="{{ d }}">{% endfor %}
       <button type="submit" id="confirm-btn" {% if not c.new or c.blind %}disabled{% endif %}
-              class="w-full px-4 py-3 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700
+              class="w-full px-4 py-3 rounded-xl text-sm font-semibold text-white bg-[#0f2642] hover:bg-[#1e3f6a]
                      disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed">
-        📤 Import {{ c.new|length }} BN Mới Vào Google Sheet
+        Nhập {{ c.new|length }} bệnh nhân mới vào Google Sheet
       </button>
     </form>
   </div>
-  <p class="text-[11px] text-slate-300 text-right">{{ import_version }}</p>
+  <p class="text-xs text-slate-300 text-right">{{ import_version }}</p>
 </div>
 {% endblock %}
 

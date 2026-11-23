@@ -238,9 +238,7 @@ class Wizard(AppTestCase, Base):
             self.assertIn("Nhắc lịch hẹn khám", h); self.assertIn("Nhắc lịch khám lưu động", h)
             self.assertEqual(active(h), [want], url)                                                  # đúng 1 mục sáng, đúng mục
         a = self.client.get("/sms").get_data(as_text=True); m = self.client.get("/sms/su-kien").get_data(as_text=True)
-        self.assertIn("border-blue-400", a); self.assertNotIn("border-violet-400", a)               # mỗi mục một màu: xanh dương / tím
-        self.assertIn("border-violet-400", m); self.assertNotIn("border-blue-400", m)
-        self.assertIn("bg-blue-50", a); self.assertIn("bg-violet-50", m)                            # dải tiêu đề cùng màu với mục
+        self.assertIn("bg-brand-50", a); self.assertIn("bg-slate-50", m)                            # dải tiêu đề phân biệt 2 mục bằng nền xanh nhạt / xám (không dùng màu cầu vồng)
         self.assertIn("Tạo đợt khám mới", m)                                                       # nút tạo đợt nằm ở mục lưu động
         self.assertIn("Sửa mẫu tin", a); self.assertNotIn("Sửa mẫu tin", m)                       # nút sửa mẫu tin nằm ở mục nhắc lịch
         eid = self._event()

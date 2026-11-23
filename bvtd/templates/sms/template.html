@@ -2,17 +2,17 @@
 {% set sms_section = 'appointment' %}
 {% from "sms/_tabs.html" import tabs %}
 {% block title %}Sửa mẫu tin nhắc lịch{% endblock %}
-{% block page_title %}💬 Tin nhắn SMS · Sửa mẫu tin nhắc lịch{% endblock %}
+{% block page_title %}Tin nhắn SMS · Sửa mẫu tin nhắc lịch{% endblock %}
 {% block content %}
 {{ tabs('appointment', 'template') }}
 <form method="POST" action="{{ url_for('sms_template') }}" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 max-w-3xl">
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <h3 class="font-semibold text-slate-800 text-sm">Mẫu tin nhắc lịch hẹn khám</h3>
-    <span class="text-xs {% if tpl_is_default %}text-slate-400{% else %}text-blue-700 font-semibold{% endif %}">{{ 'Đang dùng mẫu gốc' if tpl_is_default else 'Đang dùng mẫu đã sửa' }}</span>
+    <span class="text-xs {% if tpl_is_default %}text-slate-400{% else %}text-brand-700 font-semibold{% endif %}">{{ 'Đang dùng mẫu gốc' if tpl_is_default else 'Đang dùng mẫu đã sửa' }}</span>
   </div>
   <textarea id="tplBody" name="body" rows="4" class="w-full text-sm font-mono border border-slate-300 rounded-lg px-3 py-2">{{ tpl_text }}</textarea>
-  <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+  <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
     <span id="tplCount"></span>
     <span>Hệ thống tự bỏ dấu để vừa 160 ký tự/tin. Không ghi bệnh hay chẩn đoán.</span>
   </div>
@@ -26,9 +26,9 @@
   </div>
   <p class="text-xs text-slate-500">Mẫu này áp dụng cho tin tự động 18:30, nút «Tạo &amp; gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch. Tin đã gửi trước đó không đổi.</p>
   <div class="flex flex-wrap gap-2">
-    <button class="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">💾 Lưu mẫu tin</button>
+    <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lưu mẫu tin</button>
     {% if not tpl_is_default %}
-    <button name="reset" value="1" formnovalidate onclick="return confirm('Quay về mẫu tin gốc?')" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">↺ Khôi phục mẫu gốc</button>
+    <button name="reset" value="1" formnovalidate onclick="return confirm('Quay về mẫu tin gốc?')" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">Khôi phục mẫu gốc</button>
     {% endif %}
   </div>
 </form>
@@ -36,7 +36,7 @@
 <div class="bg-white rounded-xl border border-slate-200 p-5 mt-4 max-w-3xl">
   <p class="text-xs font-semibold text-slate-500 mb-1.5">Xem thử với bệnh nhân mẫu (theo mẫu đang lưu)</p>
   <p class="text-sm font-mono bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">{{ sample }}</p>
-  <p class="text-[11px] text-slate-400 mt-1">{{ sample|length }} ký tự — tin không dấu{{ ', vừa 1 tin tính phí.' if sample|length <= 160 else ', dài hơn 1 tin tính phí.' }}</p>
+  <p class="text-xs text-slate-400 mt-1">{{ sample|length }} ký tự — tin không dấu{{ ', vừa 1 tin tính phí.' if sample|length <= 160 else ', dài hơn 1 tin tính phí.' }}</p>
 </div>
 <script>
   (function () {

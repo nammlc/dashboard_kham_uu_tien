@@ -1,52 +1,51 @@
 {% extends "base.html" %}
-{% block title %}Tổng Quan{% endblock %}
-{% block page_title %}📊 Tổng Quan{% endblock %}
+{% block title %}Tổng quan{% endblock %}
+{% block page_title %}Tổng quan{% endblock %}
 
 {% block content %}
-<!-- KPI Cards -->
+<!-- Số liệu hôm nay: chữ số lớn, không ô màu -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   {% set kpis = [
-    ('Đăng ký hôm nay', stats.today_total,    'bg-blue-50 text-blue-700',  '📋', 'text-blue-700', 'today'),
-    ('Đã khám',         stats.today_attended,  'bg-emerald-50 text-emerald-700','✅','text-emerald-600', 'attended'),
-    ('Vắng / Chưa',     stats.today_absent,    'bg-red-50 text-red-700',    '❌', 'text-red-600', 'absent'),
-    ('3 ngày tới',      stats.next3_total,     'bg-violet-50 text-violet-700','🗓️','text-violet-600', 'next3'),
+    ('Đăng ký hôm nay', stats.today_total,    'today'),
+    ('Đã khám',         stats.today_attended,  'attended'),
+    ('Vắng / chưa',     stats.today_absent,    'absent'),
+    ('3 ngày tới',      stats.next3_total,     'next3'),
   ] %}
-  {% for label, val, badge_cls, icon, val_cls, scope in kpis %}
+  {% for label, val, scope in kpis %}
   <a href="{{ url_for('patients', scope=scope) }}" title="Xem danh sách bệnh nhân"
-     class="block bg-white rounded-xl border border-slate-200 p-4 relative overflow-hidden hover:border-blue-400 hover:shadow-md transition cursor-pointer">
-    <div class="absolute top-4 right-4 w-9 h-9 rounded-lg {{ badge_cls }} flex items-center justify-center text-lg">{{ icon }}</div>
-    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{{ label }}</p>
-    <p class="text-4xl font-bold mono {{ val_cls }}">{{ val }}</p>
+     class="block bg-white rounded-xl border border-slate-200 p-5 hover:border-brand-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+    <p class="text-sm text-slate-500">{{ label }}</p>
+    <p class="mt-2 text-3xl font-semibold text-slate-900 mono">{{ val }}</p>
     {% if loop.index == 1 and stats.today_total > 0 %}
-      <p class="text-xs text-slate-500 mt-1">Tỷ lệ đến: <b class="text-emerald-600">{{ stats.today_rate }}%</b></p>
+      <p class="text-xs text-slate-500 mt-1">Tỷ lệ đến: <b class="font-semibold text-slate-800 mono">{{ stats.today_rate }}%</b></p>
     {% endif %}
   </a>
   {% endfor %}
 </div>
 
-<!-- Chart + Donut -->
+<!-- Xu hướng (điểm nhấn của màn hình) + hôm nay -->
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
   <div class="lg:col-span-3 bg-white rounded-xl border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-4">
       <h2 class="font-semibold text-slate-800 text-sm">Xu hướng đặt khám</h2>
-      <span class="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">12 tháng gần nhất</span>
+      <span class="text-xs text-slate-500">12 tháng gần nhất</span>
     </div>
-    <div class="relative" style="height:260px"><canvas id="chartMonthly"></canvas></div>
+    <div class="relative" style="height:280px"><canvas id="chartMonthly" role="img" aria-label="Biểu đồ cột số đăng ký và số đã khám theo tháng trong 12 tháng gần nhất"></canvas></div>
   </div>
 
   <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
-    <h2 class="font-semibold text-slate-800 text-sm mb-4">Tháng này</h2>
+    <h2 class="font-semibold text-slate-800 text-sm mb-4">Hôm nay</h2>
     <div class="flex-1 flex items-center justify-center">
-      <div class="relative" style="width:160px;height:160px"><canvas id="chartDonut"></canvas></div>
+      <div class="relative" style="width:160px;height:160px"><canvas id="chartDonut" role="img" aria-label="Biểu đồ tròn số bệnh nhân đã khám và vắng hôm nay"></canvas></div>
     </div>
     <div class="mt-4 space-y-2">
-      <div class="flex items-center gap-2 text-xs text-slate-600">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
-        Đã đến: <b class="ml-auto mono text-emerald-600">{{ stats.today_attended }}</b>
+      <div class="flex items-center gap-2 text-sm text-slate-600">
+        <span class="w-2.5 h-2.5 rounded-full bg-brand-600 flex-shrink-0"></span>
+        Đã khám <b class="ml-auto font-semibold text-slate-900 mono">{{ stats.today_attended }}</b>
       </div>
-      <div class="flex items-center gap-2 text-xs text-slate-600">
-        <span class="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0"></span>
-        Vắng: <b class="ml-auto mono text-red-600">{{ stats.today_absent }}</b>
+      <div class="flex items-center gap-2 text-sm text-slate-600">
+        <span class="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0"></span>
+        Vắng <b class="ml-auto font-semibold text-slate-900 mono">{{ stats.today_absent }}</b>
       </div>
     </div>
   </div>
@@ -56,46 +55,42 @@
 <div class="paged bg-white rounded-xl border border-slate-200" data-per="10">
   <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
     <h2 class="font-semibold text-slate-800 text-sm">Bệnh nhân gần đây</h2>
-    <a href="{{ url_for('patients') }}" class="text-xs text-blue-600 hover:underline">Xem tất cả →</a>
+    <a href="{{ url_for('patients') }}" class="text-sm text-brand-600 hover:underline">Xem tất cả</a>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
-        <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          <th class="px-5 py-3 text-left">Họ tên</th>
-          <th class="px-4 py-3 text-left">Ngày khám</th>
-          <th class="px-4 py-3 text-left">Chuyên khoa</th>
-          <th class="px-4 py-3 text-left">Nguồn</th>
-          <th class="px-4 py-3 text-left">Trạng thái</th>
+        <tr class="bg-slate-50 text-xs font-medium text-slate-500">
+          <th scope="col" class="px-5 py-3 text-left">Họ tên</th>
+          <th scope="col" class="px-4 py-3 text-left">Ngày khám</th>
+          <th scope="col" class="px-4 py-3 text-left">Chuyên khoa</th>
+          <th scope="col" class="px-4 py-3 text-left">Nguồn</th>
+          <th scope="col" class="px-4 py-3 text-left">Trạng thái</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100">
         {% for r in stats.recent_patients %}
         <tr class="hover:bg-slate-50 transition-colors">
           <td class="px-5 py-3 font-medium text-slate-800">{{ r.get('1. HỌ VÀ TÊN BỆNH NHÂN','—') }}</td>
-          <td class="px-4 py-3 text-slate-600 mono text-xs">{{ r.get('NGÀY KHÁM','—') }}</td>
-          <td class="px-4 py-3 text-slate-600 text-xs">{{ r.get('CHUYÊN KHOA MONG MUỐN KHÁM','—') }}</td>
-          <td class="px-4 py-3 text-xs">
+          <td class="px-4 py-3 text-slate-600 mono">{{ r.get('NGÀY KHÁM','—') }}</td>
+          <td class="px-4 py-3 text-slate-600">{{ r.get('CHUYÊN KHOA MONG MUỐN KHÁM','—') }}</td>
+          <td class="px-4 py-3 text-slate-600">
             {% set src = r.get('NGUỒN BỆNH NHÂN','') %}
-            {% if 'minh lộ' in src|lower or 'nội khoa' in src|lower %}
-              <span class="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-medium">Minh Lộ</span>
-            {% else %}
-              <span class="bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-medium">GG Form</span>
-            {% endif %}
+            {% if 'minh lộ' in src|lower or 'nội khoa' in src|lower %}Minh Lộ{% else %}GG Form{% endif %}
           </td>
           <td class="px-4 py-3">
             {% set st = r.get('TRẠNG THÁI','') %}
             {% if 'ĐÃ KHÁM' in st %}
-              <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-xs font-semibold">✓ Đã khám</span>
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Đã khám</span>
             {% elif 'CHƯA' in st or 'BỎ' in st %}
-              <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded-full text-xs font-semibold">✕ Vắng</span>
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Vắng</span>
             {% else %}
-              <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full text-xs font-semibold">⏳ Chờ</span>
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Chờ</span>
             {% endif %}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="px-5 py-8 text-center text-slate-400 text-sm">Chưa có dữ liệu.</td></tr>
+        <tr><td colspan="5" class="px-5 py-8 text-center text-slate-500 text-sm">Chưa có dữ liệu.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -160,43 +155,46 @@
 // Dữ liệu từ Flask → JavaScript
 const monthly = {{ stats.monthly_chart | tojson }};
 
-// Biểu đồ cột theo tháng
+// Biểu đồ cột theo tháng: một màu nhấn (đã khám), nền trung tính (đăng ký)
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.color = '#64748b';
 const ctx1 = document.getElementById('chartMonthly').getContext('2d');
 new Chart(ctx1, {
   type: 'bar',
   data: {
     labels: monthly.map(d => d.month.replace('-','/').slice(3)),
     datasets: [
-      { label:'Đăng ký', data: monthly.map(d=>d.registered), backgroundColor:'#bfdbfe', borderRadius:4 },
-      { label:'Đã khám', data: monthly.map(d=>d.attended),   backgroundColor:'#6ee7b7', borderRadius:4 },
+      { label:'Đăng ký', data: monthly.map(d=>d.registered), backgroundColor:'#cbd5e1', borderRadius:4 },
+      { label:'Đã khám', data: monthly.map(d=>d.attended),   backgroundColor:'#0b5ea8', borderRadius:4 },
     ]
   },
   options: {
     responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{ labels:{ font:{ size:11 } } } },
+    plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, pointStyle:'rectRounded', boxWidth:10, boxHeight:10, font:{ size:12 } } } },
     scales:{
-      x:{ grid:{display:false}, ticks:{ font:{size:10} } },
-      y:{ grid:{color:'#f1f5f9'}, ticks:{ font:{size:10} } }
+      x:{ grid:{display:false}, border:{display:false}, ticks:{ font:{size:12} } },
+      y:{ grid:{color:'#eef2f6'}, border:{display:false}, ticks:{ font:{size:12}, precision:0 } }
     }
   }
 });
 
-// Donut tỷ lệ đến/vắng hôm nay
+// Biểu đồ tròn đã khám / vắng hôm nay (không có số liệu thì hiện vòng xám, không tự bịa số)
 const ctx2 = document.getElementById('chartDonut').getContext('2d');
 const att  = {{ stats.today_attended }};
 const abs  = {{ stats.today_absent }};
+const empty = (att + abs) === 0;
 new Chart(ctx2, {
   type:'doughnut',
   data:{
-    labels:['Đã khám','Vắng'],
-    datasets:[{ data:[att||1,abs], backgroundColor:['#34d399','#f87171'],
-                borderWidth:0, hoverOffset:4 }]
+    labels: empty ? ['Chưa có số liệu'] : ['Đã khám','Vắng'],
+    datasets:[{ data: empty ? [1] : [att, abs], backgroundColor: empty ? ['#e2e8f0'] : ['#0b5ea8','#94a3b8'],
+                borderWidth:0, hoverOffset:0 }]
   },
   options:{
     responsive:true, maintainAspectRatio:false, cutout:'72%',
     plugins:{
       legend:{display:false},
-      tooltip:{ callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed}` } }
+      tooltip:{ enabled: !empty, callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.parsed}` } }
     }
   }
 });

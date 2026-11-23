@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Đổi email đăng nhập{% endblock %}
-{% block page_title %}✉️ Đổi email đăng nhập{% endblock %}
+{% block page_title %}Đổi email đăng nhập{% endblock %}
 
 {% block content %}
 <div class="max-w-md bg-white rounded-xl border border-slate-200 px-6 py-5">
@@ -12,15 +12,15 @@
     <form method="POST" autocomplete="off">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <label for="new_email" class="block text-sm font-semibold text-slate-600 mb-1.5">Email mới</label>
-      <input type="email" id="new_email" name="new_email" required autofocus autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+      <input type="email" id="new_email" name="new_email" required autofocus autocomplete="email" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#0b5ea8] focus:ring-2 focus:ring-[#0b5ea8]/20">
       {% if has_pw %}
         <label for="password" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Mật khẩu hiện tại</label>
-        <input type="password" id="password" name="password" required autocomplete="current-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+        <input type="password" id="password" name="password" required autocomplete="current-password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#0b5ea8] focus:ring-2 focus:ring-[#0b5ea8]/20">
       {% endif %}
       {% if need_otp %}
         <label for="code" class="block text-sm font-semibold text-slate-600 mt-3 mb-1.5">Mã OTP 6 số hiện tại</label>
         <input type="text" id="code" name="code" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000"
-               class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-center text-xl tracking-[.3em] font-semibold focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+               class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-center text-xl tracking-[.3em] font-semibold focus:outline-none focus:border-[#0b5ea8] focus:ring-2 focus:ring-[#0b5ea8]/20">
       {% endif %}
       <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Gửi liên kết xác nhận</button>
     </form>

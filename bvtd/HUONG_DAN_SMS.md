@@ -10,7 +10,7 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
 - **Chế độ thử (sandbox)**: chạy trọn luồng nhưng **không gửi gì ra ngoài** — dùng cho tới khi chọn xong nhà cung cấp.
 - **Menu trái có 2 mục riêng** (nhóm «Tin Nhắn SMS»), trang nào thì mục đó sáng và có dải tiêu đề cùng màu. Mỗi mục có **các tab thật** (mỗi tab là một trang, luôn hiện đủ ở mọi trang của mục, tab đang mở được tô màu):
   - **📅 Nhắc lịch hẹn khám** (xanh dương): tab **📊 Tổng quan & cài đặt** (cài đặt gửi tin, nhắc ngày mai, lịch sử gửi) · **✉️ Soạn & gửi tin** · **✏️ Sửa mẫu tin**.
-  - **🚑 Nhắc lịch khám lưu động** (tím): tab **🗂️ Các đợt khám** (danh sách đợt, lịch sử gửi) · **➕ Tạo đợt khám mới** · **✉️ Soạn & gửi tin**.
+  - **🚑 Nhắc lịch khám lưu động** (tím): tab **➕ Tạo đợt khám mới** · **🗂️ Các đợt khám** (danh sách đợt, lịch sử gửi) · **✉️ Soạn & gửi tin** · **📊 Báo cáo tỉ lệ đến**.
 - **Sửa mẫu tin** (tab riêng của mục Nhắc lịch hẹn khám): sửa nội dung tin nhắc lịch, có đếm ký tự/số tin; **«Khôi phục mẫu gốc»** để quay lại.
   Mẫu mới áp dụng cho tin tự động 18:30, nút «Tạo & gửi ngay», «Gửi thử» và trang soạn tin nhắc lịch (tin đã gửi không đổi). Mẫu lưu trong DB (bảng `sms_settings`), không cần đổi biến môi trường.
 - **Mỗi loại tin một quy trình riêng**, có thanh tiến trình «Bước n/N» và dải «Đã chọn» nhắc lại lựa chọn của các bước trước:
@@ -30,6 +30,16 @@ Mục **💬 Tin nhắn SMS** ở menu trái (chỉ hiện với email nằm tro
   **Bắt buộc chọn hình thức đồng ý nhận tin** (phiếu giấy / QR / nhân viên ghi nhận) — hệ thống lưu hình thức và thời điểm.
   Khi soạn tin có thể **tích cả 2 đối tượng cùng lúc**: «Danh bạ của đợt» và «Bệnh nhân cũ theo vùng» (danh sách gộp chung; trùng SĐT thì ưu tiên người trong danh bạ).
   Mỗi SĐT chỉ nhận 1 tin cho 1 đợt.
+- **Danh sách đã được nhắc + báo cáo tỉ lệ đến** (khám lưu động):
+  - Sau mỗi lần gửi, những người **đã được gửi tin** (cả người trong danh bạ lẫn bệnh nhân cũ theo vùng; mỗi SĐT tính 1 lần) tự được cập nhật
+    vào mục **«Đã được nhắc»** ở trang của đợt.
+  - Tab **📊 Báo cáo tỉ lệ đến**: ① tải file nhật ký khám (Báo cáo ĐK KCB — file 01-1, **dùng chung** với trang Đối chiếu tái khám, tải 1 lần dùng cho cả hai) →
+    ② chọn đợt (hoặc xem bảng tổng hợp mọi đợt) → xem **tỉ lệ đến**, theo nhóm (danh bạ / bệnh nhân) và theo xã/phường, danh sách từng người, rồi **⬇️ Tải báo cáo Excel**.
+  - Cách tính: so khớp tên + SĐT → tên + năm sinh → chỉ tên (đúng thuật toán đối chiếu tái khám) chỉ trong **2 hoặc 3 ngày kể từ ngày khám** (chọn ở ô «Số ngày khám», mặc định 3; ngày khám là ngày thứ nhất; không vượt quá hôm nay).
+    Khi hôm nay còn nằm trong số ngày đó, báo cáo ghi **«tạm tính»** vì nhật ký khám chưa đủ.
+    **Tỉ lệ đến** = số người **khớp chắc chắn** / số người đối chiếu được. Ca chỉ khớp tên xếp «Có thể đã đến (cần xác nhận)» và được nêu riêng (kèm tỉ lệ tối đa).
+    Người **thiếu họ tên** không đối chiếu được nên không tính vào mẫu số. Đợt chưa tới ngày khám thì chưa tính. Ô «Chỉ tính tin gửi thật» bỏ các tin gửi thử (sandbox).
+  - File Excel có 2 trang: **Tổng hợp** (tỉ lệ đến, theo nhóm, theo xã) và **Danh sách** (từng người, cùng các cột như file đối chiếu tái khám: Họ tên, SĐT, Năm sinh, Tuổi, Kết quả, Khớp qua, Ngày thực đến, SĐT/Năm sinh/Khoa lúc khám, Độ tin cậy…).
 - Chưa có: **KSK nhập từ Excel** (giai đoạn 4 — cùng bộ nhập file .xlsx cho danh bạ).
 
 ## Cấu hình (biến môi trường trên Coolify)

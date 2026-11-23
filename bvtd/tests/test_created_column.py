@@ -105,9 +105,9 @@ class DuplicateByCreatedDate(_Base):
         self.upload()
         html = self.preview_html()                               # CHƯA tích ngày nào: chip vẫn phải cho biết tình trạng
         t = text(html)
-        self.assertRegex(t, r"📅 21/10/2026 \(hôm nay\) · 3 BN · ✔ đã nhập đủ")
-        self.assertRegex(t, r"📅 20/10/2026 · 1 BN · ✔ đã nhập đủ")
-        self.assertNotRegex(t, r"📅 19/10/2026 · 1 BN · [✔◐]")        # ngày 19/10 chưa nhập
+        self.assertRegex(t, r"21/10/2026 \(hôm nay\) · 3 BN · ✔ đã nhập đủ")
+        self.assertRegex(t, r"20/10/2026 · 1 BN · ✔ đã nhập đủ")
+        self.assertNotRegex(t, r"19/10/2026 · 1 BN · [✔◐]")        # ngày 19/10 chưa nhập
         t = self.preview(LAP_TODAY)                              # tích lại ngày đã nhập → báo rõ "ĐÃ NHẬP ĐỦ"
         self.assertIn("ĐÃ ĐƯỢC NHẬP trước đó", t)
         self.assertIn("ĐÃ NHẬP ĐỦ", t)

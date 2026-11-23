@@ -1,27 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Nhật ký truy cập{% endblock %}
-{% block page_title %}🛡️ Nhật ký truy cập{% endblock %}
+{% block page_title %}Nhật ký truy cập{% endblock %}
 
 {% block content %}
 {# màu nhãn theo loại sự kiện #}
 {% set tone = {
-  'login_ok': 'bg-emerald-50 text-emerald-700', 'login_fail': 'bg-rose-50 text-rose-700',
+  'login_ok': 'bg-emerald-50 text-emerald-700', 'login_fail': 'bg-red-50 text-red-700',
   'logout': 'bg-slate-100 text-slate-600', 'session_expired': 'bg-amber-50 text-amber-700',
-  'page': 'bg-blue-50 text-blue-700', 'action': 'bg-violet-50 text-violet-700',
-  'register_view': 'bg-cyan-50 text-cyan-700', 'register_submit': 'bg-teal-50 text-teal-700'} %}
+  'page': 'bg-brand-50 text-brand-700', 'action': 'bg-slate-50 text-slate-700',
+  'register_view': 'bg-brand-50 text-brand-700', 'register_submit': 'bg-brand-50 text-brand-700'} %}
 
 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
   <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
     <p class="text-xs text-slate-400">Lượt ghi nhận hôm nay</p>
-    <p class="text-2xl font-bold text-slate-800 mt-1">{{ stats.today }}</p>
+    <p class="text-2xl font-semibold text-slate-800 mt-1">{{ stats.today }}</p>
   </div>
   <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
     <p class="text-xs text-slate-400">Tài khoản hoạt động hôm nay</p>
-    <p class="text-2xl font-bold text-slate-800 mt-1">{{ stats.users_today }}</p>
+    <p class="text-2xl font-semibold text-slate-800 mt-1">{{ stats.users_today }}</p>
   </div>
   <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
     <p class="text-xs text-slate-400">Đăng nhập sai (24 giờ qua)</p>
-    <p class="text-2xl font-bold mt-1 {{ 'text-rose-600' if stats.fails_24h else 'text-slate-800' }}">{{ stats.fails_24h }}</p>
+    <p class="text-2xl font-semibold mt-1 {{ 'text-red-600' if stats.fails_24h else 'text-slate-800' }}">{{ stats.fails_24h }}</p>
   </div>
 </div>
 
@@ -30,8 +30,8 @@
         class="flex flex-wrap items-center gap-2 px-5 py-4 border-b border-slate-100">
     <input type="hidden" name="per_page" value="{{ per_page }}">
     <input type="search" name="q" value="{{ q }}" maxlength="80" autocomplete="off" aria-label="Tìm trong nhật ký"
-           placeholder="🔍  Tìm email, IP, đường dẫn..."
-           class="flex-1 min-w-48 text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400">
+           placeholder="Tìm email, IP, đường dẫn"
+           class="flex-1 min-w-48 text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-brand-400">
     <select name="event" aria-label="Loại sự kiện" class="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white">
       <option value="">Tất cả sự kiện</option>
       {% for k, v in events.items() %}<option value="{{ k }}" {% if event == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
@@ -39,10 +39,10 @@
     <div class="flex items-center gap-1.5 text-sm text-slate-500">
       <label for="date_from">Từ</label>
       <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
-             class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-blue-400">
+             class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-brand-400">
       <label for="date_to">đến</label>
       <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
-             class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-blue-400">
+             class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-brand-400">
     </div>
     <button type="submit" class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lọc</button>
     {% if q or event or date_from or date_to %}
@@ -54,7 +54,7 @@
   <div class="overflow-x-auto">
     <table class="w-full text-sm" style="min-width:980px">
       <thead>
-        <tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200">
+        <tr class="bg-slate-50 text-xs font-semibold text-slate-500  border-b border-slate-200">
           <th class="px-4 py-3 text-left">Thời gian</th>
           <th class="px-3 py-3 text-left">Sự kiện</th>
           <th class="px-3 py-3 text-left">Tài khoản</th>

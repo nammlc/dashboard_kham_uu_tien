@@ -1,6 +1,6 @@
 {% extends "auth/_shell.html" %}
 {% block title %}Đổi điện thoại xác thực{% endblock %}
-{% block icon %}📱{% endblock %}
+{% block icon %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>{% endblock %}
 {% block heading %}Đổi điện thoại xác thực{% endblock %}
 {% block sub %}{{ email }}{% endblock %}
 {% block body %}
@@ -12,9 +12,9 @@
         <p class="text-sm text-slate-600 mb-3">Nhập mật khẩu để xác nhận đúng là bạn, rồi quét mã QR bằng điện thoại mới. <b>Điện thoại cũ sẽ ngừng dùng được.</b></p>
         <label for="password" class="block text-sm font-semibold text-slate-600 mb-1.5">Mật khẩu</label>
         <input type="password" id="password" name="password" required autofocus autocomplete="current-password"
-               class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#2a7ae4] focus:ring-2 focus:ring-[#2a7ae4]/20">
+               class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#0b5ea8] focus:ring-2 focus:ring-[#0b5ea8]/20">
       {% else %}
-        <p class="text-sm text-slate-600">Tài khoản này đăng nhập bằng Google. Hãy <a class="underline text-[#2a7ae4]" href="{{ url_for('login') }}">đăng nhập bằng Google</a> trên trình duyệt này, rồi mở lại liên kết trong email.</p>
+        <p class="text-sm text-slate-600">Tài khoản này đăng nhập bằng Google. Hãy <a class="underline text-[#0b5ea8]" href="{{ url_for('login') }}">đăng nhập bằng Google</a> trên trình duyệt này, rồi mở lại liên kết trong email.</p>
       {% endif %}
       {% if pending_ok or has_pw %}
       <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Tiếp tục thiết lập điện thoại mới</button>

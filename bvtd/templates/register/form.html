@@ -18,34 +18,34 @@
 {% endif %}<title>Đăng ký hẹn khám online – BVĐK Tâm Đức Cầu Quan</title>
 {% include "_icons.html" %}
 <style>
-  :root{--bg:#f2f7fb;--card:#fff;--ink:#12263a;--muted:#4a5f73;--line:#b9c8d6;--blue:#0b5ea8;--blue-d:#08457d;--green:#157a37;--green-d:#0f5c29;--red:#b3261e;--red-bg:#fdecea;--sel:#e3f1ff}
+  :root{--bg:#f3f7fa;--card:#fff;--ink:#102a43;--muted:#486581;--line:#d9e2ec;--ctl:#829ab1;--blue:#0b5ea8;--blue-d:#08457d;--green:#157a37;--green-d:#0f5c29;--red:#b3261e;--red-bg:#fdecea;--sel:#e6f0fa;--ring:#0b5ea8}
   *{box-sizing:border-box}
-  html{font-size:19px;-webkit-text-size-adjust:100%;scroll-padding-bottom:110px}
+  html{font-size:19px;-webkit-text-size-adjust:100%;scroll-padding-bottom:120px}
   @media(min-width:900px){html{font-size:18px}}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
-  .wrap{max-width:760px;margin:0 auto;padding:14px 14px 24px}
-  header.top{background:#0b3a6e;color:#fff;padding:14px}
-  header.top .in{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:14px;text-align:left}
-  header.top .logo{flex:none;width:60px;height:60px;border-radius:50%;background:#fff;display:block}
-  header.top h1{margin:0;font-size:1.25rem;line-height:1.2;font-weight:800;letter-spacing:.2px}
-  header.top .hos{font-size:.9rem;opacity:.95;margin-top:3px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 32px}
+  header.top{background:#0b3a6e;color:#fff;padding:16px}
+  header.top .in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px}
+  header.top .logo{flex:none;width:56px;height:56px;border-radius:50%;background:#fff;display:block}
+  header.top h1{margin:0;font-size:1.3rem;line-height:1.25;font-weight:700}
+  header.top .hos{font-size:.9rem;color:#c7d9ee;margin-top:2px}
   button{font:inherit;cursor:pointer}
-  .card{background:var(--card);border:2px solid #d3e0ea;border-radius:18px;padding:16px;margin:0 0 14px}
-  .card h2{margin:0 0 12px;font-size:1.15rem;color:var(--blue-d);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .card h2 .no{flex:none;width:1.7rem;height:1.7rem;border-radius:50%;background:var(--blue);color:#fff;font-size:.95rem;display:inline-flex;align-items:center;justify-content:center}
-  .card h2 .opt{font-size:.8rem;font-weight:600;color:var(--muted)}
-  .field{margin:0 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin:0 0 16px}
+  .card h2{margin:0 0 16px;font-size:1.15rem;line-height:1.3;font-weight:700;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .card h2 .no{flex:none;width:2rem;height:2rem;border-radius:50%;background:var(--sel);color:var(--blue-d);font-size:1rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .card h2 .opt{font-size:.85rem;font-weight:400;color:var(--muted)}
+  .field{margin:0 0 20px}
   .field:last-child{margin-bottom:0}
   .row2{display:grid;grid-template-columns:1fr;gap:0 16px}
   @media(min-width:640px){.row2{grid-template-columns:1fr 1fr}}
-  label.q,.q{display:block;font-weight:800;font-size:1.02rem;margin-bottom:6px}
-  .hint{display:block;font-weight:400;color:var(--muted);font-size:.82rem;margin-top:1px}
+  label.q,.q{display:block;font-weight:700;font-size:1.02rem;margin-bottom:8px}
+  .hint{display:block;font-weight:400;color:var(--muted);font-size:.85rem;margin-top:2px}
   .req{color:var(--red)}
-  .reqnote{margin:0 0 10px;font-size:.8rem;color:var(--muted)}
+  .reqnote{margin:0 0 12px;font-size:.85rem;color:var(--muted)}
   input[type=text],input[type=tel],input[type=date],textarea{
-    width:100%;font:inherit;font-size:1.1rem;padding:12px 14px;min-height:56px;border:2.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
-  textarea{min-height:84px;resize:vertical}
-  input:focus,textarea:focus{outline:4px solid #9cc8ee;border-color:var(--blue)}
+    width:100%;font:inherit;font-size:1.1rem;padding:12px 14px;min-height:56px;border:2px solid var(--ctl);border-radius:10px;background:#fff;color:var(--ink)}
+  textarea{min-height:88px;resize:vertical}
+  input:focus,textarea:focus{outline:3px solid var(--ring);outline-offset:2px;border-color:var(--blue)}
   .uc{text-transform:uppercase}
   .choices{display:grid;gap:10px}
   .choices.dates{grid-template-columns:repeat(3,1fr)}
@@ -53,44 +53,60 @@
   .choices.list{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}
   .choice{position:relative;display:block}
   .choice input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
-  .choice span{display:flex;align-items:center;justify-content:center;text-align:center;min-height:54px;padding:8px 10px;border:2.5px solid var(--line);border-radius:14px;background:#fff;font-weight:700;font-size:1rem}
+  .choice span{display:flex;align-items:center;justify-content:center;gap:8px;text-align:center;min-height:54px;padding:8px 12px;border:2px solid var(--ctl);border-radius:10px;background:#fff;font-weight:700;font-size:1rem;transition:background-color .15s,border-color .15s,color .15s}
   .choices.list .choice span{justify-content:flex-start;text-align:left}
   .choice span.two{flex-direction:column;gap:1px}
   .choice small{display:block;font-weight:400;color:var(--muted);font-size:.8rem}
-  .choice input:checked+span{border-color:var(--blue);background:var(--sel);box-shadow:inset 0 0 0 2px var(--blue)}
-  .choice input:focus-visible+span{outline:4px solid #9cc8ee}
-  .choice input:disabled+span{opacity:.35;text-decoration:line-through;cursor:not-allowed}
-  .grp{font-weight:700;font-size:.9rem;color:var(--muted);margin:10px 0 6px}
-  .sub{margin-top:10px}
+  @media(hover:hover){.choice:hover input:not(:disabled)+span{border-color:var(--blue)}}
+  .choice input:checked+span{border-color:var(--blue);background:var(--sel);color:var(--blue-d);box-shadow:inset 0 0 0 1px var(--blue)}
+  .choice input:checked+span small{color:var(--blue-d)}
+  .choices.slots .choice input:checked+span{background:var(--blue);color:#fff}
+  .choices.list .choice input:checked+span::after{content:"";flex:none;margin-left:auto;width:1.1rem;height:1.1rem;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2308457d' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5 9-10'/%3E%3C/svg%3E") center/contain no-repeat}
+  .choice input:focus-visible+span{outline:3px solid var(--ring);outline-offset:2px}
+  .choice input:disabled+span{opacity:.4;text-decoration:line-through;cursor:not-allowed}
+  .grp{font-weight:700;font-size:.9rem;color:var(--muted);margin:12px 0 8px}
+  .sub{margin-top:12px}
   .linkbtn{margin-top:8px;border:0;background:none;color:var(--blue);font-weight:700;text-decoration:underline;min-height:44px;padding:0 4px}
-  .err{display:none;margin:8px 0 0;padding:8px 12px;border-radius:10px;background:var(--red-bg);color:var(--red);font-weight:700;font-size:.92rem}
+  .err{display:none;margin:8px 0 0;padding-left:1.45rem;font-weight:700;font-size:.92rem;color:var(--red);background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b3261e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v5M12 16h.01'/%3E%3C/svg%3E") left .2rem/1.05rem no-repeat}
   .err.show{display:block}
   .has-err input[type=text],.has-err input[type=tel],.has-err input[type=date],.has-err textarea{border-color:var(--red)}
-  .banner{background:var(--red-bg);border:2px solid var(--red);color:var(--red);border-radius:14px;padding:12px 14px;margin:0 0 14px;font-weight:700}
-  .check{display:flex;gap:12px;align-items:flex-start;padding:12px;border:2.5px solid var(--line);border-radius:14px;background:#fff;margin:0 0 10px;cursor:pointer}
-  .check input{width:30px;height:30px;flex:none;margin:1px 0 0;accent-color:var(--blue)}
+  .has-err .choice span,.has-err .check{border-color:var(--red)}
+  .banner{background:var(--red-bg);border:1px solid var(--red);color:var(--red);border-radius:12px;padding:12px 16px;margin:0 0 16px;font-weight:700}
+  .check{display:flex;gap:14px;align-items:flex-start;padding:14px;border:2px solid var(--ctl);border-radius:10px;background:#fff;margin:0 0 10px;cursor:pointer}
+  .check input{width:28px;height:28px;flex:none;margin:1px 0 0;accent-color:var(--blue)}
   .check span{font-weight:700}
-  details.terms{border:2px solid var(--line);border-radius:14px;padding:6px 14px;background:#fafcfe;margin:0 0 12px}
-  details.terms summary{font-weight:800;color:var(--blue-d);cursor:pointer;min-height:44px;display:flex;align-items:center}
-  details.terms ol{padding-left:1.2rem;margin:.3rem 0;font-size:.86rem}
-  details.terms li{margin-bottom:.35rem}
-  .note{background:#fff8e1;border:2px solid #f0cf65;border-radius:14px;padding:8px 12px;font-size:.85rem;margin:0 0 14px}
-  .bar{position:sticky;bottom:0;margin:0 -14px;background:#fff;border-top:2px solid #d3e0ea;padding:10px 14px calc(10px + env(safe-area-inset-bottom));z-index:5}
-  .bar button{display:block;width:100%;max-width:760px;margin:0 auto;min-height:62px;border-radius:16px;border:3px solid var(--green);background:var(--green);color:#fff;font-weight:800;font-size:1.1rem}
+  details.terms{border:1px solid var(--line);border-radius:12px;padding:4px 16px;background:#fff;margin:0 0 16px}
+  details.terms summary{font-weight:700;color:var(--blue-d);cursor:pointer;min-height:48px;display:flex;align-items:center;gap:10px;list-style:none}
+  details.terms summary::-webkit-details-marker{display:none}
+  details.terms summary svg{flex:none;width:1.2rem;height:1.2rem}
+  details.terms summary::after{content:"";margin-left:auto;width:.55rem;height:.55rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s}
+  details.terms[open] summary::after{transform:rotate(-135deg)}
+  details.terms ol{padding-left:1.2rem;margin:.3rem 0 .8rem;font-size:.88rem}
+  details.terms li{margin-bottom:.4rem}
+  .note{display:flex;gap:12px;align-items:flex-start;background:#eef4fa;border-radius:10px;padding:12px 14px;font-size:.9rem;margin:0 0 20px}
+  .note svg{flex:none;width:1.25rem;height:1.25rem;margin-top:.1rem;color:var(--blue)}
+  .bar{position:sticky;bottom:0;margin:0 -16px;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));z-index:5}
+  .bar .sum{max-width:760px;margin:0 auto 8px;font-size:.92rem;color:var(--muted);text-align:center}
+  .bar .sum b{color:var(--ink)}
+  .bar button{display:block;width:100%;max-width:760px;margin:0 auto;min-height:62px;border-radius:12px;border:0;background:var(--green);color:#fff;font-weight:700;font-size:1.1rem;transition:background-color .15s}
+  @media(hover:hover){.bar button:hover:not([disabled]){background:var(--green-d)}}
   .bar button:active{background:var(--green-d)}
+  .bar button:focus-visible{outline:3px solid var(--ring);outline-offset:3px}
   .bar button[disabled]{opacity:.6}
   .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-  .foot{margin:14px 0 0;color:var(--muted);font-size:.8rem;text-align:center}
+  .foot{margin:16px 0 0;color:var(--muted);font-size:.85rem;text-align:center}
   .hidden{display:none!important}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
   @media(min-width:900px){
     header.top{padding:24px}
-    header.top .in{max-width:1000px;gap:24px}
+    header.top .in{gap:24px}
     header.top .logo{width:92px;height:92px}
     header.top h1{font-size:2.3rem}
-    header.top .hos{font-size:1.2rem;margin-top:6px}
-    .wrap{padding-top:26px}
-    .card{padding:22px 24px}
+    header.top .hos{font-size:1.2rem}
+    .wrap{padding-top:28px}
+    .card{padding:24px}
     .bar{position:static;margin:0;border:0;background:none;padding:0}
+    .bar .sum{text-align:left;margin:0 0 8px}
   }
 </style>
 </head>
@@ -99,7 +115,7 @@
   <div class="in">
     <img class="logo" src="{{ url_for('static', filename='logo.png') }}" width="56" height="56" alt="Logo Bệnh viện Đa khoa Tâm Đức Cầu Quan">
     <div>
-      <h1>ĐĂNG KÝ HẸN KHÁM ONLINE</h1>
+      <h1>Đăng ký hẹn khám online</h1>
       <div class="hos">BVĐK Tâm Đức Cầu Quan</div>
     </div>
   </div>
@@ -120,19 +136,19 @@
 
       <div class="field {{ 'has-err' if errors.full_name }}">
         <label class="q" for="full_name">Họ và tên <span class="req">*</span><span class="hint">Ví dụ: NGUYỄN VĂN AN</span></label>
-        <input type="text" id="full_name" name="full_name" class="uc" value="{{ v.full_name or '' }}" maxlength="80" autocomplete="name" enterkeyhint="next">
+        <input type="text" id="full_name" name="full_name" aria-describedby="err-full_name" {% if errors.full_name %}aria-invalid="true"{% endif %} class="uc" value="{{ v.full_name or '' }}" maxlength="80" autocomplete="name" enterkeyhint="next">
         <p class="err {{ 'show' if errors.full_name }}" id="err-full_name" role="alert">{{ errors.full_name or '' }}</p>
       </div>
 
       <div class="row2">
         <div class="field {{ 'has-err' if errors.birth_year }}">
           <label class="q" for="birth_year">Năm sinh <span class="req">*</span><span class="hint">4 chữ số, ví dụ 1958</span></label>
-          <input type="tel" inputmode="numeric" id="birth_year" name="birth_year" value="{{ v.birth_year or '' }}" maxlength="4" autocomplete="bday-year" enterkeyhint="next">
+          <input type="tel" inputmode="numeric" id="birth_year" name="birth_year" aria-describedby="err-birth_year" {% if errors.birth_year %}aria-invalid="true"{% endif %} value="{{ v.birth_year or '' }}" maxlength="4" autocomplete="bday-year" enterkeyhint="next">
           <p class="err {{ 'show' if errors.birth_year }}" id="err-birth_year" role="alert">{{ errors.birth_year or '' }}</p>
         </div>
         <div class="field {{ 'has-err' if errors.phone }}">
           <label class="q" for="phone">Số điện thoại <span class="req">*</span><span class="hint">10 số, ví dụ 0912345678</span></label>
-          <input type="tel" inputmode="tel" id="phone" name="phone" value="{{ v.phone or '' }}" maxlength="16" autocomplete="tel" enterkeyhint="next">
+          <input type="tel" inputmode="tel" id="phone" name="phone" aria-describedby="err-phone" {% if errors.phone %}aria-invalid="true"{% endif %} value="{{ v.phone or '' }}" maxlength="16" autocomplete="tel" enterkeyhint="next">
           <p class="err {{ 'show' if errors.phone }}" id="err-phone" role="alert">{{ errors.phone or '' }}</p>
         </div>
       </div>
@@ -144,7 +160,7 @@
 
       <div class="field {{ 'has-err' if errors.symptoms }}">
         <label class="q" for="symptoms">Triệu chứng chính<span class="hint">Ví dụ: đau đầu, ho kéo dài, khám thai…</span></label>
-        <textarea id="symptoms" name="symptoms" maxlength="300" rows="2">{{ v.symptoms or '' }}</textarea>
+        <textarea id="symptoms" name="symptoms" aria-describedby="err-symptoms" maxlength="300" rows="2">{{ v.symptoms or '' }}</textarea>
         <p class="err {{ 'show' if errors.symptoms }}" id="err-symptoms" role="alert">{{ errors.symptoms or '' }}</p>
       </div>
 
@@ -158,7 +174,7 @@
         </div>
         <div class="sub {{ '' if v.specialty == OTHER else 'hidden' }}" id="other-box">
           <label class="q" for="specialty_other">Ghi rõ chuyên khoa</label>
-          <input type="text" id="specialty_other" name="specialty_other" value="{{ v.specialty_other or '' }}" maxlength="80">
+          <input type="text" id="specialty_other" name="specialty_other" aria-describedby="err-specialty" value="{{ v.specialty_other or '' }}" maxlength="80">
         </div>
         <p class="err {{ 'show' if errors.specialty or errors.specialty_other }}" id="err-specialty" role="alert">{{ errors.specialty or errors.specialty_other or '' }}</p>
         <button type="button" class="linkbtn hidden" id="spec-clear">Bỏ chọn chuyên khoa</button>
@@ -168,14 +184,14 @@
     {# ───────── 3. NGÀY GIỜ KHÁM ───────── #}
     <section class="card" aria-labelledby="h3">
       <h2 id="h3"><span class="no">3</span>Ngày giờ khám</h2>
-      <div class="note">⏰ Nên đăng ký trong giờ hành chính, trước giờ khám 6–8 tiếng. Nhận đăng ký trong {{ max_days }} ngày tới.</div>
+      <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Nên đăng ký trong giờ hành chính, trước giờ khám 6–8 tiếng. Nhận đăng ký trong {{ max_days }} ngày tới.</span></div>
 
       <div class="field {{ 'has-err' if errors.exam_date }}">
         <div class="q" id="q-date">Ngày khám <span class="req">*</span></div>
         <div class="choices dates" id="quick-dates" aria-labelledby="q-date"></div>
         <div class="sub">
           <label class="q" for="exam_date" style="font-weight:600;font-size:.92rem">Hoặc chọn ngày khác</label>
-          <input type="date" id="exam_date" name="exam_date" value="{{ v.exam_date or '' }}" min="{{ today }}" max="{{ max_date }}">
+          <input type="date" id="exam_date" name="exam_date" aria-describedby="err-exam_date" value="{{ v.exam_date or '' }}" min="{{ today }}" max="{{ max_date }}">
         </div>
         <p class="err {{ 'show' if errors.exam_date }}" id="err-exam_date" role="alert">{{ errors.exam_date or '' }}</p>
       </div>
@@ -199,7 +215,7 @@
       <h2 id="h4"><span class="no">4</span>Xác nhận</h2>
 
       <details class="terms">
-        <summary>📄 Điều khoản đặt lịch khám online</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>Điều khoản đặt lịch khám online</summary>
         <ol>
           <li><b>Cung cấp thông tin:</b> Người bệnh cam kết cung cấp đầy đủ, chính xác các thông tin cá nhân cần thiết khi đăng ký lịch khám.</li>
           <li><b>Thời gian có mặt:</b> Đến trước giờ hẹn từ 15–30 phút để hoàn tất thủ tục khám bệnh.</li>
@@ -212,16 +228,19 @@
       </details>
 
       <div class="field {{ 'has-err' if errors.agree_truth }}">
-        <label class="check"><input type="checkbox" name="agree_truth" value="1" {{ 'checked' if v.agree_truth == '1' }}><span>Tôi cam kết thông tin trên đúng sự thật và chịu trách nhiệm trước pháp luật.</span></label>
+        <label class="check"><input type="checkbox" name="agree_truth" aria-describedby="err-agree_truth" value="1" {{ 'checked' if v.agree_truth == '1' }}><span>Tôi cam kết thông tin trên đúng sự thật và chịu trách nhiệm trước pháp luật.</span></label>
         <p class="err {{ 'show' if errors.agree_truth }}" id="err-agree_truth" role="alert">{{ errors.agree_truth or '' }}</p>
       </div>
       <div class="field {{ 'has-err' if errors.agree_terms }}">
-        <label class="check"><input type="checkbox" name="agree_terms" value="1" {{ 'checked' if v.agree_terms == '1' }}><span>Tôi đồng ý với điều khoản đặt lịch khám online.</span></label>
+        <label class="check"><input type="checkbox" name="agree_terms" aria-describedby="err-agree_terms" value="1" {{ 'checked' if v.agree_terms == '1' }}><span>Tôi đồng ý với điều khoản đặt lịch khám online.</span></label>
         <p class="err {{ 'show' if errors.agree_terms }}" id="err-agree_terms" role="alert">{{ errors.agree_terms or '' }}</p>
       </div>
     </section>
 
-    <div class="bar"><button type="submit" id="btn-send">✔ GỬI ĐĂNG KÝ</button></div>
+    <div class="bar">
+      <div class="sum" id="sum" role="status" aria-live="polite"></div>
+      <button type="submit" id="btn-send">Gửi đăng ký</button>
+    </div>
   </form>
 
   <p class="foot">Thông tin chỉ dùng để sắp xếp lịch khám tại bệnh viện.</p>
@@ -244,6 +263,8 @@
     var p = $('err-' + key); if (!p) return;
     p.textContent = msg || ''; p.classList.toggle('show', !!msg);
     var f = p.closest('.field'); if (f) f.classList.toggle('has-err', !!msg);
+    var inp = f && f.querySelector('input:not([type=radio]):not([type=checkbox]),textarea');
+    if (inp) { if (msg) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid'); }
   }
   function clearAllErrs() { [].forEach.call(form.querySelectorAll('.err'), function (p) { p.textContent = ''; p.classList.remove('show'); var f = p.closest('.field'); if (f) f.classList.remove('has-err'); }); }
 
@@ -330,8 +351,18 @@
     });
   }
 
+  /* ── Tóm tắt lịch đã chọn ngay trên nút gửi ── */
+  var sumEl = $('sum');
+  function updateSummary() {
+    var d = val('exam_date'), t = radio('exam_time');
+    sumEl.textContent = '';
+    if (d && t) { var b = document.createElement('b'); b.textContent = short(d) + ' · ' + t; sumEl.appendChild(document.createTextNode('Lịch đã chọn: ')); sumEl.appendChild(b); }
+    else sumEl.textContent = 'Chọn ngày và giờ khám để gửi đăng ký';
+  }
+  form.addEventListener('change', updateSummary);
+
   /* ── Khởi động ── */
-  syncSpec(); renderQuickDates(); disablePastSlots();
+  syncSpec(); renderQuickDates(); disablePastSlots(); updateSummary();
   var banner = $('server-banner');
   if (banner) { if (form.querySelector('.err.show')) focusFirstError(); else banner.scrollIntoView({ block: 'start' }); }
 })();

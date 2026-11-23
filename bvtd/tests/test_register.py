@@ -63,7 +63,7 @@ class PageTests(RegisterBase):
         self.assertIn("07:00", html); self.assertIn("16:30", html); self.assertNotIn(">12:00<", html)
         self.assertIn("Khám Nội tiết", html)
         self.assertNotIn("sz-plus", html)                               # không có nút chỉnh cỡ chữ
-        self.assertIn("ĐĂNG KÝ HẸN KHÁM ONLINE", html)
+        self.assertIn("<h1>Đăng ký hẹn khám online</h1>", html)
         self.assertNotIn("LỊCH HẸN KHÁM ONLINE", html)                  # đã bỏ chữ "lịch" ở tiêu đề
         self.assertIn("Đăng ký hẹn khám online", html)                   # <title>/mô tả cũng đổi theo
         self.assertIn('src="/static/logo.png"', html)
@@ -134,7 +134,7 @@ class SubmitTests(RegisterBase):
         r = self.submit()
         page = self.client.get(r.headers["Location"])
         t = text(page.get_data(as_text=True))
-        self.assertIn("ĐĂNG KÝ THÀNH CÔNG", t); self.assertIn("NGUYỄN VĂN AN", t); self.assertIn("08:30 · ngày 22/10/2026", t)
+        self.assertIn("Đăng ký thành công", t); self.assertIn("NGUYỄN VĂN AN", t); self.assertIn("08:30 · ngày 22/10/2026", t)
         self.client.get(r.headers["Location"])                                       # tải lại trang kết quả
         self.assertEqual(len(self.rows()), 1)
 

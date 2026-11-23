@@ -1959,7 +1959,122 @@ def sms_event(eid):
         contacts = [PD.dict_row(r) for r in c.execute("SELECT * FROM sms_contacts WHERE event_id = %s AND deleted_at IS NULL ORDER BY commune, org, name LIMIT 500", (eid,)).fetchall()]
         total = c.execute("SELECT COUNT(*) AS n FROM sms_contacts WHERE event_id = %s AND deleted_at IS NULL", (eid,)).fetchone()["n"]
         camps = [PD.dict_row(r) for r in c.execute("SELECT id, name, status, created_at FROM sms_campaigns WHERE event_id = %s ORDER BY id DESC", (eid,)).fetchall()]
-    return render_template("sms/event.html", ev=ev, contacts=contacts, total=total, camps=camps, audiences=SMS.AUDIENCES, consents=SMS.CONSENT_SOURCES)
+        # Danh sách NGƯỜI ĐÃ ĐƯỢC NHẮC của đợt (tự cập nhật sau mỗi lần gửi): cả người trong danh bạ lẫn bệnh nhân cũ theo vùng
+        reminded = [PD.dict_row(r) for r in c.execute(
+            "SELECT m.phone AS phone, MAX(m.recipient_name) AS name, MAX(CASE WHEN m.contact_id IS NOT NULL THEN 1 ELSE 0 END) AS is_contact, "
+            "MIN(m.sent_at) AS sent_at, MAX(k.mode) AS mode FROM sms_messages m JOIN sms_campaigns k ON k.id = m.campaign_id "
+            "WHERE k.kind = 'mobile' AND k.event_id = %s AND m.status IN ('sent','delivered') GROUP BY m.phone ORDER BY MIN(m.id) LIMIT 500", (eid,)).fetchall()]
+    return render_template("sms/event.html", ev=ev, contacts=contacts, total=total, camps=camps, reminded=reminded,
+                           audiences=SMS.AUDIENCES, consents=SMS.CONSENT_SOURCES)
+
+
+# ── Báo cáo tỉ lệ đến của đợt khám lưu động ─────────────────────────────────
+def _sms_report_data(eid, real_only, days):
+    """(đợt, file nhật ký, kết quả đối chiếu, tổng hợp, chưa-diễn-ra?) cho 1 đợt; thiếu đợt / thiếu file nhật ký thì phần đó là None.
+    `days` = số ngày (2 hoặc 3, kể từ ngày khám) được tính là «đến»."""
+    from services import patient_db as PD, sms as SMS, sms_report as SR
+    from services.reconcile import store_load
+    from services.sheets import vn_today
+    tok = _rec_token()
+    visit = store_load(tok, "visit") if tok else None
+    with PD._conn() as c:
+        ev = SMS.get_event(c, eid) if eid else None
+        if ev is None or not visit:
+            return ev, visit, None, None, False
+        recipients = SR.event_recipients(c, _get_df(), ev["id"], real_only)
+    today = vn_today()
+    pending = ev["event_date"] > today
+    results = SR.compute(ev["event_date"], recipients, visit["records"], today, days)
+    return ev, visit, results, SR.summarize(results), pending
+
+
+@app.route("/sms/su-kien/bao-cao")
+@sms_admin_required
+def sms_event_report():
+    """Tab «Báo cáo tỉ lệ đến»: tải file nhật ký khám → chọn đợt → xem tỉ lệ đến, tải Excel."""
+    from services import patient_db as PD, sms as SMS, sms_report as SR
+    from services.sheets import vn_today
+    real_only = request.args.get("real") == "1"
+    days = SR.clamp_days(request.args.get("days", type=int))
+    eid = request.args.get("event_id", type=int)
+    st = request.args.get("st", "all")
+    ev, visit, results, summary, pending = _sms_report_data(eid, real_only, days)
+    with PD._conn() as c:
+        events = SMS.list_events(c)
+        counts = SR.reminded_counts(c)
+    overview = []
+    if visit and ev is None:                                              # chưa chọn đợt → bảng tổng hợp mọi đợt đã nhắc
+        today = vn_today()
+        df = _get_df()
+        with PD._conn() as c:
+            for e in events:
+                if not counts.get(e["id"]):
+                    continue
+                row = {"ev": e, "n_reminded": counts[e["id"]], "pending": e["event_date"] > today, "sum": None}
+                if not row["pending"]:
+                    rec = SR.event_recipients(c, df, e["id"], real_only)
+                    row["sum"] = SR.summarize(SR.compute(e["event_date"], rec, visit["records"], today, days))
+                overview.append(row)
+    shown = [r for r in (results or []) if st in ("all", "") or r["status"] == st][:500]
+    return render_template("sms/report.html", events=[e for e in events if counts.get(e["id"])], counts=counts, ev=ev, visit=visit, results=results,
+                           shown=shown, summary=summary, pending=pending, overview=overview, real_only=real_only, st=st,
+                           labels=SR.STATUS_LABEL, tiers=SR.TIER_LABEL, days=days, day_choices=SR.WINDOW_DAYS_CHOICES,
+                           win=SR.window(ev["event_date"], days) if ev else None,
+                           provisional=bool(ev and results is not None and not pending and vn_today() <= SR.window(ev["event_date"], days)[1]),
+                           audiences=SMS.AUDIENCES)
+
+
+@app.route("/sms/su-kien/bao-cao/tai-file", methods=["POST"])
+@sms_admin_required
+def sms_report_upload():
+    """Tải file nhật ký khám (01-1) — dùng CHUNG với trang Đối chiếu tái khám."""
+    from services.excel_parser import parse_minh_lo_visit_log
+    from services.reconcile import store_save, store_delete, parse_dmy
+    from services import sms_report as SR
+    if not _csrf_ok():
+        abort(400)
+    back = url_for("sms_event_report", event_id=request.form.get("event_id") or None, real="1" if request.form.get("real") == "1" else None,
+                   days=SR.clamp_days(request.form.get("days", type=int)))
+    f = request.files.get("visit_file")
+    if not f or not f.filename.lower().endswith(".xlsx"):
+        flash("Vui lòng chọn file .xlsx (Báo cáo ĐK KCB — file 01-1).", "error")
+        return redirect(back)
+    records, err, warn = parse_minh_lo_visit_log(f.read())
+    if err:
+        flash(f"❌ {err}", "error")
+        return redirect(back)
+    if not records:
+        flash("⚠️ Không tìm thấy dữ liệu trong file. Kiểm tra đúng loại báo cáo \"ĐK KCB\".", "warning")
+        return redirect(back)
+    ds = [d for d in (parse_dmy(v["NGÀY ĐK"]) for v in records) if d]
+    tok = _rec_token(create=True)
+    store_delete(tok, "rec")                                              # file mới → kết quả đối chiếu tái khám cũ không còn đúng
+    store_save(tok, "visit", {"filename": f.filename, "records": records, "warn": warn,
+                              "vmin": min(ds).strftime("%d/%m/%Y") if ds else "?", "vmax": max(ds).strftime("%d/%m/%Y") if ds else "?"})
+    flash(f"✅ Đã đọc {len(records)} lượt khám từ «{f.filename}».", "success")
+    if warn:
+        flash(warn, "warning")
+    return redirect(back)
+
+
+@app.route("/sms/su-kien/bao-cao/xlsx")
+@sms_admin_required
+def sms_event_report_xlsx():
+    """Tải báo cáo tỉ lệ đến (Excel) — cùng bố cục cột với file đối chiếu tái khám."""
+    from flask import Response
+    from services import sms as SMS, sms_report as SR
+    from services.sheets import vn_now
+    real_only = request.args.get("real") == "1"
+    days = SR.clamp_days(request.args.get("days", type=int))
+    ev, visit, results, summary, pending = _sms_report_data(request.args.get("event_id", type=int), real_only, days)
+    if ev is None or not visit or results is None:
+        flash("Chọn đợt khám và tải file nhật ký khám trước khi xuất báo cáo.", "info")
+        return redirect(url_for("sms_event_report"))
+    ev = dict(ev, audience_label=SMS.AUDIENCES.get(ev["audience"], ev["audience"]))
+    now = vn_now()
+    data = SR.build_xlsx(ev, results, summary, now.strftime("%H:%M %d/%m/%Y"), visit.get("filename", ""), real_only, days)
+    return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=bao_cao_ti_le_den_dot{ev['id']}_{now.strftime('%Y%m%d_%H%M')}.xlsx"})
 
 
 @app.route("/sms/chien-dich/<int:cid>")

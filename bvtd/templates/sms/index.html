@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set sms_section = 'appointment' %}
 {% block title %}Tin nhắn SMS{% endblock %}
-{% block page_title %}💬 Tin nhắn SMS · Nhắc lịch hẹn khám{% endblock %}
+{% block page_title %}Tin nhắn SMS · Nhắc lịch hẹn khám{% endblock %}
 
 {% block content %}
 {% from "sms/_tabs.html" import tabs %}
@@ -26,15 +26,15 @@
       <input type="number" name="daily_cap" min="0" value="{{ settings.daily_cap }}" class="w-32 text-sm border border-slate-300 rounded-lg px-3 py-2">
       <span class="text-xs text-slate-400 ml-2">đã gửi hôm nay: <b>{{ sent_today }}</b></span>
     </div>
-    <button class="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">💾 Lưu cài đặt</button>
+    <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lưu cài đặt</button>
 
     <ul class="text-xs space-y-1.5 pt-3 border-t border-slate-100">
-      <li>{% if provider and provider.real %}✅ Nhà cung cấp: <b>{{ provider.name }}</b>
-          {% elif provider %}🧪 Chế độ <b>THỬ</b> (sandbox) — không gửi tin thật ra ngoài
-          {% else %}❌ {{ provider_err }}{% endif %}</li>
-      <li>{% if brand_ok %}✅ Brandname: <b>{{ brand }}</b>{% else %}⚠️ Brandname: {{ brand_msg if brand else 'chưa đặt SMS_BRANDNAME' }}{% endif %}</li>
-      <li>{% if hotline %}✅ Hotline ghi trong tin: <b>{{ hotline }}</b>{% else %}❌ Chưa đặt SMS_HOTLINE{% endif %}</li>
-      <li>{% if quiet %}🌙 Đang trong giờ nghỉ 22:00–07:00 — hệ thống không gửi{% else %}🟢 Trong giờ được phép gửi{% endif %}</li>
+      <li>{% if provider and provider.real %}Nhà cung cấp: <b>{{ provider.name }}</b>
+          {% elif provider %}Chế độ <b>THỬ</b> (sandbox) — không gửi tin thật ra ngoài
+          {% else %}{{ provider_err }}{% endif %}</li>
+      <li>{% if brand_ok %}Brandname: <b>{{ brand }}</b>{% else %}Brandname: {{ brand_msg if brand else 'chưa đặt SMS_BRANDNAME' }}{% endif %}</li>
+      <li>{% if hotline %}Hotline ghi trong tin: <b>{{ hotline }}</b>{% else %}Chưa đặt SMS_HOTLINE{% endif %}</li>
+      <li>{% if quiet %}Đang trong giờ nghỉ 22:00–07:00 — hệ thống không gửi{% else %}<span class="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5 align-middle"></span>Trong giờ được phép gửi{% endif %}</li>
     </ul>
   </form>
 
@@ -45,26 +45,26 @@
       <form method="POST" action="{{ url_for('sms_remind_tomorrow') }}"
             onsubmit="return confirm('Tạo và gửi ngay tin nhắc cho {{ preview.eligible|length }} người có lịch ngày mai?');">
         <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-        <button class="text-xs border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50" {% if not preview.eligible %}disabled{% endif %}>▶ Tạo &amp; gửi ngay (nếu cron chưa chạy)</button>
+        <button class="text-xs border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50" {% if not preview.eligible %}disabled{% endif %}>Tạo &amp; gửi ngay (nếu cron chưa chạy)</button>
       </form>
     </div>
     <div class="grid grid-cols-3 gap-3 text-center mb-3">
-      <div class="rounded-lg bg-emerald-50 py-3"><p class="text-2xl font-bold text-emerald-600">{{ preview.eligible|length }}</p><p class="text-[11px] text-emerald-700/70">sẽ nhận tin</p></div>
-      <div class="rounded-lg bg-slate-50 py-3"><p class="text-2xl font-bold text-slate-600">{{ preview.skipped|length }}</p><p class="text-[11px] text-slate-500">bị loại</p></div>
-      <div class="rounded-lg bg-blue-50 py-3"><p class="text-2xl font-bold text-blue-600">{{ preview.segments if preview.segments is not none else '—' }}</p><p class="text-[11px] text-blue-700/70">tin tính phí</p></div>
+      <div class="rounded-lg bg-emerald-50 py-3"><p class="text-2xl font-semibold text-emerald-600">{{ preview.eligible|length }}</p><p class="text-xs text-emerald-700/70">sẽ nhận tin</p></div>
+      <div class="rounded-lg bg-slate-50 py-3"><p class="text-2xl font-semibold text-slate-600">{{ preview.skipped|length }}</p><p class="text-xs text-slate-500">bị loại</p></div>
+      <div class="rounded-lg bg-brand-50 py-3"><p class="text-2xl font-semibold text-brand-600">{{ preview.segments if preview.segments is not none else '—' }}</p><p class="text-xs text-brand-700/70">tin tính phí</p></div>
     </div>
     {% if preview.reasons %}
     <p class="text-xs text-slate-500 mb-3">Lý do bị loại: {% for r, n in preview.reasons.items() %}<span class="inline-block bg-slate-100 rounded-full px-2 py-0.5 mr-1">{{ r }}: {{ n }}</span>{% endfor %}</p>
     {% endif %}
-    <p class="text-xs font-semibold text-slate-500 mb-1">Tin mẫu <span class="font-normal text-slate-400">(theo mẫu đang dùng)</span> <a href="{{ url_for('sms_template') }}" class="font-normal text-blue-600 hover:underline ml-1">✏️ Sửa mẫu tin</a></p>
+    <p class="text-xs font-semibold text-slate-500 mb-1">Tin mẫu <span class="font-normal text-slate-400">(theo mẫu đang dùng)</span> <a href="{{ url_for('sms_template') }}" class="font-normal text-brand-600 hover:underline ml-1">Sửa mẫu tin</a></p>
     <p class="text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono">{{ sample }}</p>
-    <p class="text-[11px] text-slate-400 mt-1">{{ sample|length }} ký tự — tin không dấu, vừa 1 tin tính phí.</p>
+    <p class="text-xs text-slate-400 mt-1">{{ sample|length }} ký tự — tin không dấu, vừa 1 tin tính phí.</p>
 
     <form method="POST" action="{{ url_for('sms_send_test') }}" class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <label class="text-xs text-slate-500">Gửi thử tới số của bạn:</label>
       <input name="phone" placeholder="09xxxxxxxx" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 w-40">
-      <button class="text-xs bg-slate-700 text-white rounded-lg px-3 py-1.5 hover:bg-slate-800">Gửi thử</button>
+      <button class="text-xs border border-slate-300 text-slate-700 rounded-lg px-3 py-1.5 hover:bg-slate-50">Gửi thử</button>
     </form>
   </div>
 </div>
@@ -72,23 +72,23 @@
 <div class="bg-white rounded-xl border border-slate-200">
   <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
     <h3 class="font-semibold text-slate-800 text-sm">Các lần gửi nhắc lịch gần đây</h3>
-    <a href="{{ url_for('sms_optout') }}" class="text-xs text-blue-600 hover:underline">🚫 Danh sách từ chối nhận tin ({{ n_optout }})</a>
+    <a href="{{ url_for('sms_optout') }}" class="text-xs text-brand-600 hover:underline">Danh sách từ chối nhận tin ({{ n_optout }})</a>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full text-sm" style="min-width:720px">
-      <thead><tr class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+      <thead><tr class="bg-slate-50 text-xs font-semibold text-slate-500 ">
         <th class="px-4 py-3 text-left">Chiến dịch</th><th class="px-3 py-3 text-left">Tạo lúc</th><th class="px-3 py-3 text-left">Chế độ</th>
         <th class="px-3 py-3">Đã gửi</th><th class="px-3 py-3">Chờ</th><th class="px-3 py-3">Lỗi</th><th class="px-3 py-3">Bị loại</th></tr></thead>
       <tbody class="divide-y divide-slate-100">
         {% for k in campaigns %}
         <tr class="hover:bg-slate-50">
-          <td class="px-4 py-3"><a href="{{ url_for('sms_campaign', cid=k.id) }}" class="font-medium text-blue-700 hover:underline">{{ k.name }}</a>
+          <td class="px-4 py-3"><a href="{{ url_for('sms_campaign', cid=k.id) }}" class="font-medium text-brand-700 hover:underline">{{ k.name }}</a>
             <span class="text-xs text-slate-400 block">{{ kinds.get(k.kind, k.kind) }} · {{ k.created_by }}</span></td>
           <td class="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">{{ k.created_at.strftime('%d/%m/%Y %H:%M') if k.created_at else '' }}</td>
-          <td class="px-3 py-3 text-xs">{% if k.mode == 'sandbox' %}<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">🧪 thử</span>{% else %}<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">thật</span>{% endif %}</td>
+          <td class="px-3 py-3 text-xs">{% if k.mode == 'sandbox' %}<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>thử</span>{% else %}<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>thật</span>{% endif %}</td>
           <td class="px-3 py-3 text-center font-semibold text-emerald-600">{{ k.n_sent }}</td>
           <td class="px-3 py-3 text-center">{{ k.n_wait }}</td>
-          <td class="px-3 py-3 text-center {% if k.n_fail %}text-rose-600 font-semibold{% endif %}">{{ k.n_fail }}</td>
+          <td class="px-3 py-3 text-center {% if k.n_fail %}text-red-600 font-semibold{% endif %}">{{ k.n_fail }}</td>
           <td class="px-3 py-3 text-center text-slate-400">{{ k.n_skip }}</td>
         </tr>
         {% else %}<tr><td colspan="7" class="px-5 py-8 text-center text-slate-400">Chưa có lần gửi nào.</td></tr>{% endfor %}

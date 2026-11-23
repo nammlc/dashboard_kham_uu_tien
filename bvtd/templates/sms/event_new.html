@@ -2,7 +2,7 @@
 {% set sms_section = 'mobile' %}
 {% from "sms/_tabs.html" import tabs %}
 {% block title %}Tạo đợt khám mới{% endblock %}
-{% block page_title %}💬 Tin nhắn SMS · Tạo đợt khám lưu động{% endblock %}
+{% block page_title %}Tin nhắn SMS · Tạo đợt khám lưu động{% endblock %}
 {% block content %}
 {{ tabs('mobile', 'new') }}
 <form method="POST" action="{{ url_for('sms_events') }}" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 max-w-3xl">
@@ -19,10 +19,10 @@
     </div>
     <div class="md:col-span-2"><label class="block text-xs font-semibold text-slate-500 mb-1">Địa điểm <span class="text-red-500">*</span></label>
       <input name="location" required value="{{ form.get('location', '') }}" placeholder="vd. Trạm y tế xã Trung Chính" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
-      <p class="text-[11px] text-slate-400 mt-1">Ghi vào tin nhắn qua biến {dia_diem}.</p></div>
+      <p class="text-xs text-slate-400 mt-1">Ghi vào tin nhắn qua biến {dia_diem}.</p></div>
     <div class="md:col-span-2"><label class="block text-xs font-semibold text-slate-500 mb-1">Ghi chú nội bộ</label><input name="note" value="{{ form.get('note', '') }}" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2"></div>
   </div>
-  <button class="bg-violet-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-violet-700">Tạo đợt khám &amp; thêm danh bạ →</button>
-  <p class="text-[11px] text-slate-400">Sau khi tạo, bạn sẽ thêm người nhận vào danh bạ của đợt (nhập từng ô: họ tên, SĐT, xã, thôn/đơn vị).</p>
+  <button class="border border-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-50">Tạo đợt khám &amp; thêm danh bạ →</button>
+  <p class="text-xs text-slate-400">Sau khi tạo, bạn sẽ thêm người nhận vào danh bạ của đợt (nhập từng ô: họ tên, SĐT, xã, thôn/đơn vị).</p>
 </form>
 {% endblock %}
