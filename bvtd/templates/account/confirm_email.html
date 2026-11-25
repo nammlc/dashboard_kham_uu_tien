@@ -10,7 +10,7 @@
   <p class="text-sm font-semibold text-emerald-700 break-all">{{ new }}</p>
   <form method="POST" class="mt-4">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-    <button type="submit" class="w-full bg-navy hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Xác nhận đổi email</button>
+    <button type="submit" class="w-full bg-navy hover:bg-navy-2 active:scale-[.98] transition text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Xác nhận đổi email</button>
   </form>
   <p class="text-center mt-3"><a href="{{ url_for('account_page') }}" class="text-xs text-slate-500 underline">Không phải tôi / Huỷ</a></p>
 </div>

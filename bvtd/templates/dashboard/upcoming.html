@@ -104,7 +104,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = label;
       b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
-        (opts.active ? 'bg-navy text-white border-[#0f2642]'
+        (opts.active ? 'bg-navy text-white border-navy'
                      : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
       if (opts.disabled) b.disabled = true;
       if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));

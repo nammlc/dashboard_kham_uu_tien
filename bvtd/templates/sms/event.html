@@ -10,7 +10,7 @@
   <span class="text-slate-500">{{ audiences.get(ev.audience, ev.audience) }} · {{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }}</span>
   <a href="{{ url_for('sms_compose', kind='mobile', event_id=ev.id) }}" class="ml-auto border border-slate-300 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-50">Soạn tin cho đợt này →</a>
 </div>
-<div class="grid lg:grid-cols-3 gap-4">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
   <form method="POST" enctype="multipart/form-data" id="addForm" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 self-start lg:col-span-1">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="act" value="add">
     <h3 class="font-semibold text-slate-800 text-sm">Thêm vào danh bạ</h3>

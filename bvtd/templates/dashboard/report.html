@@ -31,7 +31,7 @@
     <label for="date_to">đến</label>
     <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
            class="border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-400">
-    <button type="submit" class="bg-navy text-white font-semibold px-3.5 py-1.5 rounded-lg hover:bg-[#1e3f6a]">Áp dụng</button>
+    <button type="submit" class="bg-navy text-white font-semibold px-3.5 py-1.5 rounded-lg hover:bg-navy-2 active:scale-[.98] transition">Áp dụng</button>
     {% if date_from or date_to %}
     <a href="{{ url_for('report', period=period) }}" class="text-slate-500 hover:text-red-500">✕ Xoá lọc</a>
     {% endif %}
@@ -270,7 +270,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = label;
       b.className = 'px-3 py-1.5 text-xs border rounded-lg ' + (o.active
-        ? 'bg-navy text-white border-[#0f2642]'
+        ? 'bg-navy text-white border-navy'
         : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
       if (o.disabled) b.disabled = true;
       if (!o.active && !o.disabled) b.addEventListener('click', () => go(page));
@@ -310,7 +310,7 @@
     return;
   }
   // Bảng màu: một màu nhấn (xanh bệnh viện) + trung tính; không dùng màu cầu vồng
-  const C = { green: '#0b5ea8', red: '#94a3b8', violet: '#0f2642', amber: '#8fb5de', blue: '#0f2642', grid: '#eef2f6' };
+  const C = { green: '#0b5ea8', red: '#94a3b8', violet: '#0b3a6e', amber: '#8fb5de', blue: '#0b3a6e', grid: '#eef2f6' };
   const K = {{ data.kpi | tojson }};
   const D = {{ data.chart | tojson }};
   Chart.defaults.font.family = "'Be Vietnam Pro', system-ui, sans-serif";
@@ -324,9 +324,9 @@
       const { ctx, chartArea: { left, right, top, bottom } } = chart;
       const x = (left + right) / 2, y = (top + bottom) / 2;
       ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#0f172a'; ctx.font = '600 22px 'Be Vietnam Pro', sans-serif';
+      ctx.fillStyle = '#0f172a'; ctx.font = '600 22px "Be Vietnam Pro", sans-serif';
       ctx.fillText(opts.main, x, y - 6);
-      ctx.fillStyle = '#94a3b8'; ctx.font = '500 12px 'Be Vietnam Pro', sans-serif';
+      ctx.fillStyle = '#94a3b8'; ctx.font = '500 12px "Be Vietnam Pro", sans-serif';
       ctx.fillText(opts.sub, x, y + 14);
       ctx.restore();
     }

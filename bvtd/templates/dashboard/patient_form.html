@@ -41,7 +41,7 @@
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     {% if mode == 'edit' %}<input type="hidden" name="version" value="{{ version }}">{% endif %}
 
-    <div class="grid md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div class="md:col-span-2">{{ field('full_name', 'Họ và tên', required=True) }}</div>
       {{ field('phone', 'Số điện thoại', type='tel', hint='10 số, bắt đầu bằng 0. Để trống nếu không có.') }}
       {{ field('birth_year', 'Năm sinh', type='number') }}
@@ -56,7 +56,7 @@
       {{ field('cccd', 'Số CCCD (nếu có)') }}
     </div>
 
-    <div class="grid md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       {{ field('exam_date', 'Ngày khám (ngày hẹn)', type='date', required=True) }}
       {{ field('exam_time', 'Giờ khám dự kiến', hint='Ví dụ 07:00 — để trống nếu chưa rõ.') }}
       <div>
@@ -74,11 +74,11 @@
       {{ field('doctor', 'Bác sĩ mong muốn') }}
     </div>
 
-    <div class="grid md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div class="md:col-span-2">{{ field('address', 'Địa chỉ (thôn/xã)') }}</div>
       {{ field('commune', 'Xã/phường (để lọc theo vùng)', hint='Để trống = tự tách từ địa chỉ. Điền nếu hệ thống tách sai.') }}
     </div>
-    <div class="grid md:grid-cols-1 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
       {{ field('symptom', 'Triệu chứng chính') }}
     </div>
 
@@ -96,11 +96,11 @@
     <datalist id="khoa_list">{% for k in khoas %}<option value="{{ k }}">{% endfor %}</datalist>
 
     <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100">
-      <button type="submit" class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">
+      <button type="submit" class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-navy-2 active:scale-[.98] transition">
         {% if mode == 'new' %}Lưu bệnh nhân{% else %}Lưu thay đổi{% endif %}
       </button>
       {% if dups %}
-      <button type="submit" name="confirm_dup" value="1" class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a]">
+      <button type="submit" name="confirm_dup" value="1" class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-navy-2 active:scale-[.98] transition">
         Vẫn thêm (đây là người / lượt khám khác)
       </button>
       {% endif %}

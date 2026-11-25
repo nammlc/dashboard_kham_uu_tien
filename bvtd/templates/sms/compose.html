@@ -84,7 +84,7 @@
 
   <div>
     <p class="text-sm font-semibold text-slate-700 mb-1.5">② Gửi cho ai? <span class="font-normal text-slate-400">(tích một hoặc cả hai)</span></p>
-    <div class="grid md:grid-cols-2 gap-3">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <label class="flex items-start gap-3 border rounded-xl p-3 cursor-pointer {% if 'contacts' in auds %}border-slate-500 bg-slate-50{% else %}border-slate-200{% endif %}">
         <input type="checkbox" name="aud" value="contacts" class="mt-1" {% if 'contacts' in auds %}checked{% endif %}>
         <span><b class="text-sm">Danh bạ của đợt</b><span class="block text-xs text-slate-500 mt-0.5">Những người đã nhập vào danh bạ (đã có đồng ý nhận tin).</span></span></label>
@@ -163,7 +163,7 @@
       </div>
       {% endif %}
       <input type="hidden" name="region_id" id="region_id" value="">
-      <div class="max-h-40 overflow-y-auto grid sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs border border-slate-200 rounded-lg p-2.5 bg-slate-50/50">
+      <div class="max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs border border-slate-200 rounded-lg p-2.5 bg-slate-50/50">
         {% for name, n in aud_data.communes %}
         <label class="flex items-center gap-1.5"><input type="checkbox" class="commune-cb" name="communes" value="{{ name }}" {% if name in flt.communes %}checked{% endif %}> {{ name }} <span class="text-slate-400">({{ n }})</span></label>
         {% else %}<p class="text-slate-400 col-span-full">Chưa có dữ liệu xã/phường để lọc.</p>{% endfor %}
@@ -306,7 +306,7 @@
 {{ recap() }}
 <form method="POST" action="{{ url_for('sms_compose') }}">
   {{ carry() }}
-  <div class="grid lg:grid-cols-3 gap-4">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
     <div class="lg:col-span-2 space-y-4">
       <div class="bg-white rounded-xl border border-slate-200 p-5">
         <div class="flex items-center justify-between mb-2"><p class="text-sm font-semibold text-slate-700">Nội dung sẽ gửi</p>
@@ -348,7 +348,7 @@
       <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="confirm" value="1" class="mt-1"> <span>Tôi đã kiểm tra nội dung và danh sách người nhận.</span></label>
       <div class="flex flex-wrap gap-2">
         <button type="submit" name="step" value="recipients" class="text-sm border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50">← Chọn lại người</button>
-        <button type="submit" name="step" value="do_send" class="bg-navy text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#1e3f6a] {% if not eligible %}opacity-50{% endif %}"
+        <button type="submit" name="step" value="do_send" class="bg-navy text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-navy-2 active:scale-[.98] transition {% if not eligible %}opacity-50{% endif %}"
                 {% if not eligible %}disabled{% endif %}>Gửi đồng loạt</button>
       </div>
     </div>

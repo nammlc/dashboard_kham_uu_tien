@@ -27,6 +27,12 @@
     /* Scrollbar mỏng cho sidebar */
     .sb-scroll::-webkit-scrollbar { width: 4px; }
     .sb-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:2px; }
+    /* Thẻ bấm được nhấc nhẹ khi rê chuột; focus bàn phím luôn thấy rõ */
+    .lift { transition: transform .15s, border-color .15s; }
+    @media (hover:hover) { .lift:hover { transform: translateY(-2px); } }
+    :where(a, button, input, select, textarea, summary):focus-visible { outline: 2px solid #0b5ea8; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { *, ::before, ::after { transition: none !important; animation: none !important; } }
+    th { font-weight: 600; }
     /* Flash messages */
     .flash-success { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
     .flash-error   { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }

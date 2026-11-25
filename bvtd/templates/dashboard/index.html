@@ -1,23 +1,28 @@
 {% extends "base.html" %}
+{% from "_ui.html" import ic %}
 {% block title %}Tổng quan{% endblock %}
 {% block page_title %}Tổng quan{% endblock %}
 
 {% block content %}
-<!-- Số liệu hôm nay: chữ số lớn, không ô màu -->
+<!-- Số liệu hôm nay: chữ số lớn, mỗi thẻ là một lối vào danh sách bệnh nhân -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   {% set kpis = [
-    ('Đăng ký hôm nay', stats.today_total,    'today'),
-    ('Đã khám',         stats.today_attended,  'attended'),
-    ('Vắng / chưa',     stats.today_absent,    'absent'),
-    ('3 ngày tới',      stats.next3_total,     'next3'),
+    ('Đăng ký hôm nay', stats.today_total,    'today',    'calendar'),
+    ('Đã khám',         stats.today_attended,  'attended', 'check'),
+    ('Vắng / chưa',     stats.today_absent,    'absent',   'user'),
+    ('3 ngày tới',      stats.next3_total,     'next3',    'trend'),
   ] %}
-  {% for label, val, scope in kpis %}
+  {% for label, val, scope, icon in kpis %}
   <a href="{{ url_for('patients', scope=scope) }}" title="Xem danh sách bệnh nhân"
-     class="block bg-white rounded-xl border border-slate-200 p-5 hover:border-brand-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-    <p class="text-sm text-slate-500">{{ label }}</p>
-    <p class="mt-2 text-3xl font-semibold text-slate-900 mono">{{ val }}</p>
+     class="lift block bg-white rounded-xl border border-slate-200 p-5 hover:border-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-slate-500">{{ label }}</p>
+      <span class="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center">{{ ic(icon, 17) }}</span>
+    </div>
+    <p class="mt-3 text-4xl font-semibold text-slate-900 mono tracking-tight">{{ val }}</p>
     {% if loop.index == 1 and stats.today_total > 0 %}
-      <p class="text-xs text-slate-500 mt-1">Tỷ lệ đến: <b class="font-semibold text-slate-800 mono">{{ stats.today_rate }}%</b></p>
+      <div class="mt-3 h-1.5 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true"><div class="h-full rounded-full bg-brand-600" style="width:{{ stats.today_rate }}%"></div></div>
+      <p class="text-xs text-slate-500 mt-1.5">Tỷ lệ đến: <b class="font-semibold text-slate-800 mono">{{ stats.today_rate }}%</b></p>
     {% endif %}
   </a>
   {% endfor %}
@@ -58,7 +63,7 @@
     <a href="{{ url_for('patients') }}" class="text-sm text-brand-600 hover:underline">Xem tất cả</a>
   </div>
   <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="w-full text-sm" style="min-width:600px">
       <thead>
         <tr class="bg-slate-50 text-xs font-medium text-slate-500">
           <th scope="col" class="px-5 py-3 text-left">Họ tên</th>
@@ -81,11 +86,11 @@
           <td class="px-4 py-3">
             {% set st = r.get('TRẠNG THÁI','') %}
             {% if 'ĐÃ KHÁM' in st %}
-              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Đã khám</span>
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-full px-2.5 py-0.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Đã khám</span>
             {% elif 'CHƯA' in st or 'BỎ' in st %}
-              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Vắng</span>
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-full px-2.5 py-0.5"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Vắng</span>
             {% else %}
-              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Chờ</span>
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-full px-2.5 py-0.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Chờ</span>
             {% endif %}
           </td>
         </tr>
@@ -123,7 +128,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = label;
       b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
-        (opts.active ? 'bg-navy text-white border-[#0f2642]'
+        (opts.active ? 'bg-navy text-white border-navy'
                      : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
       if (opts.disabled) b.disabled = true;
       if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));

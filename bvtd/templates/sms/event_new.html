@@ -8,7 +8,7 @@
 <form method="POST" action="{{ url_for('sms_events') }}" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3 max-w-3xl">
   <input type="hidden" name="csrf" value="{{ csrf_token() }}">
   <h3 class="font-semibold text-slate-800 text-sm">Thông tin đợt khám</h3>
-  <div class="grid md:grid-cols-2 gap-3">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
     <div class="md:col-span-2"><label class="block text-xs font-semibold text-slate-500 mb-1">Tên đợt <span class="text-red-500">*</span></label>
       <input name="name" required value="{{ form.get('name', '') }}" placeholder="vd. Khám tại xã Trung Chính" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2"></div>
     <div><label class="block text-xs font-semibold text-slate-500 mb-1">Đối tượng</label>

@@ -7,7 +7,7 @@
 {% from "sms/_tabs.html" import tabs %}
 {{ tabs('appointment', 'overview') }}
 
-<div class="grid lg:grid-cols-3 gap-4 mb-5">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
 
   <!-- Trạng thái + công tắc -->
   <form method="POST" action="{{ url_for('sms_settings_save') }}" class="bg-white rounded-xl border border-slate-200 p-5 space-y-4 lg:col-span-1">
@@ -26,7 +26,7 @@
       <input type="number" name="daily_cap" min="0" value="{{ settings.daily_cap }}" class="w-32 text-sm border border-slate-300 rounded-lg px-3 py-2">
       <span class="text-xs text-slate-400 ml-2">đã gửi hôm nay: <b>{{ sent_today }}</b></span>
     </div>
-    <button class="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lưu cài đặt</button>
+    <button class="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-navy-2 active:scale-[.98] transition">Lưu cài đặt</button>
 
     <ul class="text-xs space-y-1.5 pt-3 border-t border-slate-100">
       <li>{% if provider and provider.real %}Nhà cung cấp: <b>{{ provider.name }}</b>

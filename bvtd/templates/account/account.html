@@ -61,7 +61,7 @@
     {% elif has_totp %}
       <p class="text-sm text-emerald-700 font-semibold mt-1">✔ Đã thiết lập{% if enabled_at %} <span class="font-normal text-slate-400">· từ {{ enabled_at }}</span>{% endif %}</p>
       <a href="{{ url_for('account_change_phone') }}"
-         class="inline-block mt-3 bg-navy hover:bg-[#1e3f6a] text-white font-semibold rounded-lg px-4 py-2 text-sm transition-colors">Đổi điện thoại</a>
+         class="inline-block mt-3 bg-navy hover:bg-navy-2 active:scale-[.98] transition text-white font-semibold rounded-lg px-4 py-2 text-sm transition-colors">Đổi điện thoại</a>
     {% else %}
       <p class="text-sm text-amber-700 mt-1">Chưa thiết lập. Hãy đăng xuất và đăng nhập lại để thiết lập.</p>
     {% endif %}

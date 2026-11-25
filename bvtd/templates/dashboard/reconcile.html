@@ -26,7 +26,7 @@
     <form method="POST" action="{{ url_for('reconcile_upload') }}" enctype="multipart/form-data" class="flex flex-wrap items-center gap-3">
       <input type="file" name="visit_file" accept=".xlsx" required
              class="text-sm file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold hover:file:bg-slate-200">
-      <button class="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Đọc file</button>
+      <button class="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-navy-2 active:scale-[.98] transition">Đọc file</button>
     </form>
 
     {% if visit %}
@@ -44,7 +44,7 @@
     <form method="POST" action="{{ url_for('reconcile_run') }}"
           onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Đang đối chiếu…';">
       <button {% if not scope_n %}disabled{% endif %}
-              class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a] disabled:opacity-40">
+              class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-navy-2 active:scale-[.98] transition disabled:opacity-40">
         Bắt đầu đối chiếu
       </button>
       <span class="text-xs text-slate-400 ml-2">Lưu ý: BN nguồn trống mà chưa đến khám sẽ được ghi nguồn "vãng lai" lên Sheet ngay.</span>
@@ -85,7 +85,7 @@
       <div class="flex flex-wrap items-center gap-2 text-xs">
         {% for key, label in [('all','Tất cả'),('attended_sure','Đã đến'),('attended_unsure','Cần xác nhận'),('not_attended','Chưa đến')] %}
         <a href="{{ url_for('reconcile_page', tab=tab, f=key, _anchor='ketqua') }}"
-           class="px-3 py-1.5 rounded-full border {{ 'bg-navy text-white border-[#0f2642]' if flt==key else 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ label }}</a>
+           class="px-3 py-1.5 rounded-full border {{ 'bg-navy text-white border-navy' if flt==key else 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ label }}</a>
         {% endfor %}
         <a href="{{ url_for('reconcile_csv', tab=tab) }}" class="ml-auto px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">Tải báo cáo (.csv)</a>
       </div>
@@ -164,7 +164,7 @@
           </label>
           <p class="hidden text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2" data-inline-err role="alert"></p>
           <button type="submit" data-apply-btn
-                  class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a] disabled:opacity-40 disabled:cursor-not-allowed">
+                  class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-navy-2 active:scale-[.98] transition disabled:opacity-40 disabled:cursor-not-allowed">
             Cập nhật "Đã khám" cho <span data-apply-count>{{ g.to_update|length }}</span> bệnh nhân đã chọn
           </button>
         </form>
@@ -186,7 +186,7 @@
           <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs js-rec" data-rec="one" data-name="{{ r.name }}" data-anchor="buoc3">
             <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc3">
             {% for n in r.match_notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-1.5"><span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>{{ n }}</p>{% endfor %}
-            <div class="grid md:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div class="rounded-lg bg-slate-50 p-3 space-y-0.5"><p class="font-semibold text-slate-700 mb-1">Trên Google Sheet</p>
                 <p>Tên: <b>{{ r.name }}</b></p>
                 <p>SĐT: {{ r.phone or '—' }}</p><p>Năm sinh: {{ r.birth_year or '—' }}</p><p>Tuổi: {{ r.age or '—' }}</p><p>Nguồn: {{ r.source or '—' }}</p></div>
@@ -200,7 +200,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
               <button type="submit" name="action" value="save" class="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold">Lưu SĐT/Năm sinh vào Sheet</button>
-              <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-navy text-white font-semibold hover:bg-[#1e3f6a]">Xác nhận đúng — đánh dấu Đã khám</button>
+              <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-navy text-white font-semibold hover:bg-navy-2 active:scale-[.98] transition">Xác nhận đúng — đánh dấu Đã khám</button>
             </div>
           </form>
         </details>
@@ -221,14 +221,14 @@
           <form method="POST" action="{{ url_for('reconcile_one') }}" class="px-4 pb-4 pt-2 space-y-3 text-xs js-rec" data-rec="one" data-name="{{ r.name }}" data-anchor="buoc4">
             <input type="hidden" name="sheet_row" value="{{ r.sheet_row }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="anchor" value="buoc4">
             {% for n in nm.notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-1.5"><span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>{{ n }}</p>{% endfor %}
-            <div class="grid md:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div class="rounded-lg bg-slate-50 p-3 space-y-0.5"><p class="font-semibold text-slate-700 mb-1">Trên Google Sheet (đã hẹn)</p>
                 <p>{{ r.name }}</p><p>Ngày hẹn: {{ r.exam_date|dmy }}</p><p>SĐT: {{ r.phone or '—' }}</p><p>Năm sinh: {{ r.birth_year or '—' }}</p></div>
               <div class="rounded-lg bg-red-50 p-3 space-y-0.5"><p class="font-semibold text-red-800 mb-1">Lượt khám tìm thấy (ngoài cửa sổ)</p>
                 <p>{{ v.get('HỌ TÊN','') }}</p><p>Ngày thực đến: {{ nm.visit_date|dmy }}</p><p>SĐT lúc khám: {{ v.get('SỐ ĐIỆN THOẠI') or '—' }}</p>
                 <p>Năm sinh lúc khám: {{ v.get('NĂM SINH') or '—' }}</p><p>Khoa: {{ v.get('KHOA ĐK') or '—' }}</p></div>
             </div>
-            <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-navy text-white font-semibold hover:bg-[#1e3f6a]">Đúng là người này — đánh dấu Đã khám</button>
+            <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-navy text-white font-semibold hover:bg-navy-2 active:scale-[.98] transition">Đúng là người này — đánh dấu Đã khám</button>
           </form>
         </details>
         {% endfor %}
@@ -297,7 +297,7 @@
                 {% elif d.severity=='leftover' %}<p class="rounded bg-brand-50 text-brand-800 px-3 py-2"><span class="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1.5 align-middle"></span>Dòng tái khám đã "Đã khám", dòng Form còn "chưa khám" — xoá dòng Form để dọn.</p>{% endif %}
                 {% if d.severity=='review' and not d.locked %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2"><span class="inline-block w-2 h-2 rounded-full bg-brand-500 mr-1.5 align-middle"></span>Cả 2 dòng đều "Đã khám" nhưng mức khớp yếu — có thể là <b>2 người khác nhau</b> hoặc 2 lượt khám thật. Đừng xoá nếu chưa chắc.</p>{% endif %}
                 {% for n in d.notes %}<p class="rounded bg-amber-50 text-amber-800 px-3 py-2"><span class="inline-block w-2 h-2 rounded-full bg-slate-400 mr-1.5 align-middle"></span>{{ n }}</p>{% endfor %}
-                <div class="grid md:grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div class="rounded-lg bg-emerald-50 p-3 space-y-0.5"><p class="font-semibold text-emerald-800 mb-1">Dòng tái khám (từ khoa) — GIỮ LẠI</p>
                     <p>Họ tên: <b>{{ pk.name }}</b></p><p>STT: {{ pk.stt or '—' }}</p><p>Giới tính: {{ pk.gender or '—' }}</p><p>SĐT: {{ pk.phone or '—' }}</p><p>Năm sinh: {{ pk.birth_year or '—' }}</p><p>Ngày hẹn: {{ pk.exam_date|dmy }}</p>
                     <p>Nguồn: {{ pk.source or '—' }}</p><p>Trạng thái: {{ 'Đã khám' if d.khoa_attended else 'Chưa khám' }}</p></div>

@@ -49,7 +49,7 @@
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
   <div><p class="text-base font-semibold text-slate-800">{{ ev.name }}</p>
     <p class="text-xs text-slate-500">{{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }} · {{ audiences.get(ev.audience, ev.audience) }}</p></div>
-  <a href="{{ url_for('sms_event_report_xlsx', event_id=ev.id, real='1' if real_only else None, days=days) }}" class="inline-flex items-center gap-2 bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Tải báo cáo Excel</a>
+  <a href="{{ url_for('sms_event_report_xlsx', event_id=ev.id, real='1' if real_only else None, days=days) }}" class="inline-flex items-center gap-2 bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-navy-2 active:scale-[.98] transition">Tải báo cáo Excel</a>
 </div>
 {% if pending %}
 <p class="text-sm bg-brand-50 text-brand-800 rounded-xl px-4 py-3 mb-4">Đợt khám diễn ra ngày {{ ev.event_date.strftime('%d/%m/%Y') }}, chưa tới ngày — chưa thể tính tỉ lệ đến.</p>
@@ -57,7 +57,7 @@
 {% if not results %}
 <p class="text-sm bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-8 text-center text-slate-500">Đợt này chưa có người nào ở trạng thái «đã gửi»{% if real_only %} (đang chỉ tính tin gửi thật){% endif %}.</p>
 {% else %}
-<div class="grid lg:grid-cols-4 gap-3 mb-4">
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-4">
   <div class="lg:col-span-1 rounded-xl bg-slate-600 text-white p-4">
     <p class="text-xs  opacity-80">Tỉ lệ đến</p>
     <p class="text-4xl font-semibold mt-1">{{ (summary.rate ~ '%') if summary.rate is not none else '—' }}</p>
@@ -72,7 +72,7 @@
 {% if provisional %}<p class="text-sm bg-brand-50 text-brand-800 rounded-xl px-4 py-3 mb-4">Đợt khám đang trong {{ days }} ngày tính «đến» (đến hết {{ win[1].strftime('%d/%m/%Y') }}) — số liệu là <b>tạm tính</b>, sẽ tăng thêm khi có thêm lượt khám.</p>{% endif %}
 <p class="text-xs text-slate-400 mb-4">Đối chiếu tên + SĐT / năm sinh với nhật ký khám trong <b>{{ days }} ngày</b>: từ {{ win[0].strftime('%d/%m/%Y') }} đến {{ win[1].strftime('%d/%m/%Y') }} (không vượt quá hôm nay). Tỉ lệ đến chỉ tính ca khớp chắc chắn.</p>
 
-<div class="grid lg:grid-cols-2 gap-4 mb-4">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
   <div class="bg-white rounded-xl border border-slate-200">
     <div class="px-4 py-3 border-b border-slate-100"><h3 class="font-semibold text-slate-800 text-sm">Theo nhóm</h3></div>
     <table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-500 "><th class="px-4 py-2 text-left">Nhóm</th><th class="px-2 py-2">Được nhắc</th><th class="px-2 py-2">Đã đến</th><th class="px-2 py-2">Tỉ lệ</th></tr></thead>
