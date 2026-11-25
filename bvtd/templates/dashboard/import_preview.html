@@ -182,7 +182,7 @@
       Điền bổ sung (chỉ ô trống, không đè dữ liệu) để lần sau báo trùng chính xác theo ngày lập.</span>
     <form method="POST" action="{{ url_for('import_backfill') }}" id="backfill-form" class="js-rec" data-count="{{ c.backfill|length }}">
       {% for d in c.selected|sort %}<input type="hidden" name="lap" value="{{ d }}">{% endfor %}
-      <button type="submit" class="px-4 py-2 rounded-lg bg-[#0f2642] text-white text-xs font-semibold hover:bg-[#1e3f6a]">
+      <button type="submit" class="px-4 py-2 rounded-lg bg-navy text-white text-xs font-semibold hover:bg-[#1e3f6a]">
         Điền ngày tạo cho {{ c.backfill|length }} dòng
       </button>
     </form>
@@ -272,7 +272,7 @@
           data-count="{{ c.new|length }}" data-dup="{{ c.dup|length }}">
       {% for d in c.selected|sort %}<input type="hidden" name="lap" value="{{ d }}">{% endfor %}
       <button type="submit" id="confirm-btn" {% if not c.new or c.blind %}disabled{% endif %}
-              class="w-full px-4 py-3 rounded-xl text-sm font-semibold text-white bg-[#0f2642] hover:bg-[#1e3f6a]
+              class="w-full px-4 py-3 rounded-xl text-sm font-semibold text-white bg-navy hover:bg-[#1e3f6a]
                      disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed">
         Nhập {{ c.new|length }} bệnh nhân mới vào Google Sheet
       </button>

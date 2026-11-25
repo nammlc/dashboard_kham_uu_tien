@@ -19,9 +19,9 @@
 </div>
 
 <div class="flex flex-wrap gap-2 mb-4 text-xs">
-  <a href="{{ url_for('sms_campaign', cid=k.id) }}" class="px-3 py-1.5 rounded-full border {% if not status %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">Tất cả ({{ counts.values()|sum }})</a>
+  <a href="{{ url_for('sms_campaign', cid=k.id) }}" class="px-3 py-1.5 rounded-full border {% if not status %}bg-navy text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">Tất cả ({{ counts.values()|sum }})</a>
   {% for s, n in counts.items() %}
-  <a href="{{ url_for('sms_campaign', cid=k.id, status=s) }}" class="px-3 py-1.5 rounded-full border {% if status == s %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ label.get(s, s) }} ({{ n }})</a>
+  <a href="{{ url_for('sms_campaign', cid=k.id, status=s) }}" class="px-3 py-1.5 rounded-full border {% if status == s %}bg-navy text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ label.get(s, s) }} ({{ n }})</a>
   {% endfor %}
 </div>
 

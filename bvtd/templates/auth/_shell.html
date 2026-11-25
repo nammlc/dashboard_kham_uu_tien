@@ -8,15 +8,17 @@
   <title>{% block title %}{% endblock %} · BVĐK Tâm Đức Cầu Quan</title>
   <script src="https://cdn.tailwindcss.com"></script>
   {% include "_tw.html" %}
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>body{font-family:'Inter',sans-serif}</style>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>body{font-family:'Be Vietnam Pro',sans-serif}</style>
 </head>
-<body class="min-h-screen bg-[#0f2642] flex items-center justify-center p-4">
-  <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
+<body class="min-h-screen bg-slate-100 md:grid md:grid-cols-[minmax(340px,38%)_1fr]">
+  {% include "auth/_brand.html" %}
+  <div class="flex items-center justify-center p-4 md:p-12">
+  <div class="w-full max-w-sm bg-white rounded-2xl border border-slate-200 p-8">
     <div class="flex items-center gap-3 mb-6">
-      <div class="w-11 h-11 bg-[#0f2642] rounded-xl flex items-center justify-center text-white flex-shrink-0">{% block icon %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>{% endblock %}</div>
+      <div class="w-11 h-11 bg-navy rounded-xl flex items-center justify-center text-white flex-shrink-0">{% block icon %}<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>{% endblock %}</div>
       <div>
-        <p class="font-semibold text-[#0f2642] text-sm leading-tight">{% block heading %}{% endblock %}</p>
+        <p class="font-semibold text-navy text-sm leading-tight">{% block heading %}{% endblock %}</p>
         <p class="text-slate-400 text-xs break-all">{% block sub %}BVĐK Tâm Đức Cầu Quan{% endblock %}</p>
       </div>
     </div>
@@ -26,6 +28,7 @@
       {% endfor %}
     {% endwith %}
     {% block body %}{% endblock %}
+  </div>
   </div>
 </body>
 </html>

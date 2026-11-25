@@ -49,7 +49,7 @@
 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
   <div><p class="text-base font-semibold text-slate-800">{{ ev.name }}</p>
     <p class="text-xs text-slate-500">{{ ev.event_date.strftime('%d/%m/%Y') }}{% if ev.event_time %} lúc {{ ev.event_time }}{% endif %} · {{ ev.location }} · {{ audiences.get(ev.audience, ev.audience) }}</p></div>
-  <a href="{{ url_for('sms_event_report_xlsx', event_id=ev.id, real='1' if real_only else None, days=days) }}" class="inline-flex items-center gap-2 bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Tải báo cáo Excel</a>
+  <a href="{{ url_for('sms_event_report_xlsx', event_id=ev.id, real='1' if real_only else None, days=days) }}" class="inline-flex items-center gap-2 bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Tải báo cáo Excel</a>
 </div>
 {% if pending %}
 <p class="text-sm bg-brand-50 text-brand-800 rounded-xl px-4 py-3 mb-4">Đợt khám diễn ra ngày {{ ev.event_date.strftime('%d/%m/%Y') }}, chưa tới ngày — chưa thể tính tỉ lệ đến.</p>

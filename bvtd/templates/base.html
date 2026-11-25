@@ -11,9 +11,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   {% include "_tw.html" %}
 
-  <!-- Inter -->
+  <!-- Be Vietnam Pro -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- HTMX (cho cập nhật bảng không reload trang) -->
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
@@ -22,7 +22,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
   <style>
-    body { font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
+    body { font-family: 'Be Vietnam Pro', sans-serif; font-variant-numeric: tabular-nums; }
     .mono { font-variant-numeric: tabular-nums; }
     /* Scrollbar mỏng cho sidebar */
     .sb-scroll::-webkit-scrollbar { width: 4px; }
@@ -47,7 +47,7 @@
   <!-- ══════════════════════════════════════════════════
        SIDEBAR
   ══════════════════════════════════════════════════ -->
-  <nav class="w-56 flex-shrink-0 bg-navy flex flex-col fixed left-0 top-0 h-screen z-50">
+  <nav id="side-nav" class="w-56 flex-shrink-0 bg-navy flex flex-col fixed left-0 top-0 h-screen z-50 -translate-x-full md:translate-x-0 transition-transform motion-reduce:transition-none">
 
     <!-- Logo -->
     <div class="px-4 py-4 border-b border-white/10">
@@ -147,11 +147,13 @@
   <!-- ══════════════════════════════════════════════════
        MAIN
   ══════════════════════════════════════════════════ -->
-  <div class="ml-56 flex-1 flex flex-col min-h-screen">
+  <div class="md:ml-56 flex-1 min-w-0 flex flex-col min-h-screen">
+    <div id="side-scrim" class="hidden fixed inset-0 z-40 bg-slate-900/50 md:hidden"></div>
 
     <!-- Top bar -->
     <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
       <div class="flex items-center gap-3">
+        <button type="button" id="side-toggle" aria-controls="side-nav" aria-expanded="false" aria-label="Mở menu" class="md:hidden -ml-2 p-2 rounded-lg text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
         <h1 class="font-semibold text-slate-800 text-sm">{% block page_title %}{% endblock %}</h1>
               </div>
       <div class="flex items-center gap-3">
@@ -173,7 +175,7 @@
     {% endwith %}
 
     <!-- Page content -->
-    <main class="p-6 flex-1">
+    <main class="p-4 md:p-6 flex-1 min-w-0">
       {% block content %}{% endblock %}
     </main>
 
@@ -298,6 +300,22 @@
     }
     setInterval(tick, 10000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  })();
+  </script>
+
+  <script>
+  (function () {
+    const nav = document.getElementById('side-nav'), btn = document.getElementById('side-toggle'), scrim = document.getElementById('side-scrim');
+    if (!nav || !btn) return;
+    function set(open) {
+      nav.classList.toggle('-translate-x-full', !open);
+      scrim.classList.toggle('hidden', !open);
+      btn.setAttribute('aria-expanded', String(open));
+      btn.setAttribute('aria-label', open ? 'Đóng menu' : 'Mở menu');
+    }
+    btn.addEventListener('click', () => set(btn.getAttribute('aria-expanded') !== 'true'));
+    scrim.addEventListener('click', () => set(false));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') set(false); });
   })();
   </script>
 

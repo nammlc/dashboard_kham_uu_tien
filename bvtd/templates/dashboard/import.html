@@ -24,7 +24,7 @@
   {% if has_pending %}
   <div class="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm text-slate-600 flex items-center justify-between gap-3">
     <span>Bạn đang có 1 file đã đọc nhưng chưa import.</span>
-    <a href="{{ url_for('import_preview_page') }}" class="px-3 py-1.5 bg-[#0f2642] text-white rounded-lg text-xs font-semibold hover:bg-[#1e3f6a]">Tiếp tục →</a>
+    <a href="{{ url_for('import_preview_page') }}" class="px-3 py-1.5 bg-navy text-white rounded-lg text-xs font-semibold hover:bg-[#1e3f6a]">Tiếp tục →</a>
   </div>
   {% endif %}
 
@@ -43,7 +43,7 @@
       </label>
       <p id="file-name" class="text-sm text-brand-600 font-medium mt-2 text-center"></p>
       <button type="submit" id="upload-btn"
-              class="mt-4 w-full bg-[#0f2642] text-white font-semibold py-3 rounded-xl
+              class="mt-4 w-full bg-navy text-white font-semibold py-3 rounded-xl
                      hover:bg-[#1e3f6a] transition-colors text-sm disabled:opacity-60">
         Đọc và xem trước →
       </button>

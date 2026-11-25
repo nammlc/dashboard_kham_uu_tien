@@ -17,7 +17,7 @@
         <p class="text-sm text-slate-600">Tài khoản này đăng nhập bằng Google. Hãy <a class="underline text-[#0b5ea8]" href="{{ url_for('login') }}">đăng nhập bằng Google</a> trên trình duyệt này, rồi mở lại liên kết trong email.</p>
       {% endif %}
       {% if pending_ok or has_pw %}
-      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Tiếp tục thiết lập điện thoại mới</button>
+      <button type="submit" class="w-full mt-4 bg-navy hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Tiếp tục thiết lập điện thoại mới</button>
       {% endif %}
     </form>
 {% endblock %}

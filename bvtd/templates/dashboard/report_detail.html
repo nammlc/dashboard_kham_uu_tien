@@ -32,7 +32,7 @@
              class="w-full text-sm border border-slate-300 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-400/20">
     </div>
     <button type="submit"
-            class="inline-flex items-center gap-1.5 bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a] transition-colors">
+            class="inline-flex items-center gap-1.5 bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a] transition-colors">
       Tìm kiếm
     </button>
     {% if q %}
@@ -100,7 +100,7 @@
          class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg hover:bg-slate-50">‹</a>{% endif %}
       {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
       <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, q=q, page=p) }}"
-         class="px-3 py-1.5 text-xs border rounded-lg {% if p == page %}bg-[#0f2642] text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ p }}</a>
+         class="px-3 py-1.5 text-xs border rounded-lg {% if p == page %}bg-navy text-white border-[#0f2642]{% else %}border-slate-300 hover:bg-slate-50{% endif %}">{{ p }}</a>
       {% endfor %}
       {% if page < total_pages %}
       <a href="{{ url_for('report_detail', period=period, key=key, kind=kind, date_from=date_from, date_to=date_to, q=q, page=page+1) }}"

@@ -26,7 +26,7 @@
     <form method="POST" action="{{ url_for('reconcile_upload') }}" enctype="multipart/form-data" class="flex flex-wrap items-center gap-3">
       <input type="file" name="visit_file" accept=".xlsx" required
              class="text-sm file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold hover:file:bg-slate-200">
-      <button class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Đọc file</button>
+      <button class="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Đọc file</button>
     </form>
 
     {% if visit %}
@@ -44,7 +44,7 @@
     <form method="POST" action="{{ url_for('reconcile_run') }}"
           onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Đang đối chiếu…';">
       <button {% if not scope_n %}disabled{% endif %}
-              class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a] disabled:opacity-40">
+              class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a] disabled:opacity-40">
         Bắt đầu đối chiếu
       </button>
       <span class="text-xs text-slate-400 ml-2">Lưu ý: BN nguồn trống mà chưa đến khám sẽ được ghi nguồn "vãng lai" lên Sheet ngay.</span>
@@ -85,7 +85,7 @@
       <div class="flex flex-wrap items-center gap-2 text-xs">
         {% for key, label in [('all','Tất cả'),('attended_sure','Đã đến'),('attended_unsure','Cần xác nhận'),('not_attended','Chưa đến')] %}
         <a href="{{ url_for('reconcile_page', tab=tab, f=key, _anchor='ketqua') }}"
-           class="px-3 py-1.5 rounded-full border {{ 'bg-[#0f2642] text-white border-[#0f2642]' if flt==key else 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ label }}</a>
+           class="px-3 py-1.5 rounded-full border {{ 'bg-navy text-white border-[#0f2642]' if flt==key else 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">{{ label }}</a>
         {% endfor %}
         <a href="{{ url_for('reconcile_csv', tab=tab) }}" class="ml-auto px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">Tải báo cáo (.csv)</a>
       </div>
@@ -164,7 +164,7 @@
           </label>
           <p class="hidden text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2" data-inline-err role="alert"></p>
           <button type="submit" data-apply-btn
-                  class="bg-[#0f2642] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a] disabled:opacity-40 disabled:cursor-not-allowed">
+                  class="bg-navy text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1e3f6a] disabled:opacity-40 disabled:cursor-not-allowed">
             Cập nhật "Đã khám" cho <span data-apply-count>{{ g.to_update|length }}</span> bệnh nhân đã chọn
           </button>
         </form>
@@ -200,7 +200,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
               <button type="submit" name="action" value="save" class="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 font-semibold">Lưu SĐT/Năm sinh vào Sheet</button>
-              <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-[#0f2642] text-white font-semibold hover:bg-[#1e3f6a]">Xác nhận đúng — đánh dấu Đã khám</button>
+              <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-navy text-white font-semibold hover:bg-[#1e3f6a]">Xác nhận đúng — đánh dấu Đã khám</button>
             </div>
           </form>
         </details>
@@ -228,7 +228,7 @@
                 <p>{{ v.get('HỌ TÊN','') }}</p><p>Ngày thực đến: {{ nm.visit_date|dmy }}</p><p>SĐT lúc khám: {{ v.get('SỐ ĐIỆN THOẠI') or '—' }}</p>
                 <p>Năm sinh lúc khám: {{ v.get('NĂM SINH') or '—' }}</p><p>Khoa: {{ v.get('KHOA ĐK') or '—' }}</p></div>
             </div>
-            <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-[#0f2642] text-white font-semibold hover:bg-[#1e3f6a]">Đúng là người này — đánh dấu Đã khám</button>
+            <button type="submit" name="action" value="confirm" class="px-4 py-2 rounded-lg bg-navy text-white font-semibold hover:bg-[#1e3f6a]">Đúng là người này — đánh dấu Đã khám</button>
           </form>
         </details>
         {% endfor %}

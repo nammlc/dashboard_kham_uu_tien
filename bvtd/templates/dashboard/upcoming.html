@@ -55,7 +55,7 @@
 {% for day in data.days %}
 {% set i = loop.index0 %}
 <div class="day-card bg-white rounded-xl border border-slate-200 mb-4 overflow-hidden" data-day="{{ i }}">
-  <div class="flex items-center justify-between px-5 py-3 bg-[#0f2642] text-white">
+  <div class="flex items-center justify-between px-5 py-3 bg-navy text-white">
     <span class="font-semibold text-sm">{{ day.label }}</span>
     <span class="text-xs bg-white/15 px-2.5 py-1 rounded-full">{{ day.count }} bệnh nhân</span>
   </div>
@@ -104,7 +104,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = label;
       b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
-        (opts.active ? 'bg-[#0f2642] text-white border-[#0f2642]'
+        (opts.active ? 'bg-navy text-white border-[#0f2642]'
                      : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
       if (opts.disabled) b.disabled = true;
       if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));

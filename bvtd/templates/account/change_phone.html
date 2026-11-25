@@ -13,7 +13,7 @@
       <input type="hidden" name="action" value="verify_old">
       <input type="text" name="code" required autofocus inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000"
              class="w-full border border-slate-300 rounded-lg px-3 py-3 text-center text-2xl tracking-[.35em] font-semibold focus:outline-none focus:border-[#0b5ea8] focus:ring-2 focus:ring-[#0b5ea8]/20">
-      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Tiếp tục</button>
+      <button type="submit" class="w-full mt-4 bg-navy hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Tiếp tục</button>
     </form>
   {% else %}
     <p class="text-sm font-semibold text-slate-800">Bước 2/2 · Thêm điện thoại mới</p>
@@ -32,7 +32,7 @@
       <input type="hidden" name="action" value="confirm_new">
       <input type="text" name="code" required autofocus inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,8}" maxlength="8" placeholder="000 000"
              class="w-full border border-slate-300 rounded-lg px-3 py-3 text-center text-2xl tracking-[.35em] font-semibold focus:outline-none focus:border-[#0b5ea8] focus:ring-2 focus:ring-[#0b5ea8]/20">
-      <button type="submit" class="w-full mt-4 bg-[#0f2642] hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Xác nhận & đổi sang điện thoại mới</button>
+      <button type="submit" class="w-full mt-4 bg-navy hover:bg-[#1e3f6a] text-white font-semibold rounded-lg py-2.5 text-sm transition-colors">Xác nhận & đổi sang điện thoại mới</button>
     </form>
     <p class="text-xs text-amber-700 mt-3">Điện thoại cũ sẽ ngừng dùng được ngay sau khi xác nhận.</p>
   {% endif %}

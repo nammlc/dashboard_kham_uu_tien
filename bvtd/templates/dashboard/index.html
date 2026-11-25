@@ -123,7 +123,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.textContent = label;
       b.className = 'px-3 py-1.5 text-xs border rounded-lg ' +
-        (opts.active ? 'bg-[#0f2642] text-white border-[#0f2642]'
+        (opts.active ? 'bg-navy text-white border-[#0f2642]'
                      : 'border-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white');
       if (opts.disabled) b.disabled = true;
       if (!opts.active && !opts.disabled) b.addEventListener('click', () => go(page));
@@ -156,7 +156,7 @@
 const monthly = {{ stats.monthly_chart | tojson }};
 
 // Biểu đồ cột theo tháng: một màu nhấn (đã khám), nền trung tính (đăng ký)
-Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
 Chart.defaults.color = '#64748b';
 const ctx1 = document.getElementById('chartMonthly').getContext('2d');
 new Chart(ctx1, {

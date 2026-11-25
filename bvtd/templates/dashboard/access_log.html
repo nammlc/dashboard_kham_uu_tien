@@ -44,7 +44,7 @@
       <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
              class="text-sm border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:border-brand-400">
     </div>
-    <button type="submit" class="bg-[#0f2642] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lọc</button>
+    <button type="submit" class="bg-navy text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#1e3f6a]">Lọc</button>
     {% if q or event or date_from or date_to %}
     <a href="{{ url_for('access_log') }}" class="text-sm text-slate-500 hover:text-red-500">✕ Xoá lọc</a>
     {% endif %}
@@ -113,7 +113,7 @@
       {% endif %}
       {% for p in pages %}
         {% if p is none %}<span class="px-1 text-slate-400">…</span>
-        {% elif p == page %}<span aria-current="page" class="{{ btn }} bg-[#0f2642] text-white border-[#0f2642] font-semibold">{{ p }}</span>
+        {% elif p == page %}<span aria-current="page" class="{{ btn }} bg-navy text-white border-[#0f2642] font-semibold">{{ p }}</span>
         {% else %}<a href="{{ plink(p) }}" class="{{ btn }} border-slate-300 hover:bg-slate-50">{{ p }}</a>{% endif %}
       {% endfor %}
       {% if page < total_pages %}
